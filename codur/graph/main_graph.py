@@ -82,6 +82,6 @@ def create_agent_graph(config: CodurConfig):
     # Each loop iteration uses multiple nodes (plan→delegate→execute→review→continue)
     # With max_iterations=10, we need at least 10*5=50 recursion depth
     try:
-        return workflow.compile(recursion_limit=100)
+        return workflow.compile(recursion_limit=60)
     except TypeError:
         return workflow.compile()

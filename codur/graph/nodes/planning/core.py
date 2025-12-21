@@ -55,12 +55,26 @@ class PlanningOrchestrator:
             initial_delay=self.config.planning.retry_initial_delay,
             backoff_factor=self.config.planning.retry_backoff_factor,
         )
-        active_llm, response, profile_name = retry_strategy.invoke_with_fallbacks(
-            self.config,
-            llm,
-            prompt_messages,
-        )
-        content = response.content
+        try:
+            active_llm, response, profile_name = retry_strategy.invoke_with_fallbacks(
+                self.config,
+                llm,
+                prompt_messages,
+            )
+            content = response.content
+        except Exception as exc:
+            if not self.config.agents.preferences.default_agent:
+                raise ValueError("agents.preferences.default_agent must be configured") from exc
+            default_agent = self.config.agents.preferences.default_agent
+            if state.get("verbose"):
+                console.print(f"[red]Planning failed: {str(exc)}[/red]")
+                console.print(f"[yellow]Falling back to default agent: {default_agent}[/yellow]")
+            return {
+                "next_action": "delegate",
+                "selected_agent": default_agent,
+                "iterations": iterations + 1,
+                "llm_debug": {"error": str(exc), "llm_profile": self.config.llm.default_profile},
+            }
 
         user_message = messages[-1].content if messages else ""
         planning_prompt = self.prompt_builder.build_system_prompt()

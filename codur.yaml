@@ -22,8 +22,8 @@ agents:
 
     # Routing rules: which agent to use for which task type
     routing:
-      simple: "llm:groq-70b"         # Simple code generation (Groq)
-      complex: "llm:openai-gpt-5"  # Complex refactoring (OpenAI)
+      simple: "llm:groq-qwen3-32b"         # Simple code generation (Groq)
+      complex: "llm:groq-qwen3-32b"  # Complex refactoring (OpenAI)
       multifile: "agent:claude_code" # Multi-file changes (Claude Code)
       reasoning: "llm:groq-70b"      # Complex reasoning (Groq)
       sheets: "sheets"               # Spreadsheet operations

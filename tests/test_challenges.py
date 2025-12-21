@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pygit2
 
+from codur.utils.git import get_diff_for_path
 
 CHALLENGES_DIR = Path(__file__).resolve().parents[1] / "challenges"
 REPO_ROOT = CHALLENGES_DIR.parent
@@ -70,11 +71,20 @@ def _run_codur(prompt: str, cwd: Path) -> str:
     return "\n".join(filtered).strip()
 
 
+def _print_main_diff(main_path: Path) -> None:
+    rel_path = main_path.relative_to(REPO_ROOT)
+    diff_text = get_diff_for_path(REPO_ROOT, rel_path, colorize=True)
+    if diff_text:
+        print(diff_text)
+
+
 def _reset_challenges() -> None:
     repo_path = pygit2.discover_repository(str(REPO_ROOT))
     if repo_path is None:
         raise AssertionError("Could not locate git repository for challenges reset")
     repo = pygit2.Repository(repo_path)
+    if not os.access(REPO_ROOT / ".git", os.W_OK):
+        return
     head = repo.revparse_single("HEAD")
     challenge_prefix = f"{CHALLENGES_DIR.name}/"
 
@@ -125,5 +135,7 @@ def test_challenges_match_expected_output() -> None:
                 "Output mismatch in "
                 f"{challenge_dir.name}\nExpected:\n{expected}\nActual:\n{actual}"
             )
+            _print_main_diff(main_path)
+            print(f"Challenge passed: {challenge_dir.name}")
     finally:
         _reset_challenges()

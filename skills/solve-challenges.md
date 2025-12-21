@@ -45,6 +45,7 @@ Based on `skills/trial-error-loop.md`, agents should:
 4. Run the same CLI command again to verify the fix
 5. Repeat this loop until the command succeeds
 6. If you see connection errors to ollama. There must be a config issue. Halt and ask the user to fix it.
+7. Do not modify codur.yaml config
 
 ## Current Issues to Fix
 
