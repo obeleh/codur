@@ -1,0 +1,43 @@
+"""
+State definition for the agent graph
+"""
+
+from __future__ import annotations
+
+from typing import TypedDict, Annotated, Sequence
+from langchain_core.messages import BaseMessage
+import operator
+
+from codur.config import CodurConfig
+
+
+class AgentState(TypedDict):
+    """
+    State for the coding agent graph.
+
+    Attributes:
+        messages: The conversation history
+        next_action: The next action to take
+        agent_outcome: Result from the last agent action
+        iterations: Number of iterations so far
+        final_response: The final response to return
+        selected_agent: The agent selected for delegation
+        tool_calls: Tool calls requested by the planner
+        verbose: Whether to print verbose output
+    """
+    messages: Annotated[Sequence[BaseMessage], operator.add]
+    next_action: str
+    agent_outcome: dict
+    iterations: int
+    final_response: str
+    selected_agent: str
+    tool_calls: list[dict]
+    verbose: bool
+    config: CodurConfig
+
+
+class AgentStateData(dict):
+    """Dict wrapper with helpers for tool access."""
+
+    def get_config(self):
+        return self.get("config")

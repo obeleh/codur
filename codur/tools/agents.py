@@ -1,0 +1,75 @@
+"""Agent execution tools."""
+
+from typing import Optional
+
+from langchain_core.messages import HumanMessage
+
+from codur.config import CodurConfig
+from codur.llm import create_llm_profile
+from codur.graph.state import AgentState
+from codur.agents.ollama_agent import OllamaAgent
+from codur.agents.codex_agent import CodexAgent
+from codur.agents.claude_code_agent import ClaudeCodeAgent
+
+
+def _resolve_agent_reference(raw_agent: str) -> str:
+    if raw_agent.startswith("agent:"):
+        return raw_agent.split(":", 1)[1]
+    return raw_agent
+
+
+def _resolve_agent_profile(config: CodurConfig, agent_name: str) -> tuple[str, Optional[dict]]:
+    if agent_name.startswith("agent:"):
+        profile_name = agent_name.split(":", 1)[1]
+        profile = config.agents.profiles.get(profile_name)
+        if profile and profile.name:
+            return profile.name, profile.config
+    return agent_name, None
+
+
+def retry_in_agent(
+    agent: str,
+    task: str,
+    config: CodurConfig | None = None,
+    state: AgentState | None = None,
+) -> str:
+    """Retry a task using a specific agent name.
+
+    Args:
+        agent: Agent name or reference (agent:<name> or llm:<profile>)
+        task: Task content to run
+        config: Codur configuration for agent setup
+
+    Returns:
+        Agent response string
+    """
+    if not agent:
+        raise ValueError("retry_in_agent requires an 'agent' argument")
+    if not task:
+        raise ValueError("retry_in_agent requires a 'task' argument")
+
+    if config is None:
+        if state is not None and hasattr(state, "get_config"):
+            config = state.get_config()
+        if config is None:
+            raise ValueError("Config not available in tool state")
+
+    agent_name, profile_override = _resolve_agent_profile(config, agent)
+    resolved_agent = _resolve_agent_reference(agent_name)
+
+    if agent_name.startswith("llm:"):
+        profile_name = agent_name.split(":", 1)[1]
+        llm = create_llm_profile(config, profile_name)
+        response = llm.invoke([HumanMessage(content=task)])
+        return response.content
+    if resolved_agent == "ollama":
+        agent_instance = OllamaAgent(config, override_config=profile_override)
+        return agent_instance.execute(task)
+    if resolved_agent == "codex":
+        agent_instance = CodexAgent(config, override_config=profile_override)
+        return agent_instance.execute(task)
+    if resolved_agent == "claude_code":
+        agent_instance = ClaudeCodeAgent(config, override_config=profile_override)
+        return agent_instance.execute(task)
+
+    raise ValueError(f"Unknown agent: {agent_name}")

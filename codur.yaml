@@ -1,0 +1,143 @@
+# Codur Configuration
+# Main configuration file for the Codur autonomous coding agent
+
+# MCP Servers - Define external services that can be called
+mcp_servers:
+  sheets:
+    command: "/Users/sjuul/workspace/mcp-servers/.venv/bin/python"
+    args: ["/Users/sjuul/workspace/mcp-servers/sheets/mcp_server.py"]
+    cwd: "/Users/sjuul/workspace/mcp-servers/sheets"
+    env: {}
+
+  linkedin:
+    command: "/Users/sjuul/workspace/mcp-servers/.venv/bin/python"
+    args: ["/Users/sjuul/workspace/mcp-servers/linked-in/mcp_server.py"]
+    cwd: "/Users/sjuul/workspace/mcp-servers/linked-in"
+    env: {}
+
+# Agent Settings - Configure which agents are available and their routing
+agents:
+  preferences:
+    default_agent: "agent:groq"
+
+    # Routing rules: which agent to use for which task type
+    routing:
+      simple: "llm:groq-70b"         # Simple code generation (Groq)
+      complex: "llm:openai-gpt-5"  # Complex refactoring (OpenAI)
+      multifile: "agent:claude_code" # Multi-file changes (Claude Code)
+      reasoning: "llm:groq-70b"      # Complex reasoning (Groq)
+      sheets: "sheets"               # Spreadsheet operations
+      jobs: "linkedin"               # Job searching
+
+    # Fallback order if primary agent fails
+    fallback_order:
+      - ollama
+      - claude_code
+      - codex
+
+  # Agent-specific configurations
+  configs:
+    groq:
+      name: "groq"
+      type: "llm"
+      enabled: true
+      config:
+        model: "llama-3.1-70b-versatile"
+
+    ollama:
+      name: "ollama"
+      type: "llm"
+      enabled: true
+      config:
+        model: "ministral-3:14b"
+
+    codex:
+      name: "codex"
+      type: "tool"
+      enabled: true
+      config:
+        command: "codex"
+        model: "gpt-5-codex"
+        reasoning_effort: "medium"
+
+    claude_code:
+      name: "claude_code"
+      type: "tool"
+      enabled: true
+      config:
+        command: "claude"
+        model: "sonnet"
+        max_tokens: 8000
+
+    sheets:
+      name: "sheets"
+      type: "mcp"
+      enabled: true
+      config:
+        mcp_server: "sheets"
+
+    linkedin:
+      name: "linkedin"
+      type: "mcp"
+      enabled: true
+      config:
+        mcp_server: "linkedin"
+
+  profiles:
+    ollama-ministral:
+      name: "ollama"
+      type: "llm"
+      enabled: true
+      config:
+        model: "ministral-3:14b"
+        system_prompt: "You are a concise coding assistant. Summarize code behavior and structure clearly. Avoid vague placeholders."
+
+# LLM Settings - Main orchestrator LLM configuration
+llm:
+  default_profile: ollama-ministral # "groq-70b"
+  default_temperature: 0.7
+
+  profiles:
+    gemini-3-flash-preview:
+      provider: "ollama"
+      model: gemini-3-flash-preview
+    groq-70b:
+      provider: "groq"
+      model: "llama-3.3-70b-versatile"
+    openai-gpt-5:
+      provider: "openai"
+      model: "gpt-5"
+    openai-gpt-5-mini:
+      provider: "openai"
+      model: "gpt-5-mini"
+    ollama-ministral:
+      provider: "ollama"
+      model: "ministral-3:14b"
+
+providers:
+  anthropic:
+    api_key_env: "ANTHROPIC_API_KEY"
+  openai:
+    api_key_env: "OPENAI_API_KEY"
+  groq:
+    api_key_env: "GROQ_API_KEY"
+  ollama:
+    base_url: "http://localhost:11434"
+    max_model_size_gb: 16
+
+# Runtime Settings - Control agent behavior and async execution
+runtime:
+  max_iterations: 10
+  verbose: true
+  allow_outside_workspace: true
+  # This allows tool detection outside LLM calls (RECOMMENDED: keeps it reliable)
+  detect_tool_calls_from_text: true
+
+  # Async execution settings
+  async:
+    max_concurrent_agents: 3      # Max agents running in parallel
+    event_buffer_size: 200         # Size of event queue
+    stream_events: true            # Stream events as they happen
+    user_input_poll_ms: 100        # How often to check for user input
+    tool_timeout_s: 600            # Timeout for tool execution (10 min)
+    cancel_grace_s: 5              # Grace period for cancellation

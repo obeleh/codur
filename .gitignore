@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+log.txt
+
+# Config (may contain secrets)
+.codur/
+codur.local.yaml
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# LangGraph
+checkpoints/
+*.db
