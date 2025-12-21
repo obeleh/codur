@@ -108,6 +108,15 @@ def _detect_tool_operations(message: str) -> Optional[list[dict]]:
             return path_match.group(1)
         return None
 
+    change_intent = re.search(
+        r"\b(fix|edit|update|change|modify|refactor|bug|issue)\b",
+        msg_lower,
+    )
+    if change_intent:
+        target = _extract_path_from_message(msg)
+        if target:
+            return [{"tool": "read_file", "args": {"path": target}}]
+
     # File operations: move/copy/delete/read/write/append/line_count
     move_match = re.search(r"move\s+([^\s]+)\s+to\s+([^\s]+)", msg, re.IGNORECASE)
     if move_match:

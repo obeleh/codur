@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,12 @@ import pygit2
 
 CHALLENGES_DIR = Path(__file__).resolve().parents[1] / "challenges"
 REPO_ROOT = CHALLENGES_DIR.parent
+
+warnings.filterwarnings(
+    "ignore",
+    message="Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater.",
+    category=UserWarning,
+)
 
 
 def _read_text(path: Path) -> str:
@@ -73,7 +80,7 @@ def _reset_challenges() -> None:
     for path, status in repo.status().items():
         if not path.startswith(challenge_prefix):
             continue
-        if path == f\"{challenge_prefix}README.md\":
+        if path == f"{challenge_prefix}README.md":
             continue
         full_path = REPO_ROOT / path
         if status & pygit2.GIT_STATUS_WT_NEW:

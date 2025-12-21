@@ -3,6 +3,7 @@
 from typing import Dict, Any, Optional
 import json
 import re
+import time
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 from rich.console import Console
@@ -13,6 +14,7 @@ from codur.tools.registry import list_tool_directory
 from codur.graph.nodes.types import PlanNodeResult, PlanningDecision
 from codur.graph.nodes.utils import _normalize_messages
 from codur.graph.nodes.non_llm_tools import run_non_llm_tools
+from codur.llm import create_llm_profile
 
 console = Console()
 
@@ -82,7 +84,8 @@ def _build_planning_system_prompt(config: CodurConfig) -> str:
 1. If user asks to move/copy/delete/read/write a file → MUST use action: "tool", NEVER "respond" or "delegate"
 2. If user asks a greeting (hi/hello) → use action: "respond"
 3. If user asks code generation → use action: "delegate"
-4. If user mentions a specific file path (including "@file") and wants a change → use tools to read/modify that file
+4. If user mentions a specific file path (including "@file") and wants a change → delegate to an agent (they can read/analyze/fix)
+5. For bug fixes, debugging, or tasks requiring iteration → delegate to an agent that can use tools and iterate
 
 **FILE OPERATIONS - MANDATORY TOOL USAGE:**
 Any request containing words like "move", "copy", "delete", "read", "write" + file path MUST return:
@@ -96,7 +99,7 @@ DO NOT suggest commands. DO NOT respond with instructions. EXECUTE the tool dire
 - "copy file.py to backup.py" → {{"action": "tool", "agent": null, "reasoning": "copy file", "response": null, "tool_calls": [{{"tool": "copy_file", "args": {{"source": "file.py", "destination": "backup.py"}}}}]}}
 - "move /path/to/file.py to /dest/" → {{"action": "tool", "agent": null, "reasoning": "move file", "response": null, "tool_calls": [{{"tool": "move_file", "args": {{"source": "/path/to/file.py", "destination": "/dest/file.py"}}}}]}}
 - "What does app.py do?" → {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
-- "Fix bug in @main.py" → {{"action": "tool", "agent": null, "reasoning": "read then edit file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "main.py"}}}}, {{"tool": "replace_in_file", "args": {{"path": "main.py", "pattern": "range\\(start,\\s*end\\)", "replacement": "range(start, end + 1)", "count": 1}}}}]}}
+- "Fix bug in @main.py" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "bug fix requires agent analysis", "response": null, "tool_calls": []}}
 - "delete old.txt" → {{"action": "tool", "agent": null, "reasoning": "delete file", "response": null, "tool_calls": [{{"tool": "delete_file", "args": {{"path": "old.txt"}}}}]}}
 - "Hello" → {{"action": "respond", "agent": null, "reasoning": "greeting", "response": "Hello! How can I help?", "tool_calls": []}}
 - "Write a sorting function" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
@@ -121,7 +124,7 @@ Examples:
 - "move /path/to/file.py to /dest/" -> {{"action": "tool", "agent": null, "reasoning": "move file", "response": null, "tool_calls": [{{"tool": "move_file", "args": {{"source": "/path/to/file.py", "destination": "/dest/file.py"}}}}]}}
 - "delete old.txt" -> {{"action": "tool", "agent": null, "reasoning": "delete file", "response": null, "tool_calls": [{{"tool": "delete_file", "args": {{"path": "old.txt"}}}}]}}
 - "What does app.py do?" -> {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
-- "Fix bug in @main.py" -> {{"action": "tool", "agent": null, "reasoning": "read then edit file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "main.py"}}}}, {{"tool": "replace_in_file", "args": {{"path": "main.py", "pattern": "range\\(start,\\s*end\\)", "replacement": "range(start, end + 1)", "count": 1}}}}]}}
+- "Fix bug in @main.py" -> {{"action": "delegate", "agent": "{default_agent}", "reasoning": "bug fix requires agent analysis", "response": null, "tool_calls": []}}
 - "Write a sorting function" -> {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
 """
 
@@ -390,6 +393,94 @@ def _parse_planning_response(
     return None
 
 
+def _looks_like_change_request(text: str) -> bool:
+    lowered = text.lower()
+    triggers = ("fix", "edit", "update", "change", "modify", "refactor", "bug", "issue")
+    return any(trigger in lowered for trigger in triggers)
+
+
+def _mentions_file_path(text: str) -> bool:
+    return "@" in text or ".py" in text or "/" in text or "\\" in text
+
+
+def _has_mutation_tool(tool_calls: list[dict]) -> bool:
+    mutating = {
+        "write_file",
+        "append_file",
+        "replace_in_file",
+        "delete_file",
+        "copy_file",
+        "move_file",
+        "copy_file_to_dir",
+        "move_file_to_dir",
+        "write_json",
+        "set_json_value",
+        "write_yaml",
+        "set_yaml_value",
+        "write_ini",
+        "set_ini_value",
+    }
+    for call in tool_calls or []:
+        tool_name = call.get("tool")
+        if tool_name in mutating:
+            return True
+    return False
+
+
+def _invoke_planner_with_retries(
+    llm: BaseChatModel,
+    prompt_messages: list[BaseMessage],
+    max_attempts: int = 3,
+) -> BaseMessage:
+    last_error: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return llm.invoke(prompt_messages)
+        except Exception as exc:
+            last_error = exc
+            message = str(exc).lower()
+            is_connection = (
+                "connection error" in message
+                or "failed to establish a new connection" in message
+                or "max retries exceeded" in message
+            )
+            if not is_connection or attempt == max_attempts:
+                raise
+            time.sleep(0.5 * attempt)
+    if last_error:
+        raise last_error
+    raise RuntimeError("Planner LLM invocation failed without exception")
+
+
+def _invoke_planner_with_fallbacks(
+    config: CodurConfig,
+    llm: BaseChatModel,
+    prompt_messages: list[BaseMessage],
+) -> tuple[BaseChatModel, BaseMessage, str]:
+    profile_names = [config.llm.default_profile] + [
+        name for name in config.llm.profiles.keys() if name != config.llm.default_profile
+    ]
+    last_error: Exception | None = None
+    for idx, profile_name in enumerate(profile_names):
+        try_llm = llm if idx == 0 else create_llm_profile(config, profile_name)
+        try:
+            response = _invoke_planner_with_retries(try_llm, prompt_messages)
+            return try_llm, response, profile_name
+        except Exception as exc:
+            last_error = exc
+            message = str(exc).lower()
+            is_connection = (
+                "connection error" in message
+                or "failed to establish a new connection" in message
+                or "max retries exceeded" in message
+            )
+            if not is_connection:
+                raise
+    if last_error:
+        raise last_error
+    raise RuntimeError("Planner LLM invocation failed without exception")
+
+
 def plan_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> PlanNodeResult:
     """Planning node: Analyze the task and decide what to do.
 
@@ -430,17 +521,28 @@ def plan_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> Pla
     prompt_messages = _build_planning_prompts(messages, tool_results_present, config)
 
     # Invoke LLM to get planning decision
-    response = llm.invoke(prompt_messages)
+    active_llm, response, profile_name = _invoke_planner_with_fallbacks(
+        config,
+        llm,
+        prompt_messages,
+    )
     content = response.content
 
     # Create debug information with dynamic prompt and LLM model info
     user_message = messages[-1].content if messages else ""
     planning_prompt = _build_planning_system_prompt(config)
-    llm_debug = _create_llm_debug(planning_prompt, user_message, content, llm=llm, config=config)
+    llm_debug = _create_llm_debug(
+        planning_prompt,
+        user_message,
+        content,
+        llm=active_llm,
+        config=config,
+    )
+    llm_debug["llm_profile"] = profile_name
 
     # Parse the LLM response
     try:
-        decision = _parse_planning_response(llm, content, messages, tool_results_present, llm_debug)
+        decision = _parse_planning_response(active_llm, content, messages, tool_results_present, llm_debug)
 
         if decision is None:
             # If parsing failed completely, return the raw content or fallback
@@ -459,6 +561,40 @@ def plan_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> Pla
                 "reasoning": "No clear decision",
                 "response": None
             }
+
+        if decision is not None and tool_results_present:
+            last_human_msg = None
+            for msg in reversed(messages):
+                if isinstance(msg, HumanMessage):
+                    last_human_msg = msg.content
+                    break
+            if last_human_msg and _looks_like_change_request(last_human_msg) and _mentions_file_path(last_human_msg):
+                if decision.get("action") != "tool":
+                    retry_prompt = SystemMessage(
+                        content=(
+                            "You must return action 'tool' with tool_calls to edit the referenced file. "
+                            "Do not respond with instructions or summaries."
+                        )
+                    )
+                    retry_response = active_llm.invoke([retry_prompt] + list(messages))
+                    retry_content = retry_response.content
+                    llm_debug["llm_response_retry_forced"] = retry_content[:DEBUG_TRUNCATE_LONG] + "..." if len(retry_content) > DEBUG_TRUNCATE_LONG else retry_content
+                    forced_decision = _parse_json_from_content(retry_content)
+                    if forced_decision:
+                        decision = forced_decision
+                elif not _has_mutation_tool(decision.get("tool_calls", [])):
+                    retry_prompt = SystemMessage(
+                        content=(
+                            "You must include at least one file-modification tool call "
+                            "(e.g., replace_in_file, write_file, append_file, set_*_value)."
+                        )
+                    )
+                    retry_response = active_llm.invoke([retry_prompt] + list(messages))
+                    retry_content = retry_response.content
+                    llm_debug["llm_response_retry_mutation"] = retry_content[:DEBUG_TRUNCATE_LONG] + "..." if len(retry_content) > DEBUG_TRUNCATE_LONG else retry_content
+                    forced_decision = _parse_json_from_content(retry_content)
+                    if forced_decision:
+                        decision = forced_decision
 
         # Handle the decision and return appropriate result
         return _handle_planning_decision(decision, iterations, llm_debug, config)
