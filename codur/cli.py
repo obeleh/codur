@@ -36,7 +36,7 @@ app = typer.Typer(
     help="Autonomous coding agent orchestrator",
     add_completion=False,
 )
-console = Console()
+console = Console(stderr=False)
 
 def _run_prompt(prompt: str, config: Optional[Path], verbose: bool, raw: bool) -> None:
     if not raw:

@@ -94,7 +94,7 @@ agents:
 
 # LLM Settings - Main orchestrator LLM configuration
 llm:
-  default_profile: ollama-ministral # "groq-70b"
+  default_profile: groq-70b
   default_temperature: 0.7
 
   profiles:

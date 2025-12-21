@@ -96,6 +96,18 @@ def _detect_tool_operations(message: str) -> Optional[list[dict]]:
             return None
         return match.group(1) or match.group(2)
 
+    def _extract_path_from_message(text: str) -> Optional[str]:
+        at_match = re.search(r"@([^\s,]+)", text)
+        if at_match:
+            return at_match.group(1)
+        in_match = re.search(r"(?:in|inside)\s+([^\s,]+)", text, re.IGNORECASE)
+        if in_match:
+            return in_match.group(1)
+        path_match = re.search(r"([^\s,]+\.py)", text)
+        if path_match:
+            return path_match.group(1)
+        return None
+
     # File operations: move/copy/delete/read/write/append/line_count
     move_match = re.search(r"move\s+([^\s]+)\s+to\s+([^\s]+)", msg, re.IGNORECASE)
     if move_match:

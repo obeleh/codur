@@ -82,6 +82,7 @@ def _build_planning_system_prompt(config: CodurConfig) -> str:
 1. If user asks to move/copy/delete/read/write a file → MUST use action: "tool", NEVER "respond" or "delegate"
 2. If user asks a greeting (hi/hello) → use action: "respond"
 3. If user asks code generation → use action: "delegate"
+4. If user mentions a specific file path (including "@file") and wants a change → use tools to read/modify that file
 
 **FILE OPERATIONS - MANDATORY TOOL USAGE:**
 Any request containing words like "move", "copy", "delete", "read", "write" + file path MUST return:
@@ -95,6 +96,7 @@ DO NOT suggest commands. DO NOT respond with instructions. EXECUTE the tool dire
 - "copy file.py to backup.py" → {{"action": "tool", "agent": null, "reasoning": "copy file", "response": null, "tool_calls": [{{"tool": "copy_file", "args": {{"source": "file.py", "destination": "backup.py"}}}}]}}
 - "move /path/to/file.py to /dest/" → {{"action": "tool", "agent": null, "reasoning": "move file", "response": null, "tool_calls": [{{"tool": "move_file", "args": {{"source": "/path/to/file.py", "destination": "/dest/file.py"}}}}]}}
 - "What does app.py do?" → {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
+- "Fix bug in @main.py" → {{"action": "tool", "agent": null, "reasoning": "read then edit file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "main.py"}}}}, {{"tool": "replace_in_file", "args": {{"path": "main.py", "pattern": "range\\(start,\\s*end\\)", "replacement": "range(start, end + 1)", "count": 1}}}}]}}
 - "delete old.txt" → {{"action": "tool", "agent": null, "reasoning": "delete file", "response": null, "tool_calls": [{{"tool": "delete_file", "args": {{"path": "old.txt"}}}}]}}
 - "Hello" → {{"action": "respond", "agent": null, "reasoning": "greeting", "response": "Hello! How can I help?", "tool_calls": []}}
 - "Write a sorting function" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
@@ -119,6 +121,7 @@ Examples:
 - "move /path/to/file.py to /dest/" -> {{"action": "tool", "agent": null, "reasoning": "move file", "response": null, "tool_calls": [{{"tool": "move_file", "args": {{"source": "/path/to/file.py", "destination": "/dest/file.py"}}}}]}}
 - "delete old.txt" -> {{"action": "tool", "agent": null, "reasoning": "delete file", "response": null, "tool_calls": [{{"tool": "delete_file", "args": {{"path": "old.txt"}}}}]}}
 - "What does app.py do?" -> {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
+- "Fix bug in @main.py" -> {{"action": "tool", "agent": null, "reasoning": "read then edit file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "main.py"}}}}, {{"tool": "replace_in_file", "args": {{"path": "main.py", "pattern": "range\\(start,\\s*end\\)", "replacement": "range(start, end + 1)", "count": 1}}}}]}}
 - "Write a sorting function" -> {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
 """
 

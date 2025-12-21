@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 
+DEFAULT_CONFIG_RELATIVE_PATH = Path(__file__).resolve().parent.parent / "codur.yaml"
+
 
 class MCPServerConfig(BaseModel):
     """Configuration for an MCP server"""
@@ -153,10 +155,8 @@ def load_config(config_path: Optional[Path] = None) -> CodurConfig:
         search_paths.append(config_path)
 
     search_paths.extend([
-        Path("codur.yaml"),
+        DEFAULT_CONFIG_RELATIVE_PATH,
         Path.home() / ".codur" / "config.yaml",
-        # Also try the codur package directory
-        Path(__file__).parent.parent / "codur.yaml",
     ])
 
     for path in search_paths:
