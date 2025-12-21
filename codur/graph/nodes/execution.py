@@ -23,6 +23,111 @@ import codur.agents.claude_code_agent  # noqa: F401
 console = Console()
 
 
+class AgentExecutor:
+    def __init__(self, state: AgentState, config: CodurConfig) -> None:
+        self.state = state
+        self.config = config
+        self.default_agent = config.agents.preferences.default_agent or "agent:ollama"
+        self.agent_name = state["agent_outcome"].get("agent", self.default_agent)
+        self.agent_name, self.profile_override = _resolve_agent_profile(config, self.agent_name)
+        self.resolved_agent = _resolve_agent_reference(self.agent_name)
+
+    def execute(self) -> ExecuteNodeResult:
+        if self.state.get("verbose"):
+            console.print(f"[bold green]Executing with {self.agent_name}...[/bold green]")
+            console.print(f"[dim]Resolved agent: {self.resolved_agent}[/dim]")
+
+        messages = _normalize_messages(self.state.get("messages"))
+        last_message = messages[-1] if messages else None
+
+        if not last_message:
+            return {"agent_outcome": {"agent": self.agent_name, "result": "No task provided", "status": "error"}}
+
+        if self.state.get("verbose"):
+            task_preview = str(last_message.content if hasattr(last_message, "content") else last_message)[:200]
+            console.print(f"[dim]Task: {task_preview}...[/dim]")
+
+        task = last_message.content if hasattr(last_message, "content") else str(last_message)
+
+        try:
+            if self.agent_name.startswith("llm:"):
+                result = self._execute_llm_profile(task)
+            else:
+                result = self._execute_agent(task)
+
+            if self.state.get("verbose"):
+                console.print("[green]✓ Execution completed successfully[/green]")
+
+            return {
+                "agent_outcome": {
+                    "agent": self.agent_name,
+                    "result": result,
+                    "status": "success",
+                }
+            }
+        except Exception as exc:
+            console.print(f"[red]✗ Error executing {self.agent_name}: {str(exc)}[/red]")
+            if self.state.get("verbose"):
+                import traceback
+                console.print(f"[red]{traceback.format_exc()}[/red]")
+            return {
+                "agent_outcome": {
+                    "agent": self.agent_name,
+                    "result": str(exc),
+                    "status": "error",
+                }
+            }
+
+    def _execute_llm_profile(self, task: str) -> str:
+        profile_name = self.agent_name.split(":", 1)[1]
+        if self.state.get("verbose"):
+            console.print(f"[dim]Using LLM profile: {profile_name}[/dim]")
+        llm = create_llm_profile(self.config, profile_name)
+        response = llm.invoke([HumanMessage(content=task)])
+        result = response.content
+        if self.state.get("verbose"):
+            console.print(f"[dim]LLM response length: {len(result)} chars[/dim]")
+            console.print(f"[dim]LLM response preview: {result[:300]}...[/dim]")
+        return result
+
+    def _execute_agent(self, task: str) -> str:
+        agent_config = self.config.agents.configs.get(self.resolved_agent)
+        if agent_config and getattr(agent_config, "type", None) == "llm":
+            return self._execute_llm_agent(agent_config, task)
+        return self._execute_registered_agent(task)
+
+    def _execute_llm_agent(self, agent_config, task: str) -> str:
+        model = agent_config.config.get("model")
+        matching_profile = None
+        for profile_name, profile in self.config.llm.profiles.items():
+            if profile.model == model:
+                matching_profile = profile_name
+                break
+
+        llm = create_llm_profile(self.config, matching_profile) if matching_profile else create_llm(self.config)
+        response = llm.invoke([HumanMessage(content=task)])
+        result = response.content
+        if self.state.get("verbose"):
+            console.print(f"[dim]LLM response length: {len(result)} chars[/dim]")
+            console.print(f"[dim]LLM response preview: {result[:300]}...[/dim]")
+        return result
+
+    def _execute_registered_agent(self, task: str) -> str:
+        agent_class = AgentRegistry.get(self.resolved_agent)
+        if self.state.get("verbose"):
+            console.print(f"[dim]Using agent class: {agent_class.__name__ if agent_class else 'None'}[/dim]")
+        if not agent_class:
+            available = ", ".join(AgentRegistry.list_agents())
+            raise ValueError(f"Unknown agent: {self.resolved_agent}. Available agents: {available}")
+
+        agent = agent_class(self.config, override_config=self.profile_override)
+        result = agent.execute(task)
+        if self.state.get("verbose"):
+            console.print(f"[dim]Agent result length: {len(result)} chars[/dim]")
+            console.print(f"[dim]Agent result preview: {result[:300]}...[/dim]")
+        return result
+
+
 def delegate_node(state: AgentState, config: CodurConfig) -> DelegateNodeResult:
     """Delegation node: Route to the appropriate agent.
 
@@ -58,110 +163,7 @@ def execute_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
     Returns:
         Dictionary with agent_outcome containing execution result
     """
-    default_agent = config.agents.preferences.default_agent or "agent:ollama"
-    agent_name = state["agent_outcome"].get("agent", default_agent)
-    agent_name, profile_override = _resolve_agent_profile(config, agent_name)
-    resolved_agent = _resolve_agent_reference(agent_name)
-
-    if state.get("verbose"):
-        console.print(f"[bold green]Executing with {agent_name}...[/bold green]")
-        console.print(f"[dim]Resolved agent: {resolved_agent}[/dim]")
-
-    messages = _normalize_messages(state.get("messages"))
-    last_message = messages[-1] if messages else None
-
-    if not last_message:
-        return {"agent_outcome": {"agent": agent_name, "result": "No task provided", "status": "error"}}
-
-    if state.get("verbose"):
-        task_preview = str(last_message.content if hasattr(last_message, "content") else last_message)[:200]
-        console.print(f"[dim]Task: {task_preview}...[/dim]")
-
-    task = last_message.content if hasattr(last_message, "content") else str(last_message)
-
-    # Route to appropriate agent using registry
-    try:
-        # Handle LLM profiles directly (llm:profile_name)
-        if agent_name.startswith("llm:"):
-            profile_name = agent_name.split(":", 1)[1]
-            if state.get("verbose"):
-                console.print(f"[dim]Using LLM profile: {profile_name}[/dim]")
-            llm = create_llm_profile(config, profile_name)
-            response = llm.invoke([HumanMessage(content=task)])
-            result = response.content
-            if state.get("verbose"):
-                console.print(f"[dim]LLM response length: {len(result)} chars[/dim]")
-                console.print(f"[dim]LLM response preview: {result[:300]}...[/dim]")
-        else:
-            # Check if this agent is configured as type "llm" in agents.configs
-            agent_config = config.agents.configs.get(resolved_agent)
-            if agent_config and hasattr(agent_config, 'type') and agent_config.type == "llm":
-                # This is an LLM agent, get the model from config
-                model = agent_config.config.get("model")
-                # Create LLM instance using the agent's config
-                # First try to find an LLM profile that matches this model
-                matching_profile = None
-                for profile_name, profile in config.llm.profiles.items():
-                    if profile.model == model:
-                        matching_profile = profile_name
-                        break
-
-                if matching_profile:
-                    llm = create_llm_profile(config, matching_profile)
-                else:
-                    # Fallback: use default profile
-                    llm = create_llm(config)
-
-                response = llm.invoke([HumanMessage(content=task)])
-                result = response.content
-                if state.get("verbose"):
-                    console.print(f"[dim]LLM response length: {len(result)} chars[/dim]")
-                    console.print(f"[dim]LLM response preview: {result[:300]}...[/dim]")
-            else:
-                # Get agent from registry
-                agent_class = AgentRegistry.get(resolved_agent)
-                if state.get("verbose"):
-                    console.print(f"[dim]Using agent class: {agent_class.__name__ if agent_class else 'None'}[/dim]")
-                if not agent_class:
-                    available = ", ".join(AgentRegistry.list_agents())
-                    return {
-                        "agent_outcome": {
-                            "agent": agent_name,
-                            "result": f"Unknown agent: {resolved_agent}. Available agents: {available}",
-                            "status": "error"
-                        }
-                    }
-
-                # Create agent instance and execute
-                agent = agent_class(config, override_config=profile_override)
-                result = agent.execute(task)
-                if state.get("verbose"):
-                    console.print(f"[dim]Agent result length: {len(result)} chars[/dim]")
-                    console.print(f"[dim]Agent result preview: {result[:300]}...[/dim]")
-
-        if state.get("verbose"):
-            console.print(f"[green]✓ Execution completed successfully[/green]")
-
-        return {
-            "agent_outcome": {
-                "agent": agent_name,
-                "result": result,
-                "status": "success"
-            }
-        }
-
-    except Exception as e:
-        console.print(f"[red]✗ Error executing {agent_name}: {str(e)}[/red]")
-        if state.get("verbose"):
-            import traceback
-            console.print(f"[red]{traceback.format_exc()}[/red]")
-        return {
-            "agent_outcome": {
-                "agent": agent_name,
-                "result": str(e),
-                "status": "error"
-            }
-        }
+    return AgentExecutor(state, config).execute()
 
 
 def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> ReviewNodeResult:

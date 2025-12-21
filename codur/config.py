@@ -8,7 +8,7 @@ import json
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 DEFAULT_CONFIG_RELATIVE_PATH = Path(__file__).resolve().parent.parent / "codur.yaml"
 
@@ -92,12 +92,74 @@ class RuntimeSettings(BaseModel):
         populate_by_name = True
 
 
+class PlanningSettings(BaseModel):
+    """Planning behavior settings."""
+    debug_truncate_short: int = 500
+    debug_truncate_long: int = 1000
+    max_retry_attempts: int = 3
+    retry_initial_delay: float = 0.5
+    retry_backoff_factor: float = 2.0
+
+    @field_validator("debug_truncate_short", "debug_truncate_long", "max_retry_attempts")
+    @classmethod
+    def _validate_positive_int(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("Value must be positive")
+        return value
+
+    @field_validator("retry_initial_delay", "retry_backoff_factor")
+    @classmethod
+    def _validate_positive_float(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("Value must be positive")
+        return value
+
+
+class ToolSettings(BaseModel):
+    """Default tool settings."""
+    default_max_bytes: int = 200_000
+    default_max_results: int = 200
+    exclude_dirs: set[str] = Field(
+        default_factory=lambda: {
+            ".git",
+            ".venv",
+            "node_modules",
+            "__pycache__",
+            ".mypy_cache",
+            ".pytest_cache",
+        }
+    )
+
+    @field_validator("default_max_bytes", "default_max_results")
+    @classmethod
+    def _validate_tool_positive_int(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("Value must be positive")
+        return value
+
+
+class AgentExecutionSettings(BaseModel):
+    """Agent execution settings."""
+    default_cli_timeout: int = 600
+    claude_code_max_tokens: int = 8000
+
+    @field_validator("default_cli_timeout", "claude_code_max_tokens")
+    @classmethod
+    def _validate_agent_positive_int(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("Value must be positive")
+        return value
+
+
 class CodurConfig(BaseModel):
     """Main Codur configuration"""
     mcp_servers: Dict[str, MCPServerConfig] = Field(default_factory=dict)
     agents: AgentSettings = Field(default_factory=AgentSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
+    planning: PlanningSettings = Field(default_factory=PlanningSettings)
+    tools: ToolSettings = Field(default_factory=ToolSettings)
+    agent_execution: AgentExecutionSettings = Field(default_factory=AgentExecutionSettings)
     providers: Dict[str, LLMProviderSettings] = Field(default_factory=dict)
 
     # Convenience properties for existing code that expects flat fields

@@ -2,20 +2,18 @@
 Codex agent wrapper with async support
 """
 
-import asyncio
 import subprocess
 import logging
-from typing import Optional, Dict, Any
-from pathlib import Path
+from typing import Optional
 
 from codur.config import CodurConfig
-from codur.agents.base import BaseAgent
+from codur.agents.cli_agent_base import BaseCLIAgent
 from codur.agents import AgentRegistry
 
 logger = logging.getLogger(__name__)
 
 
-class CodexAgent(BaseAgent):
+class CodexAgent(BaseCLIAgent):
     """
     Agent that delegates to OpenAI Codex for complex code tasks.
 
@@ -29,7 +27,7 @@ class CodexAgent(BaseAgent):
         Args:
             config: Codur configuration
         """
-        self.config = config
+        super().__init__(config, override_config)
 
         # Get Codex-specific config
         codex_config = config.agents.configs.get("codex", {})
@@ -40,14 +38,27 @@ class CodexAgent(BaseAgent):
         self.command = agent_config.get("command", "codex")
         self.model = agent_config.get("model", "gpt-5-codex")
         self.reasoning_effort = agent_config.get("reasoning_effort", "medium")
+        self.default_timeout = config.agent_execution.default_cli_timeout
 
         logger.info(f"Initializing Codex agent with model={self.model}, reasoning={self.reasoning_effort}")
+
+    def _build_command(self, task: str, sandbox: str = "workspace-write") -> list[str]:
+        return [
+            self.command,
+            "exec",
+            "--skip-git-repo-check",
+            "-m", self.model,
+            "--config", f"model_reasoning_effort={self.reasoning_effort}",
+            "--sandbox", sandbox,
+            "--full-auto",
+            task,
+        ]
 
     def execute(
         self,
         task: str,
         sandbox: str = "workspace-write",
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
     ) -> str:
         """
         Execute a task using Codex CLI (synchronous).
@@ -63,58 +74,17 @@ class CodexAgent(BaseAgent):
         Raises:
             Exception: If Codex execution fails
         """
-        try:
-            logger.info(f"Executing task with Codex: {task[:100]}...")
-
-            # Build command
-            cmd = [
-                self.command,
-                "exec",
-                "--skip-git-repo-check",
-                "-m", self.model,
-                "--config", f"model_reasoning_effort={self.reasoning_effort}",
-                "--sandbox", sandbox,
-                "--full-auto",
-                task
-            ]
-
-            # Execute
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout or 600,
-                stderr=subprocess.DEVNULL,  # Suppress thinking tokens
-            )
-
-            if result.returncode != 0:
-                raise Exception(f"Codex exited with code {result.returncode}: {result.stderr}")
-
-            output = result.stdout.strip()
-            logger.info(f"Codex generated {len(output)} characters")
-
-            return output
-
-        except subprocess.TimeoutExpired:
-            logger.error(f"Codex execution timed out after {timeout}s")
-            raise Exception(f"Codex timed out after {timeout} seconds")
-
-        except FileNotFoundError:
-            logger.error(f"Codex command not found: {self.command}")
-            raise Exception(
-                f"Codex not found. Install it or configure the command path. "
-                f"Current command: {self.command}"
-            )
-
-        except Exception as e:
-            logger.error(f"Codex execution failed: {str(e)}", exc_info=True)
-            raise Exception(f"Codex agent failed: {str(e)}") from e
+        logger.info(f"Executing task with Codex: {task[:100]}...")
+        cmd = self._build_command(task, sandbox=sandbox)
+        output = self._execute_cli(cmd, timeout=timeout, suppress_stderr=True)
+        logger.info(f"Codex generated {len(output)} characters")
+        return output
 
     async def aexecute(
         self,
         task: str,
         sandbox: str = "workspace-write",
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
     ) -> str:
         """
         Execute a task using Codex CLI (asynchronous).
@@ -130,57 +100,11 @@ class CodexAgent(BaseAgent):
         Raises:
             Exception: If Codex execution fails
         """
-        try:
-            logger.info(f"[Async] Executing task with Codex: {task[:100]}...")
-
-            # Build command
-            cmd = [
-                self.command,
-                "exec",
-                "--skip-git-repo-check",
-                "-m", self.model,
-                "--config", f"model_reasoning_effort={self.reasoning_effort}",
-                "--sandbox", sandbox,
-                "--full-auto",
-                task
-            ]
-
-            # Create subprocess
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,  # Suppress thinking tokens
-            )
-
-            try:
-                stdout, _ = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=timeout or 600
-                )
-
-                if proc.returncode != 0:
-                    raise Exception(f"Codex exited with code {proc.returncode}")
-
-                output = stdout.decode().strip()
-                logger.info(f"[Async] Codex generated {len(output)} characters")
-
-                return output
-
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                raise Exception(f"Codex timed out after {timeout} seconds")
-
-        except FileNotFoundError:
-            logger.error(f"Codex command not found: {self.command}")
-            raise Exception(
-                f"Codex not found. Install it or configure the command path. "
-                f"Current command: {self.command}"
-            )
-
-        except Exception as e:
-            logger.error(f"[Async] Codex execution failed: {str(e)}", exc_info=True)
-            raise Exception(f"Codex agent failed: {str(e)}") from e
+        logger.info(f"[Async] Executing task with Codex: {task[:100]}...")
+        cmd = self._build_command(task, sandbox=sandbox)
+        output = await self._aexecute_cli(cmd, timeout=timeout, suppress_stderr=True)
+        logger.info(f"[Async] Codex generated {len(output)} characters")
+        return output
 
     async def astream(self, task: str, sandbox: str = "workspace-write"):
         """

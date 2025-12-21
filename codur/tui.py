@@ -22,7 +22,8 @@ warnings.filterwarnings(
 
 from textual.app import App, ComposeResult
 from textual.containers import Container
-from textual.widgets import Header, Footer, Input, RichLog, Static
+from textual.widgets import Header, TextArea, RichLog, Static
+from textual import events
 from textual.binding import Binding
 from textual.theme import Theme
 from rich.panel import Panel
@@ -35,6 +36,26 @@ from codur.tui_style import TUI_CSS
 from codur.config import load_config, CodurConfig
 from codur.graph.main_graph import create_agent_graph
 from langchain_core.messages import HumanMessage
+
+
+class CommandInput(TextArea):
+    BINDINGS = [
+        ("ctrl+enter", "submit", "Submit"),
+        ("ctrl+shift+m", "submit", "Submit"),
+    ]
+
+    async def action_submit(self) -> None:
+        await self.app.action_submit()
+
+    async def on_key(self, event: events.Key) -> None:
+        aliases = getattr(event, "aliases", []) or []
+        is_ctrl_enter = (
+            event.key in {"ctrl+enter", "ctrl+shift+m", "ctrl+m"}
+            or (event.key == "enter" and any(alias.startswith("ctrl") for alias in aliases))
+        )
+        if is_ctrl_enter:
+            event.stop()
+            await self.app.action_submit()
 
 
 class CodurTUI(App):
@@ -57,6 +78,7 @@ class CodurTUI(App):
         Binding("ctrl+f", "toggle_fullscreen", "Fullscreen", show=True),
         Binding("ctrl+t", "toggle_timestamps", "Timestamps", show=True),
         Binding("ctrl+a", "select_all", "Select All", show=True),
+        Binding("ctrl+enter", "submit", "Submit", show=True),
         ("escape", "clear_input", "Clear"),
     ]
 
@@ -132,8 +154,8 @@ class CodurTUI(App):
 
                 # User input (bottom 30%)
                 with Container(id="input-container"):
-                    yield Static("[bold cyan]Commands:[/] :pause :resume :hint <text> :set agent=<name> | Use @ to search files | Ctrl+D: Toggle Debug | Ctrl+F: Fullscreen\n", id="help")
-                    yield Input(
+                    yield CommandInput(
+                        "",
                         placeholder="Enter task or command... (use @ to insert a file)",
                         id="input"
                     )
@@ -148,7 +170,10 @@ class CodurTUI(App):
                     wrap=True,
                 )
 
-        yield Footer()
+        yield Static(
+            "[bold cyan]Commands:[/] :pause :resume :hint <text> :set agent=<name> | @ file insert | Ctrl+Enter Submit | Ctrl+D Debug | Ctrl+F Fullscreen",
+            id="controls",
+        )
 
     def on_mount(self) -> None:
         """Called when app starts"""
@@ -162,7 +187,7 @@ class CodurTUI(App):
         self.log_message(f"Loaded config with {total_enabled} agents\n")
 
         # Focus the input
-        self.query_one("#input", Input).focus()
+        self.query_one("#input", TextArea).focus()
         asyncio.create_task(self._build_file_index())
 
     async def _build_file_index(self) -> None:
@@ -193,6 +218,36 @@ class CodurTUI(App):
         if note in task:
             return task
         return f"{task}\\n\\n{note}"
+
+    @staticmethod
+    def _cursor_index(text: str, location: tuple[int, int]) -> int:
+        row, column = location
+        lines = text.splitlines(keepends=True)
+        if row <= 0:
+            return min(column, len(text))
+        total = 0
+        for idx, line in enumerate(lines):
+            if idx == row:
+                return min(total + column, len(text))
+            total += len(line)
+        return len(text)
+
+    @staticmethod
+    def _cursor_location_from_index(text: str, index: int) -> tuple[int, int]:
+        if index < 0:
+            index = 0
+        if index > len(text):
+            index = len(text)
+        lines = text.splitlines(keepends=True)
+        if not lines:
+            return (0, 0)
+        total = 0
+        for row, line in enumerate(lines):
+            next_total = total + len(line)
+            if index <= next_total:
+                return (row, index - total)
+            total = next_total
+        return (len(lines) - 1, len(lines[-1]))
 
     def log_message(self, message: str, style: str = ""):
         """Add a message to the log"""
@@ -267,46 +322,54 @@ class CodurTUI(App):
         status = self.query_one(AgentStatus)
         status.update_status(agent, step, iterations)
 
-    async def on_input_submitted(self, event: Input.Submitted) -> None:
-        """Handle user input submission"""
-        user_input = event.value.strip()
+    async def action_submit(self) -> None:
+        """Handle user input submission."""
+        input_widget = self.query_one("#input", TextArea)
+        user_input = input_widget.text.strip()
 
         if not user_input:
             return
 
-        # Clear the input
-        event.input.value = ""
+        input_widget.text = ""
+        input_widget.cursor_location = (0, 0)
+        self._last_input_value = ""
 
-        # Handle commands
         if user_input.startswith(":"):
             await self.handle_command(user_input)
         else:
-            # New task
             await self.start_task(user_input)
+        # Keep focus on the input after submit
+        input_widget.focus()
 
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id != "input":
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        if event.text_area.id != "input":
             return
-        value = event.value
+        value = event.text_area.text
         if not self._file_search_active:
             if len(value) - len(self._last_input_value) > 1:
                 trimmed_lines = "\n".join(line.rstrip() for line in value.splitlines())
                 if trimmed_lines != value:
-                    event.input.value = trimmed_lines
-                    event.input.cursor_position = len(trimmed_lines)
+                    event.text_area.text = trimmed_lines
+                    event.text_area.cursor_location = self._cursor_location_from_index(
+                        trimmed_lines,
+                        len(trimmed_lines),
+                    )
                     self._last_input_value = trimmed_lines
                     return
             trailing = re.search(r"\s+$", value)
             if trailing and len(trailing.group(0)) > 3:
                 trimmed = value[:trailing.start()] + " "
-                event.input.value = trimmed
-                event.input.cursor_position = len(trimmed)
+                event.text_area.text = trimmed
+                event.text_area.cursor_location = self._cursor_location_from_index(
+                    trimmed,
+                    len(trimmed),
+                )
                 self._last_input_value = trimmed
                 return
         if self._file_search_active:
             self._last_input_value = value
             return
-        cursor_pos = event.input.cursor_position
+        cursor_pos = self._cursor_index(value, event.text_area.cursor_location)
         inserted_at = cursor_pos - 1 if cursor_pos > 0 else None
         is_new_char = len(value) == len(self._last_input_value) + 1
         typed_at = inserted_at is not None and inserted_at < len(value)
@@ -318,12 +381,20 @@ class CodurTUI(App):
                 FileSearchScreen(self._file_index),
                 callback=self._on_file_selected,
             )
-        self._last_input_value = event.input.value
+        self._last_input_value = event.text_area.text
+
+    async def on_key(self, event) -> None:
+        if event.key not in {"ctrl+enter", "ctrl+shift+m"}:
+            return
+        focused = self.focused
+        if focused and getattr(focused, "id", None) == "input":
+            event.stop()
+            await self.action_submit()
 
     def _on_file_selected(self, selection: Optional[str]) -> None:
-        input_widget = self.query_one("#input", Input)
+        input_widget = self.query_one("#input", TextArea)
         if selection:
-            value = input_widget.value
+            value = input_widget.text
             insert_pos = self._file_insert_pos
             if insert_pos is None or insert_pos > len(value):
                 insert_pos = len(value)
@@ -335,8 +406,11 @@ class CodurTUI(App):
                 suffix = value[insert_pos:]
             spacer = "" if (suffix and suffix[0].isspace()) else " "
             updated = f"{prefix}@{selection}{spacer}{suffix}"
-            input_widget.value = updated
-            input_widget.cursor_position = len(prefix) + len(selection) + 1 + len(spacer)
+            input_widget.text = updated
+            input_widget.cursor_location = self._cursor_location_from_index(
+                updated,
+                len(prefix) + len(selection) + 1 + len(spacer),
+            )
         self._file_insert_pos = None
         self._file_search_active = False
 
@@ -559,7 +633,7 @@ class CodurTUI(App):
 
     def action_clear_input(self) -> None:
         """Clear the input field"""
-        self.query_one("#input", Input).value = ""
+        self.query_one("#input", TextArea).text = ""
 
     def action_toggle_debug(self) -> None:
         """Toggle debug panel visibility"""
@@ -593,7 +667,7 @@ class CodurTUI(App):
     def action_select_all(self) -> None:
         """Select all text in the input widget."""
         try:
-            input_widget = self.query_one("#input", Input)
+            input_widget = self.query_one("#input", TextArea)
         except Exception:
             return
         input_widget.action_select_all()

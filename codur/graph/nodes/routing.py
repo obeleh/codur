@@ -1,10 +1,7 @@
 """Routing helpers for graph flow control."""
 
 from codur.graph.state import AgentState
-
-# Constants
-MAX_ITERATIONS = 10
-
+from codur.constants import DEFAULT_MAX_ITERATIONS
 
 def should_delegate(state: AgentState) -> str:
     """Decide if we should delegate to an agent or end.
@@ -33,7 +30,7 @@ def should_continue(state: AgentState) -> str:
 
     # Get max iterations from config if available, otherwise use constant
     config = state.get("config")
-    max_iterations = config.runtime.max_iterations if config else MAX_ITERATIONS
+    max_iterations = config.runtime.max_iterations if config else DEFAULT_MAX_ITERATIONS
 
     # Max iterations check
     if iterations >= max_iterations:

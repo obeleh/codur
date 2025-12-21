@@ -8,21 +8,17 @@ Allows Codur to delegate tasks to Claude Code CLI for:
 - Tool usage (bash, read, write, etc.)
 """
 
-import asyncio
-import subprocess
 import logging
-import json
-from typing import Optional, Dict, Any
-from pathlib import Path
+from typing import Optional
 
 from codur.config import CodurConfig
-from codur.agents.base import BaseAgent
+from codur.agents.cli_agent_base import BaseCLIAgent
 from codur.agents import AgentRegistry
 
 logger = logging.getLogger(__name__)
 
 
-class ClaudeCodeAgent(BaseAgent):
+class ClaudeCodeAgent(BaseCLIAgent):
     """
     Agent that delegates to Claude Code CLI for complex tasks.
 
@@ -41,7 +37,7 @@ class ClaudeCodeAgent(BaseAgent):
         Args:
             config: Codur configuration
         """
-        self.config = config
+        super().__init__(config, override_config)
 
         # Get Claude Code-specific config
         claude_config = config.agents.configs.get("claude_code", {})
@@ -51,15 +47,38 @@ class ClaudeCodeAgent(BaseAgent):
 
         self.command = agent_config.get("command", "claude")
         self.model = agent_config.get("model", "sonnet")  # sonnet, opus, haiku
-        self.max_tokens = agent_config.get("max_tokens", 8000)
+        self.max_tokens = agent_config.get(
+            "max_tokens",
+            config.agent_execution.claude_code_max_tokens,
+        )
+        self.default_timeout = config.agent_execution.default_cli_timeout
 
         logger.info(f"Initializing Claude Code agent with model={self.model}")
+
+    def _build_command(self, prompt: str, files: Optional[list[str]] = None) -> list[str]:
+        cmd = [
+            self.command,
+            "chat",
+            "--model", self.model,
+            "--max-tokens", str(self.max_tokens),
+            "--message", prompt,
+        ]
+        if files:
+            for file_path in files:
+                cmd.extend(["--file", file_path])
+        return cmd
+
+    def _not_found_message(self) -> str:
+        return (
+            "Claude Code not found. Install it from https://claude.com/claude-code. "
+            f"Current command: {self.command}"
+        )
 
     def execute(
         self,
         task: str,
         context: Optional[str] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
     ) -> str:
         """
         Execute a task using Claude Code CLI (synchronous).
@@ -75,57 +94,18 @@ class ClaudeCodeAgent(BaseAgent):
         Raises:
             Exception: If execution fails
         """
-        try:
-            logger.info(f"Executing task with Claude Code: {task[:100]}...")
-
-            # Build the full prompt
-            prompt = self._build_prompt(task, context)
-
-            # Build command
-            cmd = [
-                self.command,
-                "chat",
-                "--model", self.model,
-                "--max-tokens", str(self.max_tokens),
-                "--message", prompt
-            ]
-
-            # Execute
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout or 600,
-            )
-
-            if result.returncode != 0:
-                raise Exception(f"Claude Code exited with code {result.returncode}: {result.stderr}")
-
-            output = result.stdout.strip()
-            logger.info(f"Claude Code generated {len(output)} characters")
-
-            return output
-
-        except subprocess.TimeoutExpired:
-            logger.error(f"Claude Code execution timed out after {timeout}s")
-            raise Exception(f"Claude Code timed out after {timeout} seconds")
-
-        except FileNotFoundError:
-            logger.error(f"Claude Code command not found: {self.command}")
-            raise Exception(
-                f"Claude Code not found. Install it from https://claude.com/claude-code. "
-                f"Current command: {self.command}"
-            )
-
-        except Exception as e:
-            logger.error(f"Claude Code execution failed: {str(e)}", exc_info=True)
-            raise Exception(f"Claude Code agent failed: {str(e)}") from e
+        logger.info(f"Executing task with Claude Code: {task[:100]}...")
+        prompt = self._build_prompt(task, context)
+        cmd = self._build_command(prompt)
+        output = self._execute_cli(cmd, timeout=timeout, capture_stderr=True)
+        logger.info(f"Claude Code generated {len(output)} characters")
+        return output
 
     async def aexecute(
         self,
         task: str,
         context: Optional[str] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
     ) -> str:
         """
         Execute a task using Claude Code CLI (asynchronous).
@@ -141,56 +121,12 @@ class ClaudeCodeAgent(BaseAgent):
         Raises:
             Exception: If execution fails
         """
-        try:
-            logger.info(f"[Async] Executing task with Claude Code: {task[:100]}...")
-
-            prompt = self._build_prompt(task, context)
-
-            # Build command
-            cmd = [
-                self.command,
-                "chat",
-                "--model", self.model,
-                "--max-tokens", str(self.max_tokens),
-                "--message", prompt
-            ]
-
-            # Create subprocess
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=timeout or 600
-                )
-
-                if proc.returncode != 0:
-                    error_msg = stderr.decode() if stderr else "Unknown error"
-                    raise Exception(f"Claude Code exited with code {proc.returncode}: {error_msg}")
-
-                output = stdout.decode().strip()
-                logger.info(f"[Async] Claude Code generated {len(output)} characters")
-
-                return output
-
-            except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                raise Exception(f"Claude Code timed out after {timeout} seconds")
-
-        except FileNotFoundError:
-            logger.error(f"Claude Code command not found: {self.command}")
-            raise Exception(
-                f"Claude Code not found. Install it from https://claude.com/claude-code"
-            )
-
-        except Exception as e:
-            logger.error(f"[Async] Claude Code execution failed: {str(e)}", exc_info=True)
-            raise Exception(f"Claude Code agent failed: {str(e)}") from e
+        logger.info(f"[Async] Executing task with Claude Code: {task[:100]}...")
+        prompt = self._build_prompt(task, context)
+        cmd = self._build_command(prompt)
+        output = await self._aexecute_cli(cmd, timeout=timeout, capture_stderr=True)
+        logger.info(f"[Async] Claude Code generated {len(output)} characters")
+        return output
 
     def execute_with_files(
         self,
@@ -223,31 +159,8 @@ class ClaudeCodeAgent(BaseAgent):
                 for file_path in files:
                     prompt += f"- {file_path}\n"
 
-            # Build command
-            cmd = [
-                self.command,
-                "chat",
-                "--model", self.model,
-                "--max-tokens", str(self.max_tokens),
-                "--message", prompt
-            ]
-
-            # Add file arguments
-            for file_path in files:
-                cmd.extend(["--file", file_path])
-
-            # Execute
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
-
-            if result.returncode != 0:
-                raise Exception(f"Claude Code exited with code {result.returncode}")
-
-            return result.stdout.strip()
+            cmd = self._build_command(prompt, files=files)
+            return self._execute_cli(cmd, timeout=600, capture_stderr=True)
 
         except Exception as e:
             logger.error(f"Claude Code file execution failed: {str(e)}", exc_info=True)

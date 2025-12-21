@@ -1,0 +1,2 @@
+subtotal=17.00
+discounted=15.30

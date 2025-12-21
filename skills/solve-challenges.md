@@ -65,6 +65,10 @@ When solving challenges, focus on improving these areas:
 ❌ **Bad**: Always using the same agent regardless of task type
 ✅ **Good**: Routing "fix bug" tasks to agents capable of iteration and tool usage
 
+### 5. Acceptable:
+
+ - "Fix bug in @main.py" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "bug fix requires analysis", ...}}
+
 ## Workflow for Solving Challenges
 
 1. **Run the test**: `pytest tests/test_challenges.py -v`

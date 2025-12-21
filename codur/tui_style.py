@@ -16,16 +16,24 @@ Screen {
 
 #main {
     layout: horizontal;
+    background: $panel;
 }
 
 #left-pane {
     width: 60%;
     layout: vertical;
+    background: $panel;
 }
 
 #debug-pane {
     width: 40%;
+    background: $panel;
     border: solid $secondary;
+}
+
+#debug-pane:focus-within {
+    border: solid $accent;
+    background: $panel;
 }
 
 #debug-pane.hidden {
@@ -34,32 +42,65 @@ Screen {
 
 #log-container {
     height: 70%;
+    background: $panel;
     border: solid $primary;
+}
+
+#log-container:focus-within {
+    border: solid $accent;
+    background: $panel;
 }
 
 #input-container {
     height: 30%;
+    min-height: 5;
+    background: $panel;
+    border: solid $primary;
+}
+
+#input-container:focus-within {
     border: solid $accent;
 }
 
 RichLog {
     border: none;
+    background: $panel;
 }
 
-Input {
+#log,
+#debug-log {
+    background: $panel;
+}
+
+#log:focus,
+#debug-log:focus {
+    background: $panel;
+}
+
+TextArea {
     border: none;
+    background: $panel;
+    height: 3;
+    min-height: 3;
+}
+
+#log:focus,
+#debug-log:focus,
+RichLog:focus,
+RichLog:focus-within,
+TextArea:focus {
+    background: $panel;
 }
 
 #controls {
-    height: 3;
-    layout: horizontal;
+    height: 1;
+    dock: bottom;
+    padding: 0 1;
+    background: $panel;
+    color: $foreground;
 }
 
 Screen.fullscreen Header {
-    display: none;
-}
-
-Screen.fullscreen Footer {
     display: none;
 }
 
@@ -72,6 +113,10 @@ Screen.fullscreen #debug-pane {
 }
 
 Screen.fullscreen #input-container {
+    display: none;
+}
+
+Screen.fullscreen #controls {
     display: none;
 }
 

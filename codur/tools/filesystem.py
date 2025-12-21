@@ -11,30 +11,10 @@ from pathlib import Path
 from typing import Iterable
 
 from codur.graph.state import AgentState
+from codur.utils.path_utils import resolve_path, resolve_root
+from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS
 
 EXCLUDE_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache"}
-DEFAULT_MAX_BYTES = 200_000
-DEFAULT_MAX_RESULTS = 200
-
-
-def _resolve_root(root: str | Path | None) -> Path:
-    return (Path(root) if root else Path.cwd()).resolve()
-
-
-def _resolve_path(
-    path: str,
-    root: str | Path | None,
-    allow_outside_root: bool = False,
-) -> Path:
-    root_path = _resolve_root(root)
-    raw_path = Path(path)
-    target = raw_path if raw_path.is_absolute() else root_path / raw_path
-    target = target.resolve()
-    if allow_outside_root:
-        return target
-    if target == root_path or root_path in target.parents:
-        return target
-    raise ValueError(f"Path escapes workspace root: {path}")
 
 
 def _iter_files(root: Path) -> Iterable[Path]:
@@ -60,7 +40,7 @@ def read_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     with open(target, "r", encoding="utf-8", errors="replace") as handle:
         data = handle.read(max_bytes + 1)
     if len(data) > max_bytes:
@@ -76,7 +56,7 @@ def write_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     if create_dirs:
         target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "w", encoding="utf-8") as handle:
@@ -91,7 +71,7 @@ def append_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "a", encoding="utf-8") as handle:
         handle.write(content)
@@ -104,7 +84,7 @@ def delete_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.unlink()
     return f"Deleted {target}"
 
@@ -117,8 +97,8 @@ def copy_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    source_path = _resolve_path(source, root, allow_outside_root=allow_outside_root)
-    destination_path = _resolve_path(destination, root, allow_outside_root=allow_outside_root)
+    source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
+    destination_path = resolve_path(destination, root, allow_outside_root=allow_outside_root)
     if create_dirs:
         destination_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_path, destination_path)
@@ -133,8 +113,8 @@ def move_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    source_path = _resolve_path(source, root, allow_outside_root=allow_outside_root)
-    destination_path = _resolve_path(destination, root, allow_outside_root=allow_outside_root)
+    source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
+    destination_path = resolve_path(destination, root, allow_outside_root=allow_outside_root)
     if create_dirs:
         destination_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source_path), str(destination_path))
@@ -149,8 +129,8 @@ def copy_file_to_dir(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    source_path = _resolve_path(source, root, allow_outside_root=allow_outside_root)
-    dest_dir_path = _resolve_path(destination_dir, root, allow_outside_root=allow_outside_root)
+    source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
+    dest_dir_path = resolve_path(destination_dir, root, allow_outside_root=allow_outside_root)
     if create_dirs:
         dest_dir_path.mkdir(parents=True, exist_ok=True)
     destination_path = dest_dir_path / source_path.name
@@ -166,8 +146,8 @@ def move_file_to_dir(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    source_path = _resolve_path(source, root, allow_outside_root=allow_outside_root)
-    dest_dir_path = _resolve_path(destination_dir, root, allow_outside_root=allow_outside_root)
+    source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
+    dest_dir_path = resolve_path(destination_dir, root, allow_outside_root=allow_outside_root)
     if create_dirs:
         dest_dir_path.mkdir(parents=True, exist_ok=True)
     destination_path = dest_dir_path / source_path.name
@@ -180,7 +160,7 @@ def list_files(
     max_results: int = DEFAULT_MAX_RESULTS,
     state: AgentState | None = None,
 ) -> list[str]:
-    root_path = _resolve_root(root)
+    root_path = resolve_root(root)
     results: list[str] = []
     for file_path in _iter_files(root_path):
         results.append(str(file_path.relative_to(root_path)))
@@ -194,13 +174,49 @@ def list_dirs(
     max_results: int = DEFAULT_MAX_RESULTS,
     state: AgentState | None = None,
 ) -> list[str]:
-    root_path = _resolve_root(root)
+    root_path = resolve_root(root)
     results: list[str] = []
     for dirpath, dirnames, _ in os.walk(root_path):
         dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
         for dirname in dirnames:
             dir_path = Path(dirpath) / dirname
             results.append(str(dir_path.relative_to(root_path)))
+            if len(results) >= max_results:
+                return results
+    return results
+
+
+def file_tree(
+    path: str | None = None,
+    root: str | Path | None = None,
+    max_depth: int = 3,
+    max_results: int = DEFAULT_MAX_RESULTS,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> list[str]:
+    root_path = resolve_root(root)
+    if path:
+        target = resolve_path(path, root_path, allow_outside_root=allow_outside_root)
+    else:
+        target = root_path
+    if target.is_file():
+        return [str(target)]
+
+    results: list[str] = []
+    base = target
+    for dirpath, dirnames, filenames in os.walk(base):
+        rel_dir = Path(dirpath).relative_to(base)
+        depth = 0 if rel_dir == Path(".") else len(rel_dir.parts)
+        if depth > max_depth:
+            dirnames[:] = []
+            continue
+        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
+        for dirname in dirnames:
+            results.append(str((Path(dirpath) / dirname).relative_to(base)) + "/")
+            if len(results) >= max_results:
+                return results
+        for filename in filenames:
+            results.append(str((Path(dirpath) / filename).relative_to(base)))
             if len(results) >= max_results:
                 return results
     return results
@@ -213,7 +229,7 @@ def search_files(
     case_sensitive: bool = False,
     state: AgentState | None = None,
 ) -> list[str]:
-    root_path = _resolve_root(root)
+    root_path = resolve_root(root)
     results: list[str] = []
     needle = query if case_sensitive else query.lower()
     for file_path in _iter_files(root_path):
@@ -233,7 +249,7 @@ def grep_files(
     case_sensitive: bool = False,
     state: AgentState | None = None,
 ) -> list[dict]:
-    root_path = _resolve_root(root)
+    root_path = resolve_root(root)
     flags = 0 if case_sensitive else re.IGNORECASE
     regex = re.compile(pattern, flags)
     results: list[dict] = []
@@ -265,7 +281,7 @@ def replace_in_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     with open(target, "r", encoding="utf-8", errors="replace") as handle:
         content = handle.read()
     new_content, num_replaced = re.subn(pattern, replacement, content, count=count)
@@ -280,7 +296,7 @@ def line_count(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     count = 0
     with open(target, "r", encoding="utf-8", errors="replace") as handle:
         for count, _ in enumerate(handle, start=1):

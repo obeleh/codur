@@ -1,0 +1,1 @@
+fix the bug in @main.py. The subtotal and discounted total are wrong, and the logic error spans two different functions.

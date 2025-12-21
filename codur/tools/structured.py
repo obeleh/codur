@@ -12,26 +12,7 @@ from typing import Any
 import yaml
 
 from codur.graph.state import AgentState
-
-
-def _resolve_root(root: str | Path | None) -> Path:
-    return (Path(root) if root else Path.cwd()).resolve()
-
-
-def _resolve_path(
-    path: str,
-    root: str | Path | None,
-    allow_outside_root: bool = False,
-) -> Path:
-    root_path = _resolve_root(root)
-    raw_path = Path(path)
-    target = raw_path if raw_path.is_absolute() else root_path / raw_path
-    target = target.resolve()
-    if allow_outside_root:
-        return target
-    if target == root_path or root_path in target.parents:
-        return target
-    raise ValueError(f"Path escapes workspace root: {path}")
+from codur.utils.path_utils import resolve_path
 
 
 def _set_nested_value(data: Any, key_path: str | list[str], value: Any) -> Any:
@@ -58,7 +39,7 @@ def read_json(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> Any:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     with open(target, "r", encoding="utf-8") as handle:
         return json.load(handle)
 
@@ -72,7 +53,7 @@ def write_json(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=indent, sort_keys=sort_keys)
@@ -88,7 +69,7 @@ def set_json_value(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     with open(target, "r", encoding="utf-8") as handle:
         data = json.load(handle)
     updated = _set_nested_value(data, key_path, value)
@@ -104,7 +85,7 @@ def read_yaml(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> Any:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     with open(target, "r", encoding="utf-8") as handle:
         return yaml.safe_load(handle)
 
@@ -117,7 +98,7 @@ def write_yaml(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "w", encoding="utf-8") as handle:
         yaml.safe_dump(data, handle, sort_keys=sort_keys)
@@ -132,7 +113,7 @@ def set_yaml_value(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     with open(target, "r", encoding="utf-8") as handle:
         data = yaml.safe_load(handle)
     updated = _set_nested_value(data or {}, key_path, value)
@@ -147,7 +128,7 @@ def read_ini(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     parser = configparser.ConfigParser()
     parser.read(target, encoding="utf-8")
     data: dict[str, dict[str, str]] = {}
@@ -163,7 +144,7 @@ def write_ini(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     parser = configparser.ConfigParser()
     for section, values in data.items():
@@ -182,7 +163,7 @@ def set_ini_value(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
-    target = _resolve_path(path, root, allow_outside_root=allow_outside_root)
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     parser = configparser.ConfigParser()
     parser.read(target, encoding="utf-8")
     if not parser.has_section(section):
