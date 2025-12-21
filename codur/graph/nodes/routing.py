@@ -31,8 +31,12 @@ def should_continue(state: AgentState) -> str:
     iterations = state.get("iterations", 0)
     next_action = state.get("next_action", "end")
 
+    # Get max iterations from config if available, otherwise use constant
+    config = state.get("config")
+    max_iterations = config.runtime.max_iterations if config else MAX_ITERATIONS
+
     # Max iterations check
-    if iterations >= MAX_ITERATIONS:
+    if iterations >= max_iterations:
         return "end"
 
     return next_action if next_action == "continue" else "end"

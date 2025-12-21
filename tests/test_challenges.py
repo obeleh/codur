@@ -51,6 +51,7 @@ def _run_codur(prompt: str, cwd: Path) -> str:
             "--command",
             prompt,
             "--raw",
+            "--verbose",
             "--config",
             str(REPO_ROOT / "codur.yaml"),
         ],

@@ -78,7 +78,7 @@ def _build_planning_system_prompt(config: CodurConfig) -> str:
         tools_section += "\n\nOther Tools:\n"
         tools_section += ", ".join(other_tools[:15])
 
-    return f"""You are Codur, an autonomous coding agent orchestrator.
+    return f"""You are Codur, an autonomous coding agent orchestrator. You must respond in JSON format.
 
 **CRITICAL RULES - READ FIRST:**
 1. If user asks to move/copy/delete/read/write a file → MUST use action: "tool", NEVER "respond" or "delegate"
@@ -99,7 +99,7 @@ DO NOT suggest commands. DO NOT respond with instructions. EXECUTE the tool dire
 - "copy file.py to backup.py" → {{"action": "tool", "agent": null, "reasoning": "copy file", "response": null, "tool_calls": [{{"tool": "copy_file", "args": {{"source": "file.py", "destination": "backup.py"}}}}]}}
 - "move /path/to/file.py to /dest/" → {{"action": "tool", "agent": null, "reasoning": "move file", "response": null, "tool_calls": [{{"tool": "move_file", "args": {{"source": "/path/to/file.py", "destination": "/dest/file.py"}}}}]}}
 - "What does app.py do?" → {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
-- "Fix bug in @main.py" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "bug fix requires agent analysis", "response": null, "tool_calls": []}}
+- "Fix bug in @main.py" → {{"action": "tool", "agent": null, "reasoning": "read then edit file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "main.py"}}}}, {{"tool": "replace_in_file", "args": {{"path": "main.py", "pattern": "...", "replacement": "...", "count": 1}}}}]}}
 - "delete old.txt" → {{"action": "tool", "agent": null, "reasoning": "delete file", "response": null, "tool_calls": [{{"tool": "delete_file", "args": {{"path": "old.txt"}}}}]}}
 - "Hello" → {{"action": "respond", "agent": null, "reasoning": "greeting", "response": "Hello! How can I help?", "tool_calls": []}}
 - "Write a sorting function" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
@@ -124,7 +124,7 @@ Examples:
 - "move /path/to/file.py to /dest/" -> {{"action": "tool", "agent": null, "reasoning": "move file", "response": null, "tool_calls": [{{"tool": "move_file", "args": {{"source": "/path/to/file.py", "destination": "/dest/file.py"}}}}]}}
 - "delete old.txt" -> {{"action": "tool", "agent": null, "reasoning": "delete file", "response": null, "tool_calls": [{{"tool": "delete_file", "args": {{"path": "old.txt"}}}}]}}
 - "What does app.py do?" -> {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
-- "Fix bug in @main.py" -> {{"action": "delegate", "agent": "{default_agent}", "reasoning": "bug fix requires agent analysis", "response": null, "tool_calls": []}}
+- "Fix bug in @main.py" -> {{"action": "tool", "agent": null, "reasoning": "read then edit file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "main.py"}}}}, {{"tool": "replace_in_file", "args": {{"path": "main.py", "pattern": "...", "replacement": "...", "count": 1}}}}]}}
 - "Write a sorting function" -> {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
 """
 
@@ -377,9 +377,9 @@ def _parse_planning_response(
     if has_tool_results:
         retry_prompt = SystemMessage(
             content=(
-                "You must return ONLY a valid JSON object. "
-                "If tools are needed next, use action 'tool' with tool_calls. "
-                "If you can answer now, use action 'respond' with a concise response."
+                "IMPORTANT: You must return ONLY a valid JSON object in your response. "
+                "If tools are needed next, use action 'tool' with tool_calls in JSON format. "
+                "If you can answer now, use action 'respond' with a concise response in JSON format."
             )
         )
         retry_response = llm.invoke([retry_prompt] + list(messages))
@@ -457,9 +457,10 @@ def _invoke_planner_with_fallbacks(
     llm: BaseChatModel,
     prompt_messages: list[BaseMessage],
 ) -> tuple[BaseChatModel, BaseMessage, str]:
-    profile_names = [config.llm.default_profile] + [
-        name for name in config.llm.profiles.keys() if name != config.llm.default_profile
-    ]
+    profile_names = [config.llm.default_profile]
+    fallback_profiles = config.runtime.planner_fallback_profiles
+    if fallback_profiles:
+        profile_names += [name for name in fallback_profiles if name != config.llm.default_profile]
     last_error: Exception | None = None
     for idx, profile_name in enumerate(profile_names):
         try_llm = llm if idx == 0 else create_llm_profile(config, profile_name)
@@ -545,16 +546,42 @@ def plan_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> Pla
         decision = _parse_planning_response(active_llm, content, messages, tool_results_present, llm_debug)
 
         if decision is None:
-            # If parsing failed completely, return the raw content or fallback
             if tool_results_present:
-                return {
-                    "next_action": "end",
-                    "final_response": content,
-                    "iterations": iterations + 1,
-                    "llm_debug": llm_debug,
-                }
-            # Fallback: assume it's a coding task, use configured default agent
-            default_agent = config.agents.preferences.default_agent or "agent:ollama"
+                last_human_msg = None
+                for msg in reversed(messages):
+                    if isinstance(msg, HumanMessage):
+                        last_human_msg = msg.content
+                        break
+                if last_human_msg and _looks_like_change_request(last_human_msg) and _mentions_file_path(last_human_msg):
+                    retry_prompt = SystemMessage(
+                        content=(
+                            "You must return ONLY a valid JSON object with action 'tool' and tool_calls "
+                            "that modify the referenced file."
+                        )
+                    )
+                    retry_response = active_llm.invoke([retry_prompt] + list(messages))
+                    retry_content = retry_response.content
+                    llm_debug["llm_response_retry_forced"] = retry_content[:DEBUG_TRUNCATE_LONG] + "..." if len(retry_content) > DEBUG_TRUNCATE_LONG else retry_content
+                    forced_decision = _parse_json_from_content(retry_content)
+                    if forced_decision:
+                        decision = forced_decision
+                    else:
+                        return {
+                            "next_action": "end",
+                            "final_response": content,
+                            "iterations": iterations + 1,
+                            "llm_debug": llm_debug,
+                        }
+                else:
+                    return {
+                        "next_action": "end",
+                        "final_response": content,
+                        "iterations": iterations + 1,
+                        "llm_debug": llm_debug,
+                    }
+            if not config.agents.preferences.default_agent:
+                raise ValueError("agents.preferences.default_agent must be configured")
+            default_agent = config.agents.preferences.default_agent
             decision = {
                 "action": "delegate",
                 "agent": default_agent,
@@ -572,8 +599,8 @@ def plan_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> Pla
                 if decision.get("action") != "tool":
                     retry_prompt = SystemMessage(
                         content=(
-                            "You must return action 'tool' with tool_calls to edit the referenced file. "
-                            "Do not respond with instructions or summaries."
+                            "You must return action 'tool' with tool_calls to edit the referenced file in JSON format. "
+                            "Do not respond with instructions or summaries. Return valid JSON only."
                         )
                     )
                     retry_response = active_llm.invoke([retry_prompt] + list(messages))
@@ -585,8 +612,9 @@ def plan_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> Pla
                 elif not _has_mutation_tool(decision.get("tool_calls", [])):
                     retry_prompt = SystemMessage(
                         content=(
-                            "You must include at least one file-modification tool call "
-                            "(e.g., replace_in_file, write_file, append_file, set_*_value)."
+                            "You must include at least one file-modification tool call in JSON format "
+                            "(e.g., replace_in_file, write_file, append_file, set_*_value). "
+                            "Return a valid JSON object."
                         )
                     )
                     retry_response = active_llm.invoke([retry_prompt] + list(messages))
@@ -616,8 +644,9 @@ def plan_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> Pla
             "raw_response": content[:500]
         }
 
-        # Fallback: delegate to configured default agent
-        default_agent = config.agents.preferences.default_agent or "agent:ollama"
+        if not config.agents.preferences.default_agent:
+            raise ValueError("agents.preferences.default_agent must be configured")
+        default_agent = config.agents.preferences.default_agent
         console.print(f"  Falling back to default agent: {default_agent}", style="yellow")
 
         return {

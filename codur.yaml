@@ -18,7 +18,7 @@ mcp_servers:
 # Agent Settings - Configure which agents are available and their routing
 agents:
   preferences:
-    default_agent: "agent:groq"
+    default_agent: "agent:groq-qwen3-32b"
 
     # Routing rules: which agent to use for which task type
     routing:
@@ -94,7 +94,7 @@ agents:
 
 # LLM Settings - Main orchestrator LLM configuration
 llm:
-  default_profile: groq-70b
+  default_profile: groq-qwen3-32b
   default_temperature: 0.7
 
   profiles:
@@ -104,6 +104,9 @@ llm:
     groq-70b:
       provider: "groq"
       model: "llama-3.3-70b-versatile"
+    groq-qwen3-32b:
+      provider: "groq"
+      model: "qwen/qwen3-32b"
     openai-gpt-5:
       provider: "openai"
       model: "gpt-5"

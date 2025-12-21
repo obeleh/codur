@@ -85,6 +85,7 @@ class RuntimeSettings(BaseModel):
     verbose: bool = False
     allow_outside_workspace: bool = False
     detect_tool_calls_from_text: bool = True
+    planner_fallback_profiles: List[str] = Field(default_factory=list)
     async_: AsyncSettings = Field(default_factory=AsyncSettings, alias="async")
 
     class Config:
