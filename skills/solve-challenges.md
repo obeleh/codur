@@ -44,6 +44,7 @@ Based on `skills/trial-error-loop.md`, agents should:
 3. Make targeted file edits to resolve the error
 4. Run the same CLI command again to verify the fix
 5. Repeat this loop until the command succeeds
+6. If you see connection errors to ollama. There must be a config issue. Halt and ask the user to fix it.
 
 ## Current Issues to Fix
 
