@@ -1,0 +1,7 @@
+case_1: PASSED
+case_2: PASSED
+case_3: PASSED
+case_4: PASSED
+case_5: PASSED
+case_6: PASSED
+ALL TESTS PASSED!

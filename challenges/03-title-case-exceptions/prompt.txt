@@ -1,0 +1,2 @@
+Implement the title casing rules in @main.py based on the docstring.
+Run @main.py to verify the output matches expected.txt.

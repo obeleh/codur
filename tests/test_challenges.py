@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import pygit2
+import pytest
 
 from codur.utils.git import get_diff_for_path
 
@@ -109,33 +110,61 @@ def _reset_challenges() -> None:
         repo.checkout_tree(head, paths=[path], strategy=pygit2.GIT_CHECKOUT_FORCE)
 
 
-def test_challenges_match_expected_output() -> None:
+def _list_challenges() -> list[Path]:
     assert CHALLENGES_DIR.exists(), f"Missing challenges directory: {CHALLENGES_DIR}"
+    _assert_challenges_committed()
     challenge_dirs = sorted([p for p in CHALLENGES_DIR.iterdir() if p.is_dir()])
     assert challenge_dirs, "No challenges found"
+    return challenge_dirs
 
+
+def _assert_challenges_committed() -> None:
+    repo_path = pygit2.discover_repository(str(REPO_ROOT))
+    if repo_path is None:
+        raise AssertionError("Could not locate git repository for challenges check")
+    repo = pygit2.Repository(repo_path)
+    challenge_prefix = f"{CHALLENGES_DIR.name}/"
+    untracked = []
+    for path, status in repo.status().items():
+        if not path.startswith(challenge_prefix):
+            continue
+        if path == f"{challenge_prefix}README.md":
+            continue
+        if status & pygit2.GIT_STATUS_WT_NEW:
+            untracked.append(path)
+    if untracked:
+        files = ", ".join(sorted(untracked))
+        raise AssertionError(f"Untracked challenge files detected: {files}")
+
+
+@pytest.fixture(autouse=True)
+def _reset_after_challenge():
     try:
-        for challenge_dir in challenge_dirs:
-            expected_path = challenge_dir / "expected.txt"
-            main_path = challenge_dir / "main.py"
-            prompt_path = challenge_dir / "prompt.txt"
-            assert expected_path.exists(), f"Missing expected.txt in {challenge_dir}"
-            assert main_path.exists(), f"Missing main.py in {challenge_dir}"
-            assert prompt_path.exists(), f"Missing prompt.txt in {challenge_dir}"
-            allowed = {"expected.txt", "main.py", "prompt.txt"}
-            extras = [p.name for p in challenge_dir.iterdir() if p.is_file() and p.name not in allowed]
-            assert not extras, f"Unexpected files in {challenge_dir}: {extras}"
-
-            prompt = _read_text(prompt_path)
-            _run_codur(prompt, cwd=challenge_dir)
-
-            expected = _read_text(expected_path)
-            actual = _run_challenge(main_path)
-            assert actual == expected, (
-                "Output mismatch in "
-                f"{challenge_dir.name}\nExpected:\n{expected}\nActual:\n{actual}"
-            )
-            _print_main_diff(main_path)
-            print(f"Challenge passed: {challenge_dir.name}")
+        yield
     finally:
         _reset_challenges()
+
+
+@pytest.mark.parametrize("challenge_dir", _list_challenges(), ids=lambda p: p.name)
+def test_challenge_outputs(challenge_dir: Path) -> None:
+    expected_path = challenge_dir / "expected.txt"
+    main_path = challenge_dir / "main.py"
+    prompt_path = challenge_dir / "prompt.txt"
+    assert expected_path.exists(), f"Missing expected.txt in {challenge_dir}"
+    assert main_path.exists(), f"Missing main.py in {challenge_dir}"
+    assert prompt_path.exists(), f"Missing prompt.txt in {challenge_dir}"
+    allowed = {"expected.txt", "main.py", "prompt.txt"}
+    extras = [p.name for p in challenge_dir.iterdir() if p.is_file() and p.name not in allowed]
+    assert not extras, f"Unexpected files in {challenge_dir}: {extras}"
+
+    prompt = _read_text(prompt_path)
+    _run_codur(prompt, cwd=challenge_dir)
+
+    expected = _read_text(expected_path)
+    actual = _run_challenge(main_path)
+    assert actual == expected, (
+        "Output mismatch in "
+        f"{challenge_dir.name}\nExpected:\n{expected}\nActual:\n{actual}"
+    )
+    _print_main_diff(main_path)
+    print(f"Challenge passed: {challenge_dir.name}")
