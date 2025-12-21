@@ -16,6 +16,7 @@ mcp_servers:
     env: {}
 
 # Agent Settings - Configure which agents are available and their routing
+# Not to be edited by Agents
 agents:
   preferences:
     default_agent: "agent:groq-qwen3-32b"
@@ -37,7 +38,14 @@ agents:
 
   # Agent-specific configurations
   configs:
-    groq:
+    groq-qwen3-32b:
+      name: "groq"
+      type: "llm"
+      enabled: true
+      config:
+      model: "qwen/qwen3-32b"
+
+    groq-llama3-70b:
       name: "groq"
       type: "llm"
       enabled: true

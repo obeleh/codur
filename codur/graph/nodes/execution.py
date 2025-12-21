@@ -206,7 +206,8 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             break
 
     is_fix_task = original_task and any(keyword in original_task for keyword in [
-        "fix", "bug", "error", "debug", "issue", "broken", "incorrect", "wrong"
+        "fix", "bug", "error", "debug", "issue", "broken", "incorrect", "wrong",
+        "implement", "write", "create", "complete", "build"
     ])
 
     # Try verification if it's a fix task and we haven't exceeded iterations

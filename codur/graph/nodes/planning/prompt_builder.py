@@ -97,11 +97,11 @@ DO NOT suggest commands. DO NOT respond with instructions. EXECUTE the tool dire
 
 **Examples of CORRECT behavior:**
 - "copy file.py to backup.py" → {{"action": "tool", "agent": null, "reasoning": "copy file", "response": null, "tool_calls": [{{"tool": "copy_file", "args": {{"source": "file.py", "destination": "backup.py"}}}}]}}
-- "move /path/to/file.py to /dest/" → {{"action": "tool", "agent": null, "reasoning": "move file", "response": null, "tool_calls": [{{"tool": "move_file", "args": {{"source": "/path/to/file.py", "destination": "/dest/file.py"}}}}]}}
-- "What does app.py do?" → {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
-- "Fix bug in @main.py" → {{"action": "tool", "agent": null, "reasoning": "read then edit file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "main.py"}}}}, {{"tool": "replace_in_file", "args": {{"path": "main.py", "pattern": "...", "replacement": "...", "count": 1}}}}]}}
 - "delete old.txt" → {{"action": "tool", "agent": null, "reasoning": "delete file", "response": null, "tool_calls": [{{"tool": "delete_file", "args": {{"path": "old.txt"}}}}]}}
+- "What does app.py do?" → {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
 - "Hello" → {{"action": "respond", "agent": null, "reasoning": "greeting", "response": "Hello! How can I help?", "tool_calls": []}}
+- "Fix the bug in @main.py" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "bug fix requires analysis and iteration", "response": null, "tool_calls": []}}
+- "Implement the title case function in @main.py" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "implementation requires understanding requirements and testing", "response": null, "tool_calls": []}}
 - "Write a sorting function" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
 
 **Agent reference format:**
@@ -121,10 +121,9 @@ Respond with ONLY a valid JSON object:
 Examples:
 - "Hello" -> {{"action": "respond", "agent": null, "reasoning": "greeting", "response": "Hello! How can I help?", "tool_calls": []}}
 - "copy file.py to backup.py" -> {{"action": "tool", "agent": null, "reasoning": "copy file", "response": null, "tool_calls": [{{"tool": "copy_file", "args": {{"source": "file.py", "destination": "backup.py"}}}}]}}
-- "move /path/to/file.py to /dest/" -> {{"action": "tool", "agent": null, "reasoning": "move file", "response": null, "tool_calls": [{{"tool": "move_file", "args": {{"source": "/path/to/file.py", "destination": "/dest/file.py"}}}}]}}
 - "delete old.txt" -> {{"action": "tool", "agent": null, "reasoning": "delete file", "response": null, "tool_calls": [{{"tool": "delete_file", "args": {{"path": "old.txt"}}}}]}}
 - "What does app.py do?" -> {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
-- "Fix bug in @main.py" -> {{"action": "tool", "agent": null, "reasoning": "read then edit file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "main.py"}}}}, {{"tool": "replace_in_file", "args": {{"path": "main.py", "pattern": "...", "replacement": "...", "count": 1}}}}]}}
+- "Fix the bug in @main.py" -> {{"action": "delegate", "agent": "{default_agent}", "reasoning": "bug fix requires analysis and iteration", "response": null, "tool_calls": []}}
 - "Write a sorting function" -> {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
 """
 
