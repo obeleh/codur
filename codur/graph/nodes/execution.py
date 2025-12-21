@@ -242,18 +242,50 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             # Verification failed - loop back with error message
             if state.get("verbose"):
                 console.print(f"[yellow]⚠ Verification failed - will retry[/yellow]")
-                console.print(f"[dim]{verification_result['message']}[/dim]")
+                console.print(f"[dim]{verification_result['message'][:200]}[/dim]")
 
-            # Add verification error to messages for next iteration
-            error_message = SystemMessage(
-                content=f"Verification failed: {verification_result['message']}\n\n"
-                        f"Please analyze the issue and fix it. Previous attempt:\n{result[:500]}"
-            )
+            # Build a structured error message for the agent
+            from pathlib import Path
+            from langchain_core.messages import SystemMessage
+
+            error_parts = ["Verification failed: Output does not match expected."]
+
+            # Include truncated outputs for context
+            if "expected_truncated" in verification_result:
+                error_parts.append(f"\n=== Expected Output ===\n{verification_result['expected_truncated']}")
+            if "actual_truncated" in verification_result:
+                error_parts.append(f"\n=== Actual Output ===\n{verification_result['actual_truncated']}")
+
+            # Include stderr if available
+            if verification_result.get("stderr"):
+                stderr_content = _truncate_output(verification_result['stderr'], max_lines=10)
+                error_parts.append(f"\n=== Error/Exception ===\n{stderr_content}")
+
+            # Try to include current main.py for context
+            cwd = Path.cwd()
+            main_py = cwd / "main.py"
+            if main_py.exists():
+                try:
+                    main_content = main_py.read_text()
+                    if len(main_content) < 3000:  # Only include if not too large
+                        error_parts.append(f"\n=== Current Implementation (main.py) ===\n```python\n{main_content}\n```")
+                    else:
+                        error_parts.append(f"\n[Current main.py is {len(main_content)} chars - impl too large to display, check what's wrong with current code]")
+                except Exception as read_err:
+                    pass
+
+            error_parts.append("\n=== Action ===\nAnalyze the output mismatch and fix the implementation to match expected output.")
+
+            error_message = SystemMessage(content="\n".join(error_parts))
+
+            # Prune old messages to prevent context explosion
+            current_messages = state.get("messages", [])
+            pruned_messages = _prune_messages(current_messages + [error_message])
 
             return {
                 "final_response": result,
                 "next_action": "continue",
-                "messages": [error_message],
+                "messages": pruned_messages,
                 "local_repair_attempted": True,
             }
 
@@ -273,6 +305,61 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     }
 
 
+def _truncate_output(text: str, max_lines: int = 20) -> str:
+    """Truncate output to a reasonable length for display and agent processing."""
+    lines = text.split('\n')
+    if len(lines) > max_lines:
+        truncated = '\n'.join(lines[:max_lines])
+        return f"{truncated}\n... ({len(lines) - max_lines} more lines)"
+    return text
+
+
+def _prune_messages(messages: list, max_to_keep: int = 10) -> list:
+    """Prune old verification error messages to prevent context explosion.
+
+    Keeps:
+    - Original HumanMessage(s) - typically the first message
+    - Recent SystemMessage(s) - keep last N error/verification messages
+    - Assistant/tool messages - keep some recent ones
+    """
+    from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+    if len(messages) <= max_to_keep:
+        return messages
+
+    # Find the first human message (original task)
+    first_human_idx = None
+    for i, msg in enumerate(messages):
+        if isinstance(msg, HumanMessage):
+            first_human_idx = i
+            break
+
+    if first_human_idx is None:
+        # No human message, just keep last N
+        return messages[-max_to_keep:]
+
+    # Keep original task + recent messages
+    pruned = messages[:first_human_idx + 1]  # Original task
+
+    # Add recent verification errors (keep last 3-4 of them)
+    recent_count = 0
+    max_recent = 4
+    for msg in reversed(messages[first_human_idx + 1:]):
+        if isinstance(msg, SystemMessage) and "Verification failed" in msg.content:
+            pruned.append(msg)
+            recent_count += 1
+            if recent_count >= max_recent:
+                break
+
+    # Reverse the recent errors to maintain chronological order
+    if len(pruned) > first_human_idx + 1:
+        recent_errors = pruned[first_human_idx + 1:]
+        recent_errors.reverse()
+        pruned = pruned[:first_human_idx + 1] + recent_errors
+
+    return pruned
+
+
 def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
     """Verify if a fix actually works by running tests.
 
@@ -281,7 +368,7 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
         config: Codur configuration
 
     Returns:
-        Dict with "success" (bool) and "message" (str)
+        Dict with "success" (bool), "message" (str), and other diagnostic info
     """
     import subprocess
     from pathlib import Path
@@ -322,9 +409,15 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
                     "message": f"Output matches expected: {actual_output}"
                 }
             else:
+                # Provide both full and truncated versions
                 return {
                     "success": False,
-                    "message": f"Output mismatch.\nExpected: {expected_output}\nActual: {actual_output}"
+                    "message": f"Output mismatch.\nExpected: {expected_output}\nActual: {actual_output}",
+                    "expected_output": expected_output,
+                    "actual_output": actual_output,
+                    "expected_truncated": _truncate_output(expected_output),
+                    "actual_truncated": _truncate_output(actual_output),
+                    "stderr": result.stderr.strip() if result.stderr else None
                 }
 
         # If no expected.txt, just check for success exit code
@@ -336,7 +429,10 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
         else:
             return {
                 "success": False,
-                "message": f"Execution failed (exit code {result.returncode})\nStderr: {result.stderr.strip()}"
+                "message": f"Execution failed (exit code {result.returncode})\nStderr: {result.stderr.strip()}",
+                "stderr": result.stderr.strip(),
+                "stdout": result.stdout.strip(),
+                "return_code": result.returncode
             }
 
     except subprocess.TimeoutExpired:

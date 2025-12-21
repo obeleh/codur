@@ -23,7 +23,7 @@ pytest tests/test_challenges.py
 From the repo root, you can run a single challenge like this:
 ```
 cd challenges/01-fix-off-by-onerror
-python -m codur.cli --command "$(cat prompt.txt)" --raw --config ../../codur.yaml
+python -m codur.cli --command "$(cat prompt.txt)" --raw --config ../../codur.yaml --verbose
 python main.py
 ```
 
