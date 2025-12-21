@@ -23,10 +23,10 @@ agents:
 
     # Routing rules: which agent to use for which task type
     routing:
-      simple: "llm:groq-qwen3-32b"         # Simple code generation (Groq)
+      simple: "llm:groq-qwen3-32b"   # Simple code generation (Groq)
       complex: "llm:groq-qwen3-32b"  # Complex refactoring (OpenAI)
       multifile: "agent:claude_code" # Multi-file changes (Claude Code)
-      reasoning: "llm:groq-70b"      # Complex reasoning (Groq)
+      reasoning: "agent:groq-qwen3-32b-reasoning"      # Complex reasoning (Groq)
       sheets: "sheets"               # Spreadsheet operations
       jobs: "linkedin"               # Job searching
 
@@ -43,7 +43,17 @@ agents:
       type: "llm"
       enabled: true
       config:
-      model: "qwen/qwen3-32b"
+        model: "qwen/qwen3-32b"
+        system_prompt: "You are a helpful coding assistant. Provide clear and concise code snippets."
+
+    groq-qwen3-32b-reasoning:
+      name: "groq"
+      type: "llm"
+      enabled: true
+      config:
+        model: "qwen/qwen3-32b"
+        system_prompt: "You are a helpful coding assistant. Be thorough and detailed in your reasoning steps when solving complex coding problems."
+        reasoning_effort: "high"
 
     groq-llama3-70b:
       name: "groq"
