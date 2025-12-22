@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from langchain_core.messages import SystemMessage, HumanMessage
+from rich import console
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState, AgentStateData
@@ -53,8 +54,10 @@ from codur.tools import (
     python_ast_graph,
     python_ast_outline,
     python_dependency_graph,
+    agent_call,
 )
 
+console = console.Console()
 
 def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
     """Execute local filesystem tools requested by the planner.
@@ -156,13 +159,29 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
             state=tool_state,
             **args,
         ),
+        "agent_call": lambda args: agent_call(
+            config=config,
+            **args,
+        ),
     }
 
-    for call in tool_calls:
+    for i, call in enumerate(tool_calls):
+        if config.verbose:
+            console.log(f"Executing tool call: {call}")
         tool_name = call.get("tool")
         args = call.get("args", {})
         if not isinstance(args, dict):
             args = {}
+        _normalize_tool_args(args)
+
+        # For agent_call, inject file_contents from previous read_file result
+        if tool_name == "agent_call" and i > 0:
+            prev_call = tool_calls[i - 1]
+            if prev_call.get("tool") == "read_file" and results:
+                prev_result = results[-1]
+                if prev_result.get("tool") == "read_file":
+                    args["file_contents"] = prev_result.get("output", "")
+
         if tool_name not in tool_map:
             errors.append(f"Unknown tool: {tool_name}")
             continue
@@ -187,3 +206,18 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
         },
         "messages": [SystemMessage(content=f"Tool results:\n{summary}")],
     }
+
+
+def _normalize_tool_args(args: dict) -> None:
+    """Normalize tool arguments in-place for common shorthand formats."""
+    for key, value in list(args.items()):
+        if isinstance(value, str):
+            args[key] = _strip_at_prefix(value)
+        elif isinstance(value, list):
+            args[key] = [_strip_at_prefix(item) if isinstance(item, str) else item for item in value]
+
+
+def _strip_at_prefix(value: str) -> str:
+    if value.startswith("@") and len(value) > 1:
+        return value[1:]
+    return value

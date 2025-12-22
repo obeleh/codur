@@ -12,6 +12,7 @@ from codur.graph.nodes import (
     execute_node,
     delegate_node,
     tool_node,
+    coding_node,
     review_node,
     should_continue,
     should_delegate,
@@ -49,6 +50,8 @@ def _route_based_on_decision(state: AgentState) -> str:
     """Route based on the planning decision (delegate, tool, or end)."""
     next_action = state.get("next_action")
     if next_action == "delegate":
+        if state.get("selected_agent") in ("agent:codur-coding", "codur-coding"):
+            return "coding"
         return "delegate"
     elif next_action == "tool":
         return "tool"
@@ -84,6 +87,7 @@ def create_agent_graph(config: CodurConfig):
     workflow.add_node("llm_plan", lambda state: llm_plan_node(state, llm, config))
     workflow.add_node("delegate", lambda state: delegate_node(state, config))
     workflow.add_node("tool", lambda state: tool_node(state, config))
+    workflow.add_node("coding", lambda state: coding_node(state, config))
     workflow.add_node("execute", lambda state: execute_node(state, config))
     workflow.add_node("review", lambda state: review_node(state, llm, config))
 
@@ -98,6 +102,7 @@ def create_agent_graph(config: CodurConfig):
             "llm_pre_plan": "llm_pre_plan",
             "delegate": "delegate",
             "tool": "tool",
+            "coding": "coding",
             "end": END,
         }
     )
@@ -109,6 +114,7 @@ def create_agent_graph(config: CodurConfig):
             "llm_plan": "llm_plan",
             "delegate": "delegate",
             "tool": "tool",
+            "coding": "coding",
             "end": END,
         }
     )
@@ -120,6 +126,7 @@ def create_agent_graph(config: CodurConfig):
         {
             "delegate": "delegate",
             "tool": "tool",
+            "coding": "coding",
             "end": END,
         }
     )
@@ -128,6 +135,7 @@ def create_agent_graph(config: CodurConfig):
     workflow.add_edge("delegate", "execute")
     workflow.add_edge("execute", "review")
     workflow.add_edge("tool", "review")
+    workflow.add_edge("coding", "review")
 
     # Review loop - on retry, go directly to full planning (Phase 2) since we already classified
     # This avoids re-running Phases 0 and 1 which are not necessary on retries
@@ -136,6 +144,7 @@ def create_agent_graph(config: CodurConfig):
         should_continue,
         {
             "continue": "llm_plan",  # Skip to Phase 2 for retries (we already have classification)
+            "coding": "coding",
             "end": END,
         }
     )

@@ -36,6 +36,7 @@ from codur.tools.linting import (
 )
 from codur.tools.agents import (
     retry_in_agent,
+    agent_call,
 )
 from codur.tools.mcp_tools import (
     list_mcp_tools,
@@ -101,6 +102,7 @@ __all__ = [
     "lint_python_files",
     "lint_python_tree",
     "retry_in_agent",
+    "agent_call",
     "list_mcp_tools",
     "call_mcp_tool",
     "list_mcp_resources",

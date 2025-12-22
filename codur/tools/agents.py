@@ -27,6 +27,67 @@ def _resolve_agent_profile(config: CodurConfig, agent_name: str) -> tuple[str, O
     return agent_name, None
 
 
+def agent_call(
+    agent: str,
+    challenge: str,
+    file_path: str = "",
+    file_contents: str = "",
+    config: CodurConfig | None = None,
+) -> str:
+    """Invoke an agent with a coding challenge and optional file context.
+
+    Used by the planner to directly invoke agents with file contents after reading them.
+
+    Args:
+        agent: Agent name or reference (agent:<name> or llm:<profile>)
+        challenge: The coding challenge/task description
+        file_path: Path to the file (for context/reference)
+        file_contents: The file contents to include as context
+        config: Codur configuration for agent setup
+
+    Returns:
+        Agent response string
+    """
+    if not agent:
+        raise ValueError("agent_call requires an 'agent' argument")
+    if not challenge:
+        raise ValueError("agent_call requires a 'challenge' argument")
+
+    if config is None:
+        raise ValueError("Config not available in tool state")
+
+    # Build the task with file context if available
+    task = challenge
+    if file_contents:
+        task = f"{challenge}\n\n=== File: {file_path} ===\n{file_contents}"
+
+    agent_name, profile_override = _resolve_agent_profile(config, agent)
+    resolved_agent = _resolve_agent_reference(agent_name)
+
+    if agent_name.startswith("llm:"):
+        profile_name = agent_name.split(":", 1)[1]
+        llm = create_llm_profile(config, profile_name)
+        response = llm.invoke([HumanMessage(content=task)])
+        return response.content
+    if resolved_agent == "ollama":
+        agent_instance = OllamaAgent(config, override_config=profile_override)
+        return agent_instance.execute(task)
+    if resolved_agent == "codex":
+        agent_instance = CodexAgent(config, override_config=profile_override)
+        return agent_instance.execute(task)
+    if resolved_agent == "claude_code":
+        agent_instance = ClaudeCodeAgent(config, override_config=profile_override)
+        return agent_instance.execute(task)
+    if resolved_agent == "codur-coding":
+        # Special handling for codur-coding agent
+        # This would invoke the coding node directly, but for now we route through default LLM
+        llm = create_llm_profile(config, config.llm.default_profile or "default")
+        response = llm.invoke([HumanMessage(content=task)])
+        return response.content
+
+    raise ValueError(f"Unknown agent: {agent_name}")
+
+
 def retry_in_agent(
     agent: str,
     task: str,

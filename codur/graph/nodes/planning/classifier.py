@@ -268,73 +268,73 @@ Task Analysis:
 """
 
     if task_type == TaskType.CODE_FIX:
-        return base_rules + f"""This appears to be a BUG FIX or IMPLEMENTATION task.
+        return base_rules + f"""This is a BUG FIX or IMPLEMENTATION task.
 
-Your job: Delegate to an agent that can analyze, fix, and verify the code.
+When deciding your response, consider:
+1. Files mentioned: {files_str}
+2. Is this fixing existing code or implementing from docstring?
+3. Does the agent need file context to succeed?
 
-Required response format:
-{{"action": "delegate", "agent": "{default_agent}", "reasoning": "fix/implement task", "response": null, "tool_calls": []}}
+ROUTING OPTIONS:
+  Option A (Simple): Delegate directly to {default_agent}
+    - Use when: No file context needed, straightforward fix
+    - JSON: {{"action": "delegate", "agent": "{default_agent}", "reasoning": "...", "response": null}}
 
-The agent will:
-1. Read the file to understand the issue
-2. Implement the fix
-3. Run verification to confirm it works
-4. Iterate if needed
+  Option B (With Context): Read file first, then use coding agent
+    - Use when: Need to see file contents, implementation task, complex fix
+    - JSON: {{"action": "tool", "agent": null, "reasoning": "...", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "..."}}}}, {{"tool": "agent_call", "args": {{"agent": "agent:codur-coding", "challenge": "...", "file_path": "..."}}}}]}}
 
-Return the JSON now:"""
+For file-based implementation tasks, prefer Option B.
+
+Return ONLY valid JSON:"""
 
     if task_type == TaskType.CODE_GENERATION:
-        return base_rules + f"""This appears to be a CODE GENERATION task.
+        return base_rules + f"""This is a CODE GENERATION task.
 
-Your job: Delegate to an agent for code creation.
+Consider: Does code generation need context from existing files?
 
-Required response format:
-{{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
+ROUTING OPTIONS:
+  Option A: Direct generation - {{"action": "delegate", "agent": "{default_agent}", "reasoning": "..."}}
+  Option B: Read context first - {{"action": "tool", "tool_calls": [{{"tool": "read_file", ...}}, {{"tool": "agent_call", "args": {{"agent": "agent:codur-coding", ...}}}}]}}
 
-Return the JSON now:"""
+Return ONLY valid JSON:"""
 
     if task_type == TaskType.COMPLEX_REFACTOR:
         multifile_agent = config.agents.preferences.routing.get("multifile", default_agent)
-        return base_rules + f"""This appears to be a COMPLEX REFACTORING task.
+        return base_rules + f"""This is a COMPLEX REFACTORING task. Files: {files_str}
 
-Your job: Delegate to a capable agent for multi-file changes.
+Delegate to multifile-capable agent or read files first for analysis.
 
-Required response format:
-{{"action": "delegate", "agent": "{multifile_agent}", "reasoning": "complex refactoring", "response": null, "tool_calls": []}}
+{{"action": "delegate", "agent": "{multifile_agent}", "reasoning": "..."}} or
+{{"action": "tool", "tool_calls": [{{"tool": "read_file", ...}}], ...}}
 
-Return the JSON now:"""
+Return ONLY valid JSON:"""
 
     if task_type == TaskType.EXPLANATION:
-        return base_rules + f"""This appears to be an EXPLANATION request about code.
+        target_file = classification.detected_files[0] if classification.detected_files else 'unknown'
+        return base_rules + f"""This is an EXPLANATION request. Target file: {target_file}
 
-Your job: Read the file first, then explain.
+Must read file first to explain it.
 
-Required response format:
-{{"action": "tool", "agent": null, "reasoning": "read file to explain", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "{classification.detected_files[0] if classification.detected_files else 'unknown'}"}}}}]}}
+{{"action": "tool", "agent": null, "reasoning": "read file for explanation", "tool_calls": [{{"tool": "read_file", "args": {{"path": "{target_file}"}}}}]}}
 
-Return the JSON now:"""
+Return ONLY valid JSON:"""
 
     if task_type == TaskType.FILE_OPERATION:
-        return base_rules + f"""This appears to be a FILE OPERATION (move/copy/delete).
+        return base_rules + f"""This is a FILE OPERATION. Files: {files_str}
 
-Your job: Execute the file operation directly.
+Tools: read_file, write_file, copy_file, move_file, delete_file, list_files
 
-Available tools: move_file, copy_file, delete_file, read_file, write_file
+{{"action": "tool", "agent": null, "reasoning": "...", "tool_calls": [{{"tool": "...", "args": {{...}}}}]}}
 
-Analyze the request and return the appropriate tool call:
-{{"action": "tool", "agent": null, "reasoning": "file operation", "response": null, "tool_calls": [{{"tool": "...", "args": {{...}}}}]}}
-
-Return the JSON now:"""
+Return ONLY valid JSON:"""
 
     # Unknown or needs full analysis
-    return base_rules + f"""Task type is uncertain. Analyze carefully.
+    return base_rules + f"""Task type uncertain. Analyze and choose appropriate action.
 
 Options:
-- "tool" for file operations (move/copy/delete/read)
-- "delegate" for code generation/fixing (agent: "{default_agent}")
-- "respond" for greetings only
+- "delegate" for code tasks: {{"action": "delegate", "agent": "{default_agent}", ...}}
+- "tool" for file ops: {{"action": "tool", "tool_calls": [...], ...}}
+- "respond" for greetings: {{"action": "respond", "response": "...", ...}}
 
-Required format:
-{{"action": "...", "agent": "...", "reasoning": "...", "response": null, "tool_calls": [...]}}
-
-Return the JSON now:"""
+Return ONLY valid JSON:"""

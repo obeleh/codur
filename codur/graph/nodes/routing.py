@@ -10,9 +10,12 @@ def should_delegate(state: AgentState) -> str:
         state: Current agent state with next_action
 
     Returns:
-        "delegate", "tool", or "end" based on the next_action in state
+        "delegate", "tool", "coding", or "end" based on the next_action in state
     """
     next_action = state.get("next_action", "delegate")
+    selected_agent = state.get("selected_agent")
+    if next_action == "delegate" and selected_agent in ("agent:codur-coding", "codur-coding"):
+        return "coding"
     return next_action if next_action != "end" else "end"
 
 
@@ -36,4 +39,9 @@ def should_continue(state: AgentState) -> str:
     if iterations >= max_iterations:
         return "end"
 
+    selected_agent = state.get("selected_agent")
+    if next_action == "continue" and selected_agent in ("agent:codur-coding", "codur-coding"):
+        return "coding"
+    if next_action == "coding":
+        return "coding"
     return next_action if next_action == "continue" else "end"

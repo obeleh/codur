@@ -184,7 +184,12 @@ class PlanningOrchestrator:
                 prompt_messages,
             )
             content = response.content
+            if state.get("verbose"):
+                console.print(f"[dim]LLM content: {content}[/dim]")
         except Exception as exc:
+            if "Failed to validate JSON" in str(exc):
+                console.print("  PLANNING ERROR - LLM returned invalid JSON", style="red bold on yellow")
+
             if not self.config.agents.preferences.default_agent:
                 raise ValueError("agents.preferences.default_agent must be configured") from exc
             default_agent = self.config.agents.preferences.default_agent
@@ -265,7 +270,12 @@ class PlanningOrchestrator:
             if decision is not None and tool_results_present:
                 last_human_msg = self._last_human_message(messages)
                 if last_human_msg and looks_like_change_request(last_human_msg) and mentions_file_path(last_human_msg):
-                    if decision.get("action") != "tool":
+                    allow_delegate = (
+                        decision.get("action") == "delegate"
+                        and decision.get("agent") == "agent:codur-coding"
+                        and self._tool_results_include_read_file(messages)
+                    )
+                    if decision.get("action") != "tool" and not allow_delegate:
                         retry_prompt = SystemMessage(
                             content=(
                                 "You must return action 'tool' with tool_calls to edit the referenced file in JSON format. "
@@ -339,6 +349,14 @@ class PlanningOrchestrator:
                 return msg.content
         return None
 
+    @staticmethod
+    def _tool_results_include_read_file(messages: list[BaseMessage]) -> bool:
+        for msg in messages:
+            if isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:"):
+                if "read_file:" in msg.content:
+                    return True
+        return False
+
     def _handle_confident_classification(
         self,
         classification: ClassificationResult,
@@ -391,10 +409,11 @@ class PlanningOrchestrator:
             }
 
         # Code fix/generation - delegate to appropriate agent
-        # NOTE: Only do Phase 1 routing for code tasks if confidence is very high (>90%)
-        # Otherwise let Phase 2 LLM handle routing to avoid wrong agent selection
+        # NOTE: Only do Phase 1 routing for code tasks if confidence is high (>70%)
+        # This allows Phase 1 to be proactive with intelligent pre-planning while still
+        # letting Phase 2 refine uncertain cases
         if task_type in (TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR):
-            if classification.confidence >= 0.90:
+            if classification.confidence >= 0.70:
                 # High confidence - safe to route in Phase 1
                 agent = get_agent_for_task_type(
                     task_type,
@@ -402,6 +421,45 @@ class PlanningOrchestrator:
                     classification.detected_files,
                     user_message
                 )
+
+                # For file-based code fix tasks with detected files:
+                # - Don't delegate to text-based LLMs (they can't modify files)
+                # - Pass to Phase 2 which can generate compound tool_calls
+                # - Exception: if agent is codur-coding, generate compound tool_calls here
+                if task_type == TaskType.CODE_FIX and classification.detected_files:
+                    if agent == "agent:codur-coding":
+                        # Generate compound tool_calls: read_file → agent_call
+                        file_path = classification.detected_files[0]
+                        return {
+                            "next_action": "tool",
+                            "tool_calls": [
+                                {
+                                    "tool": "read_file",
+                                    "args": {"path": file_path}
+                                },
+                                {
+                                    "tool": "agent_call",
+                                    "args": {
+                                        "agent": agent,
+                                        "challenge": user_message,
+                                        "file_path": file_path
+                                    }
+                                }
+                            ],
+                            "iterations": iterations + 1,
+                            "llm_debug": {
+                                "phase1_resolved": True,
+                                "task_type": task_type.value,
+                                "selected_agent": agent,
+                                "compound_tools": True
+                            },
+                        }
+                    else:
+                        # Text-based LLM cannot handle file modifications
+                        # Pass to Phase 2 for intelligent routing with compound tool_calls
+                        return None
+
+                # Standard delegation for non-file-based tasks or other task types
                 return {
                     "next_action": "delegate",
                     "selected_agent": agent,
@@ -424,13 +482,14 @@ class PlanningOrchestrator:
         has_tool_results: bool,
         classification: ClassificationResult
     ) -> list[BaseMessage]:
-        """Build prompt messages for Phase 2 with full planning guidance.
+        """Build prompt messages for Phase 2 with context-aware planning guidance.
 
-        Uses the full planning prompt (not context-aware) to ensure the LLM
-        has complete guidance for returning properly formatted JSON.
+        Uses the classification from Phase 1 to build a focused, task-specific prompt
+        that guides the LLM through multi-step reasoning (Chain-of-Thought) for
+        file-based coding tasks.
         """
-        # Use the full planning prompt to ensure proper JSON formatting
-        planning_prompt = self.prompt_builder.build_system_prompt()
+        # Use context-aware prompt based on Phase 1 classification to guide multi-step planning
+        planning_prompt = build_context_aware_prompt(classification, self.config)
         system_message = SystemMessage(content=planning_prompt)
         prompt_messages = [system_message] + list(messages)
 

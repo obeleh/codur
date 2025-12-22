@@ -111,6 +111,7 @@ class PlanningDecisionHandler:
             return {
                 "next_action": "tool",
                 "tool_calls": decision.get("tool_calls", []),
+                "selected_agent": decision.get("agent"),
                 "iterations": iterations + 1,
                 "llm_debug": llm_debug,
             }

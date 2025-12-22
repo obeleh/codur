@@ -61,6 +61,7 @@ Codur uses **LangGraph** to orchestrate an agentic workflow. The system follows 
 | `nodes/planning/core.py` | PlanningOrchestrator - analyzes task and decides action |
 | `nodes/execution.py` | AgentExecutor, delegate_node, execute_node, review_node |
 | `nodes/tools.py` | Tool execution node |
+| `nodes/coding.py` | codur-coding dedicated execution node |
 | `nodes/tool_detection.py` | Pattern-based tool call detection from text |
 | `nodes/non_llm_tools.py` | Fast-path tool detection without LLM |
 
@@ -82,6 +83,7 @@ The graph starts at the **textual_pre_plan** node (Phase 0). See `main_graph.py:
 4. **delegate** → Routes task to selected agent
 5. **execute** → Runs the agent with tool-using loop
 6. **tool** → Executes filesystem/MCP tools directly
+7. **coding** → Runs the codur-coding agent with challenge + optional context
 7. **review** → Verifies result, decides to loop or end
 
 ### Edges
@@ -89,37 +91,44 @@ The graph starts at the **textual_pre_plan** node (Phase 0). See `main_graph.py:
 ```python
 # Phase 0 → Phase 1 (textual_pre_plan → llm_pre_plan)
 textual_pre_plan → llm_pre_plan      # if next_action == "continue_to_llm_pre_plan"
-textual_pre_plan → delegate           # if next_action == "delegate" (fast-path resolved)
+textual_pre_plan → delegate           # if next_action == "delegate" and selected_agent != "agent:codur-coding"
+textual_pre_plan → coding             # if next_action == "delegate" and selected_agent == "agent:codur-coding"
 textual_pre_plan → tool               # if next_action == "tool" (fast-path resolved)
 textual_pre_plan → END                # if next_action == "end" (fast-path resolved)
 
 # Phase 1 → Phase 2 (llm_pre_plan → llm_plan)
 llm_pre_plan → llm_plan               # if next_action == "continue_to_llm_plan"
-llm_pre_plan → delegate               # if next_action == "delegate" (high confidence)
+llm_pre_plan → delegate               # if next_action == "delegate" and selected_agent != "agent:codur-coding" (high confidence)
+llm_pre_plan → coding                 # if next_action == "delegate" and selected_agent == "agent:codur-coding" (high confidence)
 llm_pre_plan → tool                   # if next_action == "tool" (high confidence)
 llm_pre_plan → END                    # if next_action == "end" (high confidence)
 
 # Phase 2 → Execution (llm_plan → delegate/tool/END)
-llm_plan → delegate                   # if next_action == "delegate"
+llm_plan → delegate                   # if next_action == "delegate" and selected_agent != "agent:codur-coding"
+llm_plan → coding                     # if next_action == "delegate" and selected_agent == "agent:codur-coding"
 llm_plan → tool                       # if next_action == "tool"
 llm_plan → END                        # if next_action == "end"
 
 # Execution phase
-delegate → execute                    # Fixed edge
-execute → review                      # Fixed edge
-tool → review                         # Fixed edge
+delegate → execute                    # Fixed edge (routes to agent executor)
+coding → review                       # Fixed edge (routes directly to verification, no agent executor)
+tool → review                         # Fixed edge (routes directly to verification, no tool executor wrapper)
+execute → review                      # Fixed edge (routes from agent executor)
 
-# Retry loop (review → back to Phase 0)
-review → textual_pre_plan             # if next_action == "continue" (retry)
+# Retry loop (review → back to Phase 2 for retries, skipping Phases 0-1)
+review → llm_plan                     # if next_action == "continue" (retry - already classified)
 review → END                          # if next_action == "end" (done)
 ```
 
+**Note on Routing:** When the planner returns `action: "delegate"` with `selected_agent: "agent:codur-coding"`, the router checks the agent name and routes to the "coding" node instead of the standard "delegate" node. This is a special route for coding-optimized LLM execution without the general agent executor wrapper.
+
 ### Recursion Limit
 
-The graph is compiled with `recursion_limit=300` to support:
-- 10 max review iterations
+The graph is compiled with `recursion_limit=350` to support:
+- Initial planning phase: ~6 nodes (textual_pre_plan → llm_pre_plan → llm_plan → delegate/tool/coding → execute/review)
+- Up to 10 max review iterations with retry loop
 - 5 tool iterations per agent execution
-- Safety margin for complex tasks
+- Safety margin for complex tasks with multiple retries
 
 ---
 
@@ -236,7 +245,22 @@ while tool_iteration < max_tool_iterations:  # default 5
 
 ---
 
-### 4. Tool Node
+### 4. Coding Node
+
+**Location:** `nodes/coding.py` → `coding_node()`
+
+**Purpose:** Run the codur-coding agent with a structured coding prompt that includes:
+- The coding challenge (first HumanMessage)
+- Optional additional context (subsequent System/Human messages)
+
+**Flow:**
+1. Read the `codur-coding` agent config
+2. Build a challenge + context prompt
+3. Invoke the matching LLM profile with the agent system prompt
+
+---
+
+### 5. Tool Node
 
 **Location:** `nodes/tools.py:56` → `tool_node()`
 
@@ -266,7 +290,15 @@ while tool_iteration < max_tool_iterations:  # default 5
 3. If verification fails:
    - Try `_attempt_local_repair()` (pattern-based mutations)
    - If repair fails, build error message and set `next_action: "continue"`
+   - Increment iteration counter
 4. If verification passes or not a fix task → set `next_action: "end"`
+
+**Retry Behavior:**
+- On `next_action: "continue"`: Routes back to `llm_plan` node (Phase 2)
+  - Skips Phases 0-1 (textual_pre_plan, llm_pre_plan) since task is already classified
+  - Provides error context to planner for targeted fix
+  - Continues until max_iterations reached or verification passes
+- On `next_action: "end"`: Routes to graph END
 
 **Verification Error Message Structure:**
 ```
@@ -366,7 +398,10 @@ When a "fix task" is detected, the system implements:
 2. Review node runs verification (python main.py)
 3. If output matches expected.txt → END
 4. If mismatch → Build error message, set next_action="continue"
-5. Loop back to plan node with error context
+5. Loop back to llm_plan node (Phase 2) with error context
+   - Skips Phases 0-1 since task is already classified
+   - Prunes older messages to prevent context explosion
+   - Provides structured error details for planner
 6. Repeat up to max_iterations (default 10)
 ```
 
@@ -399,6 +434,16 @@ Controlled by `config.runtime.max_iterations` (default 10).
 | `runtime.max_iterations` | Max retry loops |
 | `runtime.detect_tool_calls_from_text` | Enable pattern detection |
 | `planning.max_retry_attempts` | LLM call retries |
+
+### Codur Coding Agent (agent:codur-coding)
+
+The `codur-coding` agent profile is a coding-optimized LLM configuration intended for coding challenges with optional extra context. It uses a system prompt that:
+- Solves the task end-to-end from the provided problem statement
+- Restates assumptions briefly
+- Produces correct, efficient code with edge cases
+- Asks a single concise clarification only if the task is ambiguous
+
+Use this profile when routing tasks that are primarily coding challenges and include supplemental context that should be considered during solution.
 
 ### Agent Reference Formats
 

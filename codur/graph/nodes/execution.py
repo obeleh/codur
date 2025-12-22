@@ -283,10 +283,26 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     iterations = state.get("iterations", 0)
     max_iterations = config.runtime.max_iterations
 
+    # If we just ran tools to gather context (e.g., read_file), route to coding agent.
+    if outcome.get("agent") == "tools":
+        tool_calls = state.get("tool_calls", []) or []
+        if any(call.get("tool") == "read_file" for call in tool_calls):
+            if state.get("verbose"):
+                console.print("[dim]Tool read_file completed - delegating to codur-coding[/dim]")
+            return {
+                "final_response": result,
+                "next_action": "continue",
+                "selected_agent": "agent:codur-coding",
+            }
+
     if state.get("verbose"):
         console.print(f"[dim]Result status: {outcome.get('status', 'unknown')}[/dim]")
         console.print(f"[dim]Result length: {len(result)} chars[/dim]")
         console.print(f"[dim]Iteration: {iterations}/{max_iterations}[/dim]")
+
+    # Check if this was a tool result (file read, etc) - skip verification for those
+    agent_name = outcome.get("agent", "")
+    is_tool_result = agent_name == "tool_node" or (isinstance(result, str) and result.startswith("Error") and len(result) < 200)
 
     # Check if this was a bug fix / debug task by looking at original message
     from langchain_core.messages import HumanMessage, SystemMessage
@@ -302,8 +318,8 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         "implement", "write", "create", "complete", "build"
     ])
 
-    # Try verification if it's a fix task and we haven't exceeded iterations
-    if is_fix_task and iterations < max_iterations - 1:  # Leave room for one more attempt
+    # Try verification if it's a fix task (but not a tool result) and we haven't exceeded iterations
+    if is_fix_task and not is_tool_result and iterations < max_iterations - 1:  # Leave room for one more attempt
         verification_result = _verify_fix(state, config)
 
         if verification_result["success"]:
@@ -407,6 +423,15 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 "local_repair_attempted": True,
                 "error_hashes": error_history,
             }
+
+    # For tool results (file reads, etc), continue back to planning with the result as context
+    if is_tool_result:
+        if state.get("verbose"):
+            console.print(f"[dim]Tool result: continuing to planning phase with context[/dim]")
+        return {
+            "final_response": None,
+            "next_action": "continue",  # Go back to planning to use this context
+        }
 
     # Accept result if:
     # - Not a fix task
@@ -587,7 +612,7 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
                 # Build detailed mismatch info
                 return {
                     "success": False,
-                    "message": f"Output mismatch.\nExpected: {expected_output}\nActual: {actual_output}",
+                    "message": f"Output mismatch.\nActual: {actual_output}\nExpected: {expected_output}",
                     "expected_output": expected_output,
                     "actual_output": actual_output,
                     "expected_truncated": _truncate_output(expected_output),
@@ -618,11 +643,17 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
                     "message": f"Execution successful. Output: {result.stdout.strip()}"
                 }
             else:
+                std_out_stripped = result.stdout.strip()
+                std_err_stripped = result.stderr.strip()
+                if verbose:
+                    # print std out and stderr for debugging
+                    console.print(f"[dim]Stdout: {std_out_stripped}[/dim]")
+                    console.print(f"[dim]Stderr: {std_err_stripped}[/dim]")
                 return {
                     "success": False,
-                    "message": f"Execution failed (exit code {result.returncode})\nStderr: {result.stderr.strip()}",
-                    "stderr": result.stderr.strip(),
-                    "stdout": result.stdout.strip(),
+                    "message": f"Execution failed (exit code {result.returncode})\nStderr: {std_err_stripped}",
+                    "stderr": std_err_stripped,
+                    "stdout": std_out_stripped,
                     "return_code": result.returncode
                 }
 
