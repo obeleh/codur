@@ -8,7 +8,7 @@ import json
 import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 DEFAULT_CONFIG_RELATIVE_PATH = Path(__file__).resolve().parent.parent / "codur.yaml"
 
@@ -84,6 +84,7 @@ class AsyncSettings(BaseModel):
 class RuntimeSettings(BaseModel):
     """Runtime execution settings"""
     max_iterations: int = 10
+    max_llm_calls: int | None = None
     max_runtime_s: int | None = None
     verbose: bool = False
     allow_outside_workspace: bool = False
@@ -91,12 +92,20 @@ class RuntimeSettings(BaseModel):
     planner_fallback_profiles: List[str] = Field(default_factory=list)
     async_: AsyncSettings = Field(default_factory=AsyncSettings, alias="async")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator("max_runtime_s")
     @classmethod
     def _validate_optional_positive_int(cls, value: int | None) -> int | None:
+        if value is None:
+            return value
+        if value <= 0:
+            raise ValueError("Value must be positive")
+        return value
+
+    @field_validator("max_llm_calls")
+    @classmethod
+    def _validate_optional_positive_llm_calls(cls, value: int | None) -> int | None:
         if value is None:
             return value
         if value <= 0:
@@ -166,6 +175,8 @@ class AgentExecutionSettings(BaseModel):
 
 class CodurConfig(BaseModel):
     """Main Codur configuration"""
+    model_config = ConfigDict(populate_by_name=True)
+
     mcp_servers: Dict[str, MCPServerConfig] = Field(default_factory=dict)
     agents: AgentSettings = Field(default_factory=AgentSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)

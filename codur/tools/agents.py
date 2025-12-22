@@ -10,6 +10,7 @@ from codur.graph.state import AgentState
 from codur.agents.ollama_agent import OllamaAgent
 from codur.agents.codex_agent import CodexAgent
 from codur.agents.claude_code_agent import ClaudeCodeAgent
+from codur.utils.llm_calls import invoke_llm
 
 
 def _resolve_agent_reference(raw_agent: str) -> str:
@@ -33,6 +34,7 @@ def agent_call(
     file_path: str = "",
     file_contents: str = "",
     config: CodurConfig | None = None,
+    state: AgentState | None = None,
 ) -> str:
     """Invoke an agent with a coding challenge and optional file context.
 
@@ -67,7 +69,13 @@ def agent_call(
     if agent_name.startswith("llm:"):
         profile_name = agent_name.split(":", 1)[1]
         llm = create_llm_profile(config, profile_name)
-        response = llm.invoke([HumanMessage(content=task)])
+        response = invoke_llm(
+            llm,
+            [HumanMessage(content=task)],
+            invoked_by="tools.agent_call",
+            state=state,
+            config=config,
+        )
         return response.content
     if resolved_agent == "ollama":
         agent_instance = OllamaAgent(config, override_config=profile_override)
@@ -84,15 +92,19 @@ def agent_call(
         from pathlib import Path
 
         # Build minimal state for coding node
-        state = {
+        coding_state = {
             "messages": [HumanMessage(content=task)],
             "iterations": 0,
             "verbose": False,
             "config": config,
+            "llm_calls": int(state.get("llm_calls", 0)) if state else 0,
+            "max_llm_calls": state.get("max_llm_calls") if state else config.runtime.max_llm_calls,
         }
 
         # Invoke coding node
-        result_dict = coding_node(state, config)  # type: ignore
+        result_dict = coding_node(coding_state, config)  # type: ignore
+        if state is not None:
+            state["llm_calls"] = coding_state.get("llm_calls", state.get("llm_calls", 0))
         result = result_dict["agent_outcome"]["result"]
 
         # If file_path is provided and result contains code, write it to the file
@@ -143,7 +155,13 @@ def retry_in_agent(
     if agent_name.startswith("llm:"):
         profile_name = agent_name.split(":", 1)[1]
         llm = create_llm_profile(config, profile_name)
-        response = llm.invoke([HumanMessage(content=task)])
+        response = invoke_llm(
+            llm,
+            [HumanMessage(content=task)],
+            invoked_by="tools.retry_in_agent",
+            state=state,
+            config=config,
+        )
         return response.content
     if resolved_agent == "ollama":
         agent_instance = OllamaAgent(config, override_config=profile_override)

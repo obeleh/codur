@@ -13,8 +13,9 @@ import pytest
 
 from codur.utils.git import get_diff_for_path
 
-CHALLENGES_DIR = Path(__file__).resolve().parents[1] / "challenges"
+CHALLENGES_DIR = Path(__file__).resolve().parents[2] / "challenges"
 REPO_ROOT = CHALLENGES_DIR.parent
+os.environ["EARLY_FAILURE_HELPERS_FOR_TESTS"] = "1"
 
 warnings.filterwarnings(
     "ignore",
@@ -54,6 +55,7 @@ def _run_codur(prompt: str, cwd: Path) -> str:
             prompt,
             "--raw",
             "--verbose",
+            "--max-llm-calls", "10",
             "--config",
             str(REPO_ROOT / "codur.yaml"),
         ],

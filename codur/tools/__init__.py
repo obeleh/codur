@@ -57,6 +57,7 @@ from codur.tools.git import (
 )
 from codur.tools.webrequests import (
     fetch_webpage,
+    location_lookup,
 )
 from codur.tools.duckduckgo import (
     duckduckgo_search,
@@ -70,6 +71,14 @@ from codur.tools.python_ast import (
 )
 from codur.tools.project_analysis import (
     python_dependency_graph,
+)
+from codur.tools.validation import (
+    validate_python_syntax,
+)
+from codur.tools.ast_utils import (
+    find_function_lines,
+    find_class_lines,
+    find_method_lines,
 )
 from codur.tools.registry import (
     list_tool_directory,
@@ -119,11 +128,16 @@ __all__ = [
     "git_stage_all",
     "git_commit",
     "fetch_webpage",
+    "location_lookup",
     "duckduckgo_search",
     "convert_document",
     "python_ast_graph",
     "python_ast_outline",
     "python_dependency_graph",
+    "validate_python_syntax",
+    "find_function_lines",
+    "find_class_lines",
+    "find_method_lines",
     "list_tool_directory",
     "get_tool_help",
 ]

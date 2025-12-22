@@ -383,6 +383,11 @@ class AgentState(TypedDict):
 
 ## Best Practices
 
+### Coding Guidelines
+
+- Use the `console` module for logging (from Rich).
+- Avoid local imports; keep imports at the top of files.
+
 ### 1. Task Structure for Fix/Debug
 
 For the best results with automatic verification and retry:

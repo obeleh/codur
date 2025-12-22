@@ -22,6 +22,7 @@ class PlanNodeResult(TypedDict):
     selected_agent: NotRequired[str]
     tool_calls: NotRequired[list[ToolCall]]
     llm_debug: NotRequired[Dict[str, Any]]
+    llm_calls: NotRequired[int]
 
 
 class DelegateNodeResult(TypedDict):
@@ -31,10 +32,12 @@ class DelegateNodeResult(TypedDict):
 class ToolNodeResult(TypedDict):
     agent_outcome: AgentOutcome
     messages: list[BaseMessage]
+    llm_calls: NotRequired[int]
 
 
 class ExecuteNodeResult(TypedDict):
     agent_outcome: AgentOutcome
+    llm_calls: NotRequired[int]
 
 
 class ReviewNodeResult(TypedDict):
@@ -48,3 +51,11 @@ class PlanningDecision(TypedDict):
     reasoning: NotRequired[str]
     response: NotRequired[Optional[str]]
     tool_calls: NotRequired[list[ToolCall]]
+
+
+class ReplacementDirective(TypedDict):
+    """Directive to replace a specific function/class/method in a file."""
+    operation: Literal["replace_function", "replace_class", "replace_method"]
+    target_name: str  # function/class/method name
+    class_name: NotRequired[Optional[str]]  # for methods only
+    code: str  # the replacement code

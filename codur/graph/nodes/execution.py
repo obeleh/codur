@@ -23,6 +23,7 @@ from codur.graph.nodes.utils import (
 )
 from codur.graph.nodes.tool_detection import create_default_tool_detector
 from codur.tools import read_file, write_file
+from codur.utils.llm_calls import invoke_llm, LLMCallLimitExceeded
 
 # Import agents to ensure they are registered
 import codur.agents.ollama_agent  # noqa: F401
@@ -73,9 +74,12 @@ class AgentExecutor:
                     "agent": self.agent_name,
                     "result": result,
                     "status": "success",
-                }
+                },
+                "llm_calls": self.state.get("llm_calls", 0),
             }
         except Exception as exc:
+            if isinstance(exc, LLMCallLimitExceeded):
+                raise
             console.print(f"[red]✗ Error executing {self.agent_name}: {str(exc)}[/red]")
             if self.state.get("verbose"):
                 console.print(f"[red]{traceback.format_exc()}[/red]")
@@ -84,7 +88,8 @@ class AgentExecutor:
                     "agent": self.agent_name,
                     "result": str(exc),
                     "status": "error",
-                }
+                },
+                "llm_calls": self.state.get("llm_calls", 0),
             }
 
     def _execute_llm_profile(self, task: str) -> str:
@@ -92,7 +97,13 @@ class AgentExecutor:
         if self.state.get("verbose"):
             console.print(f"[dim]Using LLM profile: {profile_name}[/dim]")
         llm = create_llm_profile(self.config, profile_name)
-        response = llm.invoke([HumanMessage(content=task)])
+        response = invoke_llm(
+            llm,
+            [HumanMessage(content=task)],
+            invoked_by="execution.llm_profile",
+            state=self.state,
+            config=self.config,
+        )
         result = response.content
         if self.state.get("verbose"):
             console.print(f"[dim]LLM response length: {len(result)} chars[/dim]")
@@ -114,7 +125,13 @@ class AgentExecutor:
                 break
 
         llm = create_llm_profile(self.config, matching_profile) if matching_profile else create_llm(self.config)
-        response = llm.invoke([HumanMessage(content=task)])
+        response = invoke_llm(
+            llm,
+            [HumanMessage(content=task)],
+            invoked_by="execution.llm_agent",
+            state=self.state,
+            config=self.config,
+        )
         result = response.content
         if self.state.get("verbose"):
             console.print(f"[dim]LLM response length: {len(result)} chars[/dim]")

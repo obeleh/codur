@@ -13,6 +13,7 @@ from langchain_core.messages import BaseMessage
 
 from codur.config import CodurConfig
 from codur.llm import create_llm_profile
+from codur.utils.llm_calls import invoke_llm
 
 
 def _is_connection_error(exc: Exception) -> bool:
@@ -74,14 +75,28 @@ class LLMRetryStrategy:
         self,
         llm: BaseChatModel,
         prompt_messages: list[BaseMessage],
+        state: "AgentState | None" = None,
+        config: CodurConfig | None = None,
+        invoked_by: str = "retry.invoke_with_retries",
     ) -> BaseMessage:
-        return retry_with_backoff(lambda: llm.invoke(prompt_messages), self.strategy)
+        return retry_with_backoff(
+            lambda: invoke_llm(
+                llm,
+                prompt_messages,
+                invoked_by=invoked_by,
+                state=state,
+                config=config,
+            ),
+            self.strategy,
+        )
 
     def invoke_with_fallbacks(
         self,
         config: CodurConfig,
         llm: BaseChatModel,
         prompt_messages: list[BaseMessage],
+        state: "AgentState | None" = None,
+        invoked_by: str = "retry.invoke_with_fallbacks",
     ) -> tuple[BaseChatModel, BaseMessage, str]:
         profile_names = [config.llm.default_profile]
         fallback_profiles = config.runtime.planner_fallback_profiles
@@ -92,7 +107,13 @@ class LLMRetryStrategy:
         for idx, profile_name in enumerate(profile_names):
             try_llm = llm if idx == 0 else create_llm_profile(config, profile_name)
             try:
-                response = self.invoke_with_retries(try_llm, prompt_messages)
+                response = self.invoke_with_retries(
+                    try_llm,
+                    prompt_messages,
+                    state=state,
+                    config=config,
+                    invoked_by=invoked_by,
+                )
                 return try_llm, response, profile_name
             except Exception as exc:
                 last_error = exc

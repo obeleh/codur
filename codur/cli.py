@@ -58,7 +58,13 @@ def _invoke_graph(graph, payload: dict, timeout_s: int | None):
             executor.shutdown(wait=True, cancel_futures=True)
 
 
-def _run_prompt(prompt: str, config: Optional[Path], verbose: bool, raw: bool) -> None:
+def _run_prompt(
+    prompt: str,
+    config: Optional[Path],
+    verbose: bool,
+    raw: bool,
+    max_llm_calls: int | None,
+) -> None:
     if not raw:
         console.print(Panel.fit(
             "[bold cyan]Codur Agent[/bold cyan]\n"
@@ -67,6 +73,8 @@ def _run_prompt(prompt: str, config: Optional[Path], verbose: bool, raw: bool) -
         ))
 
     cfg = load_config(config)
+    if max_llm_calls is not None:
+        cfg.runtime.max_llm_calls = max_llm_calls
     graph = create_agent_graph(cfg)
 
     try:
@@ -74,6 +82,8 @@ def _run_prompt(prompt: str, config: Optional[Path], verbose: bool, raw: bool) -
             "messages": [HumanMessage(content=prompt)],
             "verbose": verbose,
             "config": cfg,
+            "llm_calls": 0,
+            "max_llm_calls": cfg.runtime.max_llm_calls,
         }, cfg.runtime.max_runtime_s)
 
         selected_agent = result.get("selected_agent")
@@ -118,9 +128,14 @@ def main_callback(
         "-v",
         help="Enable verbose output",
     ),
+    max_llm_calls: Optional[int] = typer.Option(
+        None,
+        "--max-llm-calls",
+        help="Maximum number of LLM calls for a single run",
+    ),
 ):
     if command:
-        _run_prompt(command, config, verbose, raw)
+        _run_prompt(command, config, verbose, raw, max_llm_calls)
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         console.print(ctx.get_help())
@@ -147,6 +162,11 @@ def run(
         "--raw",
         help="Only print the response content",
     ),
+    max_llm_calls: Optional[int] = typer.Option(
+        None,
+        "--max-llm-calls",
+        help="Maximum number of LLM calls for a single run",
+    ),
 ):
     """
     Run a coding task through the agent orchestrator.
@@ -155,7 +175,7 @@ def run(
         codur run "Create a Python function to calculate fibonacci numbers"
         codur run "Refactor the authentication module" --verbose
     """
-    _run_prompt(prompt, config, verbose, raw)
+    _run_prompt(prompt, config, verbose, raw, max_llm_calls)
 
 
 @app.command()
@@ -297,7 +317,13 @@ def list_mcp():
 
 
 @app.command()
-def interactive():
+def interactive(
+    max_llm_calls: Optional[int] = typer.Option(
+        None,
+        "--max-llm-calls",
+        help="Maximum number of LLM calls per prompt",
+    ),
+):
     """
     Start an interactive session with the coding agent.
     """
@@ -308,6 +334,8 @@ def interactive():
     ))
 
     cfg = load_config()
+    if max_llm_calls is not None:
+        cfg.runtime.max_llm_calls = max_llm_calls
     graph = create_agent_graph(cfg)
 
     while True:
@@ -324,6 +352,8 @@ def interactive():
             result = _invoke_graph(graph, {
                 "messages": [HumanMessage(content=prompt)],
                 "config": cfg,
+                "llm_calls": 0,
+                "max_llm_calls": cfg.runtime.max_llm_calls,
             }, cfg.runtime.max_runtime_s)
 
             selected_agent = result.get("selected_agent")

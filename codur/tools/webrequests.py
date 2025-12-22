@@ -293,3 +293,59 @@ def fetch_webpage(
         result["html"] = _truncate(html_output, max_bytes)
 
     return result
+
+
+def location_lookup(
+    ip: str | None = None,
+    provider: str = "ipapi",
+    timeout_s: float = 10.0,
+    state: AgentState | None = None,
+) -> dict:
+    """Resolve an IP address to a geographic location."""
+    normalized = (provider or "ipapi").lower().strip()
+    if normalized not in {"ipapi", "ip-api"}:
+        raise ValueError("provider must be one of: ipapi, ip-api")
+
+    target_ip = ip.strip() if ip else ""
+    if normalized == "ipapi":
+        url = f"https://ipapi.co/{target_ip}/json/" if target_ip else "https://ipapi.co/json/"
+        response = requests.get(url, headers={"User-Agent": "codur/1.0"}, timeout=timeout_s)
+        response.raise_for_status()
+        data = response.json()
+        return {
+            "provider": "ipapi",
+            "ip": data.get("ip") or target_ip or None,
+            "city": data.get("city"),
+            "region": data.get("region"),
+            "region_code": data.get("region_code"),
+            "country": data.get("country_name"),
+            "country_code": data.get("country_code"),
+            "latitude": data.get("latitude"),
+            "longitude": data.get("longitude"),
+            "postal": data.get("postal"),
+            "timezone": data.get("timezone"),
+            "org": data.get("org"),
+            "asn": data.get("asn"),
+            "raw": data,
+        }
+
+    url = f"http://ip-api.com/json/{target_ip}" if target_ip else "http://ip-api.com/json/"
+    response = requests.get(url, headers={"User-Agent": "codur/1.0"}, timeout=timeout_s)
+    response.raise_for_status()
+    data = response.json()
+    return {
+        "provider": "ip-api",
+        "ip": data.get("query") or target_ip or None,
+        "city": data.get("city"),
+        "region": data.get("regionName"),
+        "region_code": data.get("region"),
+        "country": data.get("country"),
+        "country_code": data.get("countryCode"),
+        "latitude": data.get("lat"),
+        "longitude": data.get("lon"),
+        "postal": data.get("zip"),
+        "timezone": data.get("timezone"),
+        "org": data.get("org"),
+        "asn": data.get("as"),
+        "raw": data,
+    }

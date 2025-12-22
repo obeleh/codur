@@ -24,6 +24,8 @@ class AgentState(TypedDict):
         selected_agent: The agent selected for delegation
         tool_calls: Tool calls requested by the planner
         verbose: Whether to print verbose output
+        llm_calls: Count of LLM invocations so far
+        max_llm_calls: Maximum allowed LLM invocations
     """
     messages: Annotated[Sequence[BaseMessage], operator.add]
     next_action: str
@@ -34,6 +36,8 @@ class AgentState(TypedDict):
     tool_calls: list[dict]
     verbose: bool
     config: CodurConfig
+    llm_calls: int
+    max_llm_calls: int | None
 
 
 class AgentStateData(dict):

@@ -9,6 +9,8 @@ from langchain_core.messages import BaseMessage, SystemMessage
 
 from codur.config import CodurConfig
 from codur.graph.nodes.types import PlanNodeResult, PlanningDecision
+from codur.graph.state import AgentState
+from codur.utils.llm_calls import invoke_llm
 
 from .json_parser import JSONResponseParser
 
@@ -63,6 +65,7 @@ class PlanningDecisionHandler:
         messages: list[BaseMessage],
         has_tool_results: bool,
         llm_debug: Dict[str, Any],
+        state: AgentState | None = None,
     ) -> Optional[PlanningDecision]:
         decision = self.parser.parse(content)
         if decision:
@@ -76,7 +79,13 @@ class PlanningDecisionHandler:
                     "If you can answer now, use action 'respond' with a concise response in JSON format."
                 )
             )
-            retry_response = llm.invoke([retry_prompt] + list(messages))
+            retry_response = invoke_llm(
+                llm,
+                [retry_prompt] + list(messages),
+                invoked_by="planning.retry_json",
+                state=state,
+                config=self.config,
+            )
             retry_content = retry_response.content
             debug_long = self.config.planning.debug_truncate_long
             llm_debug["llm_response_retry"] = (

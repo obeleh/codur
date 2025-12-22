@@ -14,6 +14,7 @@ from codur.graph.nodes.utils import _normalize_messages
 from codur.graph.nodes.non_llm_tools import run_non_llm_tools
 from codur.llm import create_llm_profile
 from codur.utils.retry import LLMRetryStrategy
+from codur.utils.llm_calls import invoke_llm, LLMCallLimitExceeded
 
 from .decision_handler import PlanningDecisionHandler
 from .prompt_builder import PlanningPromptBuilder
@@ -142,6 +143,10 @@ class PlanningOrchestrator:
         if state.get("verbose"):
             console.print("[bold blue]Planning (Phase 2: Full LLM Planning)...[/bold blue]")
 
+        def _with_llm_calls(result: PlanNodeResult) -> PlanNodeResult:
+            result["llm_calls"] = state.get("llm_calls", 0)
+            return result
+
         messages = _normalize_messages(state.get("messages"))
         iterations = state.get("iterations", 0)
 
@@ -182,11 +187,15 @@ class PlanningOrchestrator:
                 self.config,
                 planning_llm,
                 prompt_messages,
+                state=state,
+                invoked_by="planning.llm_plan",
             )
             content = response.content
             if state.get("verbose"):
                 console.print(f"[dim]LLM content: {content}[/dim]")
         except Exception as exc:
+            if isinstance(exc, LLMCallLimitExceeded):
+                raise
             if "Failed to validate JSON" in str(exc):
                 console.print("  PLANNING ERROR - LLM returned invalid JSON", style="red bold on yellow")
 
@@ -196,12 +205,12 @@ class PlanningOrchestrator:
             if state.get("verbose"):
                 console.print(f"[red]Planning failed: {str(exc)}[/red]")
                 console.print(f"[yellow]Falling back to default agent: {default_agent}[/yellow]")
-            return {
+            return _with_llm_calls({
                 "next_action": "delegate",
                 "selected_agent": default_agent,
                 "iterations": iterations + 1,
                 "llm_debug": {"error": str(exc), "llm_profile": self.config.llm.default_profile},
-            }
+            })
 
         user_message = messages[-1].content if messages else ""
         planning_prompt = self.prompt_builder.build_system_prompt()
@@ -220,6 +229,7 @@ class PlanningOrchestrator:
                 messages,
                 tool_results_present,
                 llm_debug,
+                state=state,
             )
 
             if decision is None:
@@ -232,7 +242,13 @@ class PlanningOrchestrator:
                                 "that modify the referenced file."
                             )
                         )
-                        retry_response = active_llm.invoke([retry_prompt] + list(messages))
+                        retry_response = invoke_llm(
+                            active_llm,
+                            [retry_prompt] + list(messages),
+                            invoked_by="planning.retry_force_tool",
+                            state=state,
+                            config=self.config,
+                        )
                         retry_content = retry_response.content
                         debug_long = self.config.planning.debug_truncate_long
                         llm_debug["llm_response_retry_forced"] = (
@@ -244,19 +260,19 @@ class PlanningOrchestrator:
                         if forced_decision:
                             decision = forced_decision
                         else:
-                            return {
+                            return _with_llm_calls({
                                 "next_action": "end",
                                 "final_response": content,
                                 "iterations": iterations + 1,
                                 "llm_debug": llm_debug,
-                            }
+                            })
                     else:
-                        return {
+                        return _with_llm_calls({
                             "next_action": "end",
                             "final_response": content,
                             "iterations": iterations + 1,
                             "llm_debug": llm_debug,
-                        }
+                        })
                 if not self.config.agents.preferences.default_agent:
                     raise ValueError("agents.preferences.default_agent must be configured")
                 default_agent = self.config.agents.preferences.default_agent
@@ -282,7 +298,13 @@ class PlanningOrchestrator:
                                 "Do not respond with instructions or summaries. Return valid JSON only."
                             )
                         )
-                        retry_response = active_llm.invoke([retry_prompt] + list(messages))
+                        retry_response = invoke_llm(
+                            active_llm,
+                            [retry_prompt] + list(messages),
+                            invoked_by="planning.retry_force_tool",
+                            state=state,
+                            config=self.config,
+                        )
                         retry_content = retry_response.content
                         debug_long = self.config.planning.debug_truncate_long
                         llm_debug["llm_response_retry_forced"] = (
@@ -301,7 +323,13 @@ class PlanningOrchestrator:
                                 "Return a valid JSON object."
                             )
                         )
-                        retry_response = active_llm.invoke([retry_prompt] + list(messages))
+                        retry_response = invoke_llm(
+                            active_llm,
+                            [retry_prompt] + list(messages),
+                            invoked_by="planning.retry_force_mutation",
+                            state=state,
+                            config=self.config,
+                        )
                         retry_content = retry_response.content
                         debug_long = self.config.planning.debug_truncate_long
                         llm_debug["llm_response_retry_mutation"] = (
@@ -313,7 +341,7 @@ class PlanningOrchestrator:
                         if forced_decision:
                             decision = forced_decision
 
-            return self.decision_handler.handle_decision(decision, iterations, llm_debug)
+            return _with_llm_calls(self.decision_handler.handle_decision(decision, iterations, llm_debug))
 
         except (json.JSONDecodeError, KeyError, ValueError) as exc:
             console.print("\n" + "=" * 80, style="red bold")
@@ -335,12 +363,12 @@ class PlanningOrchestrator:
             default_agent = self.config.agents.preferences.default_agent
             console.print(f"  Falling back to default agent: {default_agent}", style="yellow")
 
-            return {
+            return _with_llm_calls({
                 "next_action": "delegate",
                 "selected_agent": default_agent,
                 "iterations": iterations + 1,
                 "llm_debug": llm_debug,
-            }
+            })
 
     @staticmethod
     def _last_human_message(messages: list[BaseMessage]) -> str | None:

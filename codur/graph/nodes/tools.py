@@ -51,6 +51,7 @@ from codur.tools import (
     git_stage_all,
     git_commit,
     fetch_webpage,
+    location_lookup,
     duckduckgo_search,
     convert_document,
     python_ast_graph,
@@ -138,6 +139,7 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
         "git_stage_all": lambda args: git_stage_all(root=root, state=tool_state, **args),
         "git_commit": lambda args: git_commit(root=root, state=tool_state, **args),
         "fetch_webpage": lambda args: fetch_webpage(state=tool_state, **args),
+        "location_lookup": lambda args: location_lookup(state=tool_state, **args),
         "duckduckgo_search": lambda args: duckduckgo_search(state=tool_state, **args),
         "convert_document": lambda args: convert_document(
             root=root,
@@ -165,6 +167,7 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
         ),
         "agent_call": lambda args: agent_call(
             config=config,
+            state=tool_state,
             **args,
         ),
     }
@@ -209,6 +212,7 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
             "status": "success" if not errors else "error",
         },
         "messages": [SystemMessage(content=f"Tool results:\n{summary}")],
+        "llm_calls": tool_state.get("llm_calls", state.get("llm_calls", 0)),
     }
 
 
