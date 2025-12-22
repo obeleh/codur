@@ -408,12 +408,21 @@ class PlanningOrchestrator:
                 "llm_debug": {"phase1_resolved": True, "task_type": "explanation"},
             }
 
+        # Web searches - use duckduckgo_search
+        if task_type == TaskType.WEB_SEARCH:
+            return {
+                "next_action": "tool",
+                "tool_calls": [{"tool": "duckduckgo_search", "args": {"query": user_message}}],
+                "iterations": iterations + 1,
+                "llm_debug": {"phase1_resolved": True, "task_type": "web_search"},
+            }
+
         # Code fix/generation - delegate to appropriate agent
-        # NOTE: Only do Phase 1 routing for code tasks if confidence is high (>70%)
+        # NOTE: Only do Phase 1 routing for code tasks if confidence is high (>90%)
         # This allows Phase 1 to be proactive with intelligent pre-planning while still
         # letting Phase 2 refine uncertain cases
         if task_type in (TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR):
-            if classification.confidence >= 0.70:
+            if classification.confidence >= 0.90:
                 # High confidence - safe to route in Phase 1
                 agent = get_agent_for_task_type(
                     task_type,
@@ -494,11 +503,13 @@ class PlanningOrchestrator:
         prompt_messages = [system_message] + list(messages)
 
         if has_tool_results:
-            # For retries with error context, be explicit about retry strategy
+            # For retries or tool results, be explicit about next steps
             followup_prompt = SystemMessage(
                 content=(
-                    "Error/verification results are available above. Review them and respond with valid JSON.\n"
-                    "If the verification failed, delegate to an agent again with a request to fix the issues.\n"
+                    "Tool results or verification errors are available above. Review them and respond with valid JSON.\n"
+                    "1. If tool results (like web search or file read) provide the answer → use action: 'respond' with the answer.\n"
+                    "2. If verification failed → use action: 'delegate' to an agent to fix the issues.\n"
+                    "3. If more tools are needed → use action: 'tool'.\n"
                     "Return ONLY valid JSON in the required format."
                 )
             )

@@ -9,7 +9,7 @@ import inspect
 from codur.graph.state import AgentState
 
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 except ImportError:  # pragma: no cover - optional dependency
     DDGS = None
 
@@ -31,7 +31,6 @@ def duckduckgo_search(
 
     with DDGS() as ddgs:
         kwargs = {
-            "keywords": query,
             "region": region,
             "safesearch": safesearch,
             "timelimit": timelimit,
@@ -40,5 +39,5 @@ def duckduckgo_search(
         if backend:
             if "backend" in inspect.signature(ddgs.text).parameters:
                 kwargs["backend"] = backend
-        results = list(ddgs.text(**kwargs))
+        results = list(ddgs.text(query, **kwargs))
     return results

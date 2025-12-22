@@ -136,9 +136,9 @@ def git_status(
     head_sha = ""
     detached = False
     if head is not None:
-        detached = head.is_detached
+        detached = repo.head_is_detached
         branch = head.shorthand if not detached else "HEAD"
-        if not head.is_unborn:
+        if not repo.head_is_unborn:
             head_sha = str(head.target)
 
     def _clip(items: list[str]) -> list[str]:
@@ -179,11 +179,11 @@ def git_diff(
     if normalized_mode == "unstaged":
         diff = repo.diff(context_lines=context_lines, interhunk_lines=interhunk_lines)
     elif normalized_mode == "staged":
-        if repo.head is None or repo.head.is_unborn:
+        if repo.head is None or repo.head_is_unborn:
             raise ValueError("HEAD is not available for staged diff")
         diff = repo.diff("HEAD", cached=True, context_lines=context_lines, interhunk_lines=interhunk_lines)
     elif normalized_mode == "all":
-        if repo.head is None or repo.head.is_unborn:
+        if repo.head is None or repo.head_is_unborn:
             raise ValueError("HEAD is not available for diff against HEAD")
         diff = repo.diff("HEAD", context_lines=context_lines, interhunk_lines=interhunk_lines)
     else:
@@ -214,7 +214,7 @@ def git_log(
     Return recent commit metadata for the current repository.
     """
     repo = _open_repo(root)
-    if repo.head is None or repo.head.is_unborn:
+    if repo.head is None or repo.head_is_unborn:
         return []
 
     commits: list[dict] = []

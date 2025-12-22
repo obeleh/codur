@@ -458,10 +458,10 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     }
 
 
-def _truncate_output(text: str, max_lines: int = 30) -> str:
+def _truncate_output(text: str, max_lines: int = 50) -> str:
     """Truncate output to a reasonable length for display and agent processing.
 
-    Using 30 lines (increased from 20) to give agents more context to understand
+    Using 50 lines to give agents more context to understand
     what went wrong and fix issues. This improves reliability.
     """
     lines = text.split('\n')
@@ -498,10 +498,10 @@ def _prune_messages(messages: list, max_to_keep: int = 10) -> list:
     # Keep original task
     pruned = messages[:first_human_idx + 1]
 
-    # Keep recent agent attempts and error messages together (last 5 attempts)
+    # Keep recent agent attempts and error messages together (last 8 attempts)
     # This way agent sees: "I tried X, got error Y, I tried Z, got error W"
     recent_count = 0
-    max_recent = 5
+    max_recent = 8
     for i, msg in enumerate(reversed(messages[first_human_idx + 1:])):
         # Keep both AIMessage (agent attempts) and SystemMessage (errors) from recent history
         if isinstance(msg, (AIMessage, SystemMessage)):
@@ -718,12 +718,23 @@ def _attempt_local_repair(state: AgentState) -> dict:
         text = re.sub(r"\bwhile\s+([a-z_]\w*)\s*:", r"while \1 > 0:", text)
         return text
 
+    def mutate_add_f_prefix(text: str) -> str:
+        """Add missing f-string prefix"""
+        # Finds "{var}" inside quotes without f-prefix
+        return re.sub(r'(?<!f)"(.*?\{[a-zA-Z_]\w*\}.*?)"', r'f"\1"', text)
+
+    def mutate_fix_list_access(text: str) -> str:
+        """Fix off-by-one list access [i] -> [i-1]"""
+        return re.sub(r'\[([a-zA-Z_]\w*)\]', r'[\1 - 1]', text)
+
     mutations = [
         mutate_range_inclusive,
         mutate_remove_continue_guard,
         mutate_remove_div_100,
         mutate_fix_comparison,
         mutate_fix_loop_condition,
+        mutate_add_f_prefix,
+        mutate_fix_list_access,
     ]
 
     # Build all candidate mutations

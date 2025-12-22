@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
+import json
 from typing import Callable, Optional
 
 
@@ -224,7 +225,37 @@ def create_default_tool_detector() -> ToolDetector:
             return None
         return [{"tool": "lint_python_files", "args": {"paths": paths}}]
 
+    def json_tool_calls(msg: str, msg_lower: str) -> Optional[ToolCallList]:
+        """Detect tool calls in JSON format."""
+        # Look for ```json ... ``` blocks or raw JSON arrays
+        json_matches = re.findall(r"```(?:json)?\s*(\[\s*\{.*?\}\s*\]|\{.*?\})\s*```", msg, re.DOTALL)
+        
+        # Also try to find raw JSON arrays looking like tool calls
+        if not json_matches:
+            json_matches = re.findall(r"(\[\s*\{\s*\"tool\":.*?\}\s*\])", msg, re.DOTALL)
+
+        for json_str in json_matches:
+            try:
+                # Clean up potential markdown artifacts if regex captured them
+                cleaned = json_str.strip()
+                data = json.loads(cleaned)
+                
+                if isinstance(data, dict):
+                    data = [data]
+                
+                if isinstance(data, list):
+                    tools = []
+                    for item in data:
+                        if isinstance(item, dict) and "tool" in item:
+                            tools.append(item)
+                    if tools:
+                        return tools
+            except json.JSONDecodeError:
+                continue
+        return None
+
     patterns = [
+        ToolPattern("json_tool_calls", json_tool_calls, priority=110),
         ToolPattern("change_intent", change_intent, priority=100),
         ToolPattern("move_file", move_file, priority=90),
         ToolPattern("copy_file", copy_file, priority=90),

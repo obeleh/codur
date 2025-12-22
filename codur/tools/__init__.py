@@ -17,6 +17,8 @@ from codur.tools.filesystem import (
     search_files,
     grep_files,
     replace_in_file,
+    inject_lines,
+    replace_lines,
     line_count,
 )
 from codur.tools.structured import (
@@ -89,6 +91,8 @@ __all__ = [
     "search_files",
     "grep_files",
     "replace_in_file",
+    "inject_lines",
+    "replace_lines",
     "line_count",
     "read_json",
     "write_json",

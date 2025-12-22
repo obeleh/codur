@@ -4,7 +4,6 @@ Main LangGraph definition for the coding agent
 
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from rich.console import Console
 
 from codur.graph.state import AgentState
 from codur.graph.nodes import (
@@ -24,8 +23,6 @@ from codur.graph.nodes.planning import (
 )
 from codur.config import CodurConfig
 from codur.llm import create_llm, create_llm_profile
-
-console = Console()
 
 
 def should_continue_to_llm_pre_plan(state: AgentState) -> str:

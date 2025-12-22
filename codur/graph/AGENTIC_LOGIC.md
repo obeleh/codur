@@ -159,7 +159,7 @@ The `messages` field uses `Annotated[Sequence[BaseMessage], operator.add]` which
 
 To prevent context explosion during retry loops, `_prune_messages()` in `execution.py:417` keeps:
 - Original HumanMessage (the task)
-- Last 4 verification error messages
+- Last 8 verification error messages (and recent agent attempts)
 - Discards older intermediate messages
 
 **Note:** Message pruning can cause flakiness if it discards important context. Consider:
@@ -196,7 +196,7 @@ To prevent context explosion during retry loops, `_prune_messages()` in `executi
 
 **Returns:** `PlanNodeResult` with `next_action`, `selected_agent`, `tool_calls`, etc.
 
-**Flakiness Note:** Phase 1 quick classification is used for high-confidence cases (≥80%), but can cause issues if it misclassifies complex tasks. Current implementation has safeguards but consider being more conservative with Phase 1 to avoid wrong routing.
+**Flakiness Note:** Phase 1 quick classification is used for high-confidence cases (≥90%), but can cause issues if it misclassifies complex tasks. Current implementation has safeguards but consider being more conservative with Phase 1 to avoid wrong routing.
 
 ---
 
@@ -375,6 +375,7 @@ Detects tool calls from natural language patterns in text:
 | `copy A to B` | `copy_file` |
 | `delete file.py` | `delete_file` |
 | `replace X with Y in file` | `replace_in_file` |
+| ````json ... ```` | JSON-formatted tool calls |
 
 ### Non-LLM Fast Path
 
@@ -413,6 +414,8 @@ Pattern-based mutations tried before looping:
 1. `range(start, end)` → `range(start, end + 1)` (off-by-one)
 2. Remove `if X: continue` guards
 3. Remove `/100` divisions (discount calculation fix)
+4. Fix list access `[i]` → `[i-1]`
+5. Add missing f-string prefix
 
 Also tries combinations of mutations.
 

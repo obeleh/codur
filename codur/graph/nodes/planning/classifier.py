@@ -26,6 +26,7 @@ class TaskType(Enum):
     CODE_GENERATION = "code_generation"
     EXPLANATION = "explanation"
     COMPLEX_REFACTOR = "complex_refactor"
+    WEB_SEARCH = "web_search"
     UNKNOWN = "unknown"
 
 
@@ -75,6 +76,15 @@ COMPLEX_KEYWORDS = {
 
 GENERATION_KEYWORDS = {
     "write", "create", "add", "generate", "make", "build", "new"
+}
+
+WEB_SEARCH_KEYWORDS = {
+    "weather", "search", "latest", "news", "today", "current", "how is", "what are",
+    "who is", "when did", "stock", "price", "market", "google", "find"
+}
+
+BROAD_QUESTION_KEYWORDS = {
+    "who", "when", "where", "why", "what"
 }
 
 
@@ -192,6 +202,31 @@ def quick_classify(messages: list[BaseMessage], config: CodurConfig) -> Classifi
             reasoning="Detected code generation keywords"
         )
 
+    # Check for web search (high confidence if specific keywords used and no files detected)
+    if any(kw in text_lower for kw in WEB_SEARCH_KEYWORDS):
+        if not detected_files:
+            return ClassificationResult(
+                task_type=TaskType.WEB_SEARCH,
+                confidence=0.85,
+                detected_files=[],
+                detected_action="duckduckgo_search",
+                reasoning="Detected web search/real-time keywords"
+            )
+
+    # Check for broad/ambiguous questions (low confidence web search)
+    # This captures "Who won the game?" or "When is the deadline?"
+    # Confidence is low (0.5) so it forces Phase 2 LLM planning, but provides the
+    # WEB_SEARCH task type to prompt_builder for tool hints.
+    if any(kw in words for kw in BROAD_QUESTION_KEYWORDS):
+        if not detected_files:
+            return ClassificationResult(
+                task_type=TaskType.WEB_SEARCH,
+                confidence=0.5,
+                detected_files=[],
+                detected_action=None,
+                reasoning="Detected broad question pattern (possible web search)"
+            )
+
     # Unknown - need full LLM planning
     return ClassificationResult(
         task_type=TaskType.UNKNOWN,
@@ -236,7 +271,7 @@ def get_agent_for_task_type(
 
     # Fallback to capability-based routing for smarter agent selection
     if user_message:
-        best_agent, confidence, scores = select_best_agent(user_message, config)
+        best_agent, confidence, _ = select_best_agent(user_message, config)
         if confidence > 0:
             return best_agent
 
@@ -329,12 +364,22 @@ Tools: read_file, write_file, copy_file, move_file, delete_file, list_files
 
 Return ONLY valid JSON:"""
 
+    if task_type == TaskType.WEB_SEARCH:
+        return base_rules + f"""This task requires real-time information or general knowledge from the web.
+
+Use duckduckgo_search to find information.
+
+{{"action": "tool", "agent": null, "reasoning": "need real-time info", "tool_calls": [{{"tool": "duckduckgo_search", "args": {{"query": "..."}}}}]}}
+
+Return ONLY valid JSON:"""
+
     # Unknown or needs full analysis
     return base_rules + f"""Task type uncertain. Analyze and choose appropriate action.
 
 Options:
 - "delegate" for code tasks: {{"action": "delegate", "agent": "{default_agent}", ...}}
 - "tool" for file ops: {{"action": "tool", "tool_calls": [...], ...}}
-- "respond" for greetings: {{"action": "respond", "response": "...", ...}}
+- "tool" for web search (real-time info): {{"action": "tool", "tool_calls": [{{"tool": "duckduckgo_search", "args": {{"query": "..."}}}}]}}
+- "respond" for greetings or direct answers: {{"action": "respond", "response": "...", ...}}
 
 Return ONLY valid JSON:"""

@@ -302,3 +302,64 @@ def line_count(
         for count, _ in enumerate(handle, start=1):
             pass
     return {"path": str(target), "lines": count}
+
+
+def inject_lines(
+    path: str,
+    line: int,
+    content: str,
+    root: str | Path | None = None,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> dict:
+    """Insert content at a 1-based line number."""
+    if line < 1:
+        raise ValueError("line must be >= 1")
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    text = target.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines(keepends=True)
+    if line > len(lines) + 1:
+        raise ValueError("line exceeds file length + 1")
+    insert_at = line - 1
+    insert_lines = _split_content_lines(content)
+    lines[insert_at:insert_at] = insert_lines
+    target.write_text("".join(lines), encoding="utf-8")
+    return {"path": str(target), "line": line, "inserted_lines": len(insert_lines)}
+
+
+def replace_lines(
+    path: str,
+    start_line: int,
+    end_line: int,
+    content: str,
+    root: str | Path | None = None,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> dict:
+    """Replace inclusive line range [start_line, end_line] with content."""
+    if start_line < 1 or end_line < start_line:
+        raise ValueError("start_line must be >= 1 and <= end_line")
+    target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    text = target.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines(keepends=True)
+    if start_line > len(lines) + 1:
+        raise ValueError("start_line exceeds file length + 1")
+    if end_line > len(lines) + 1:
+        raise ValueError("end_line exceeds file length + 1")
+    start_idx = start_line - 1
+    end_idx = min(end_line, len(lines))
+    new_lines = _split_content_lines(content)
+    lines[start_idx:end_idx] = new_lines
+    target.write_text("".join(lines), encoding="utf-8")
+    return {
+        "path": str(target),
+        "start_line": start_line,
+        "end_line": end_line,
+        "replaced_lines": end_idx - start_idx,
+    }
+
+
+def _split_content_lines(content: str) -> list[str]:
+    if content == "":
+        return []
+    return content.splitlines(keepends=True)
