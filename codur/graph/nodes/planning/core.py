@@ -12,6 +12,7 @@ from codur.graph.state import AgentState
 from codur.graph.nodes.types import PlanNodeResult
 from codur.graph.nodes.utils import _normalize_messages
 from codur.graph.nodes.non_llm_tools import run_non_llm_tools
+from codur.llm import create_llm_profile
 from codur.utils.retry import LLMRetryStrategy
 
 from .decision_handler import PlanningDecisionHandler
@@ -168,7 +169,6 @@ class PlanningOrchestrator:
         )
         try:
             # Create LLM for planning with lower temperature for more deterministic JSON output
-            from codur.llm import create_llm_profile
             planning_llm = create_llm_profile(
                 self.config,
                 self.config.llm.default_profile,

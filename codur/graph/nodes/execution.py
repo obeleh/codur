@@ -1,5 +1,12 @@
 """Delegation, execution, and review nodes."""
 
+import re
+import subprocess
+import tempfile
+import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 from rich.console import Console
@@ -15,6 +22,7 @@ from codur.graph.nodes.utils import (
     _normalize_messages,
 )
 from codur.graph.nodes.tool_detection import create_default_tool_detector
+from codur.tools import read_file, write_file
 
 # Import agents to ensure they are registered
 import codur.agents.ollama_agent  # noqa: F401
@@ -70,7 +78,6 @@ class AgentExecutor:
         except Exception as exc:
             console.print(f"[red]✗ Error executing {self.agent_name}: {str(exc)}[/red]")
             if self.state.get("verbose"):
-                import traceback
                 console.print(f"[red]{traceback.format_exc()}[/red]")
             return {
                 "agent_outcome": {
@@ -190,9 +197,6 @@ class AgentExecutor:
 
     def _execute_tool_calls(self, tool_calls: list[dict]) -> str:
         """Execute detected tool calls and return results."""
-        from pathlib import Path
-        from codur.tools import read_file, write_file
-
         results = []
         root = Path.cwd()
         allow_outside_root = self.config.runtime.allow_outside_workspace
@@ -284,9 +288,14 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     max_iterations = config.runtime.max_iterations
 
     # If we just ran tools to gather context (e.g., read_file), route to coding agent.
+    # BUT: If agent_call was also executed, skip this routing - the result is the implementation.
     if outcome.get("agent") == "tools":
         tool_calls = state.get("tool_calls", []) or []
-        if any(call.get("tool") == "read_file" for call in tool_calls):
+        has_read_file = any(call.get("tool") == "read_file" for call in tool_calls)
+        has_agent_call = any(call.get("tool") == "agent_call" for call in tool_calls)
+
+        # Only route to coding agent if we read files but didn't call an agent yet
+        if has_read_file and not has_agent_call:
             if state.get("verbose"):
                 console.print("[dim]Tool read_file completed - delegating to codur-coding[/dim]")
             return {
@@ -301,11 +310,14 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         console.print(f"[dim]Iteration: {iterations}/{max_iterations}[/dim]")
 
     # Check if this was a tool result (file read, etc) - skip verification for those
+    # BUT: If agent_call was executed, it's an implementation result, not just a tool result
     agent_name = outcome.get("agent", "")
-    is_tool_result = agent_name == "tool_node" or (isinstance(result, str) and result.startswith("Error") and len(result) < 200)
+    tool_calls = state.get("tool_calls", []) or []
+    has_agent_call = any(call.get("tool") == "agent_call" for call in tool_calls)
+
+    is_tool_result = (agent_name == "tools" and not has_agent_call) or (isinstance(result, str) and result.startswith("Error") and len(result) < 200)
 
     # Check if this was a bug fix / debug task by looking at original message
-    from langchain_core.messages import HumanMessage, SystemMessage
     messages = state.get("messages", [])
     original_task = None
     for msg in messages:
@@ -370,9 +382,6 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 console.print(f"[dim]{verification_result['message'][:200]}[/dim]")
 
             # Build a structured error message for the agent
-            from pathlib import Path
-            from langchain_core.messages import SystemMessage
-
             error_parts = ["Verification failed: Output does not match expected."]
 
             # Determine error type: output mismatch vs execution error
@@ -472,8 +481,6 @@ def _prune_messages(messages: list, max_to_keep: int = 10) -> list:
 
     This helps agents learn from their mistakes by seeing their own attempts and the feedback.
     """
-    from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-
     if len(messages) <= max_to_keep:
         return messages
 
@@ -527,9 +534,6 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
     Returns:
         Dict with "success" (bool), "message" (str), and other diagnostic info
     """
-    import subprocess
-    from pathlib import Path
-
     verbose = state.get("verbose", False)
 
     # Look for main.py in current directory
@@ -669,12 +673,6 @@ def _attempt_local_repair(state: AgentState) -> dict:
     This is a last-resort fallback when external agents are unavailable.
     Uses parallel execution for faster mutation testing.
     """
-    import re
-    import subprocess
-    import tempfile
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    from pathlib import Path
-
     cwd = Path.cwd()
     main_py = cwd / "main.py"
     expected_file = cwd / "expected.txt"

@@ -79,11 +79,33 @@ def agent_call(
         agent_instance = ClaudeCodeAgent(config, override_config=profile_override)
         return agent_instance.execute(task)
     if resolved_agent == "codur-coding":
-        # Special handling for codur-coding agent
-        # This would invoke the coding node directly, but for now we route through default LLM
-        llm = create_llm_profile(config, config.llm.default_profile or "default")
-        response = llm.invoke([HumanMessage(content=task)])
-        return response.content
+        # Special handling for codur-coding agent - invoke the actual coding node
+        from codur.graph.nodes.coding import coding_node, _extract_code_block  # type: ignore
+        from pathlib import Path
+
+        # Build minimal state for coding node
+        state = {
+            "messages": [HumanMessage(content=task)],
+            "iterations": 0,
+            "verbose": False,
+            "config": config,
+        }
+
+        # Invoke coding node
+        result_dict = coding_node(state, config)  # type: ignore
+        result = result_dict["agent_outcome"]["result"]
+
+        # If file_path is provided and result contains code, write it to the file
+        if file_path:
+            code = _extract_code_block(result)
+            if code:
+                # Strip @prefix if present
+                clean_path = file_path[1:] if file_path.startswith("@") else file_path
+                target_path = Path.cwd() / clean_path
+                target_path.write_text(code)
+                return f"Successfully wrote code to {clean_path}\n\nCode:\n{code}"
+
+        return result
 
     raise ValueError(f"Unknown agent: {agent_name}")
 
