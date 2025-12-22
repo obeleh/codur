@@ -84,6 +84,7 @@ class AsyncSettings(BaseModel):
 class RuntimeSettings(BaseModel):
     """Runtime execution settings"""
     max_iterations: int = 10
+    max_runtime_s: int | None = None
     verbose: bool = False
     allow_outside_workspace: bool = False
     detect_tool_calls_from_text: bool = True
@@ -92,6 +93,15 @@ class RuntimeSettings(BaseModel):
 
     class Config:
         populate_by_name = True
+
+    @field_validator("max_runtime_s")
+    @classmethod
+    def _validate_optional_positive_int(cls, value: int | None) -> int | None:
+        if value is None:
+            return value
+        if value <= 0:
+            raise ValueError("Value must be positive")
+        return value
 
 
 class PlanningSettings(BaseModel):

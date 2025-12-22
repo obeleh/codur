@@ -424,8 +424,12 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     }
 
 
-def _truncate_output(text: str, max_lines: int = 20) -> str:
-    """Truncate output to a reasonable length for display and agent processing."""
+def _truncate_output(text: str, max_lines: int = 30) -> str:
+    """Truncate output to a reasonable length for display and agent processing.
+
+    Using 30 lines (increased from 20) to give agents more context to understand
+    what went wrong and fix issues. This improves reliability.
+    """
     lines = text.split('\n')
     if len(lines) > max_lines:
         truncated = '\n'.join(lines[:max_lines])
@@ -434,12 +438,14 @@ def _truncate_output(text: str, max_lines: int = 20) -> str:
 
 
 def _prune_messages(messages: list, max_to_keep: int = 10) -> list:
-    """Prune old verification error messages to prevent context explosion.
+    """Prune old messages to prevent context explosion while preserving learning context.
 
     Keeps:
     - Original HumanMessage(s) - typically the first message
-    - Recent SystemMessage(s) - keep last N error/verification messages
-    - Assistant/tool messages - keep some recent ones
+    - Recent AIMessage(s) - agent's recent attempts (so it learns from them)
+    - Recent SystemMessage(s) - recent error/verification messages for context
+
+    This helps agents learn from their mistakes by seeing their own attempts and the feedback.
     """
     from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
@@ -457,24 +463,28 @@ def _prune_messages(messages: list, max_to_keep: int = 10) -> list:
         # No human message, just keep last N
         return messages[-max_to_keep:]
 
-    # Keep original task + recent messages
-    pruned = messages[:first_human_idx + 1]  # Original task
+    # Keep original task
+    pruned = messages[:first_human_idx + 1]
 
-    # Add recent verification errors (keep last 3-4 of them)
+    # Keep recent agent attempts and error messages together (last 5 attempts)
+    # This way agent sees: "I tried X, got error Y, I tried Z, got error W"
     recent_count = 0
-    max_recent = 4
-    for msg in reversed(messages[first_human_idx + 1:]):
-        if isinstance(msg, SystemMessage) and "Verification failed" in msg.content:
+    max_recent = 5
+    for i, msg in enumerate(reversed(messages[first_human_idx + 1:])):
+        # Keep both AIMessage (agent attempts) and SystemMessage (errors) from recent history
+        if isinstance(msg, (AIMessage, SystemMessage)):
+            if isinstance(msg, SystemMessage) and "Verification failed" not in msg.content:
+                continue  # Skip non-error system messages
             pruned.append(msg)
             recent_count += 1
             if recent_count >= max_recent:
                 break
 
-    # Reverse the recent errors to maintain chronological order
+    # Reverse to maintain chronological order
     if len(pruned) > first_human_idx + 1:
-        recent_errors = pruned[first_human_idx + 1:]
-        recent_errors.reverse()
-        pruned = pruned[:first_human_idx + 1] + recent_errors
+        recent = pruned[first_human_idx + 1:]
+        recent.reverse()
+        pruned = pruned[:first_human_idx + 1] + recent
 
     return pruned
 
@@ -661,10 +671,30 @@ def _attempt_local_repair(state: AgentState) -> dict:
         text = re.sub(r"\(([^()]+?)\s*/\s*100(?:\.0+)?\)", r"\1", text)
         return re.sub(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*/\s*100(?:\.0+)?\b", r"\1", text)
 
+    def mutate_fix_comparison(text: str) -> str:
+        """Fix common comparison mistakes like >= vs >, <= vs <"""
+        # Try flipping >= to >
+        alt1 = text.replace(">=", "__GTE__").replace(">", ">=").replace("__GTE__", ">")
+        if alt1 != text:
+            return alt1
+        # Try flipping <= to <
+        alt2 = text.replace("<=", "__LTE__").replace("<", "<=").replace("__LTE__", "<")
+        if alt2 != text:
+            return alt2
+        return text
+
+    def mutate_fix_loop_condition(text: str) -> str:
+        """Fix loop conditions that are too strict or too loose"""
+        # Change 'while n' to 'while n > 0' (common mistake)
+        text = re.sub(r"\bwhile\s+([a-z_]\w*)\s*:", r"while \1 > 0:", text)
+        return text
+
     mutations = [
         mutate_range_inclusive,
         mutate_remove_continue_guard,
         mutate_remove_div_100,
+        mutate_fix_comparison,
+        mutate_fix_loop_condition,
     ]
 
     # Build all candidate mutations

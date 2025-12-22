@@ -19,6 +19,7 @@ from rich.prompt import Prompt
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 from codur.graph.main_graph import create_agent_graph
 from codur.config import load_config, save_config
@@ -38,6 +39,25 @@ app = typer.Typer(
 )
 console = Console(stderr=False)
 
+
+def _invoke_graph(graph, payload: dict, timeout_s: int | None):
+    if not timeout_s:
+        return graph.invoke(payload)
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(graph.invoke, payload)
+    timed_out = False
+    try:
+        return future.result(timeout=timeout_s)
+    except FuturesTimeoutError as exc:
+        timed_out = True
+        future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise TimeoutError(f"Codur run exceeded {timeout_s} seconds") from exc
+    finally:
+        if not timed_out:
+            executor.shutdown(wait=True, cancel_futures=True)
+
+
 def _run_prompt(prompt: str, config: Optional[Path], verbose: bool, raw: bool) -> None:
     if not raw:
         console.print(Panel.fit(
@@ -50,11 +70,11 @@ def _run_prompt(prompt: str, config: Optional[Path], verbose: bool, raw: bool) -
     graph = create_agent_graph(cfg)
 
     try:
-        result = graph.invoke({
+        result = _invoke_graph(graph, {
             "messages": [HumanMessage(content=prompt)],
             "verbose": verbose,
             "config": cfg,
-        })
+        }, cfg.runtime.max_runtime_s)
 
         selected_agent = result.get("selected_agent")
         if raw:
@@ -301,10 +321,10 @@ def interactive():
             if not prompt.strip():
                 continue
 
-            result = graph.invoke({
+            result = _invoke_graph(graph, {
                 "messages": [HumanMessage(content=prompt)],
                 "config": cfg,
-            })
+            }, cfg.runtime.max_runtime_s)
 
             selected_agent = result.get("selected_agent")
             if selected_agent:

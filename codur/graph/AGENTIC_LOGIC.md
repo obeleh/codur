@@ -19,28 +19,36 @@ This document describes the current implementation of Codur's agentic orchestrat
 
 ## Architecture Overview
 
-Codur uses **LangGraph** to orchestrate an agentic workflow. The system follows a plan-delegate-execute-review pattern with automatic retry loops for fix tasks.
+Codur uses **LangGraph** to orchestrate an agentic workflow. The system follows a three-phase planning architecture with automatic retry loops for fix tasks.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        GRAPH FLOW                                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   ┌──────────┐     ┌────────────┐     ┌─────────┐               │
-│   │  PLAN    │────►│  DELEGATE  │────►│ EXECUTE │               │
-│   └──────────┘     └────────────┘     └────┬────┘               │
-│        │                                    │                    │
-│        │                                    ▼                    │
-│        │           ┌──────────┐        ┌────────┐               │
-│        │◄──────────│ continue │◄───────│ REVIEW │               │
-│        │           └──────────┘        └───┬────┘               │
-│        │                                   │                     │
-│        ▼                                   │ end                 │
-│   ┌──────────┐                             ▼                    │
-│   │   TOOL   │─────────────────────►  ┌────────┐                │
-│   └──────────┘                        │  END   │                │
-│                                       └────────┘                │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           THREE-PHASE GRAPH FLOW                          │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│   ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐          │
+│   │ TEXTUAL PRE-PLAN │►│  LLM PRE-PLAN   │►│    LLM PLAN     │          │
+│   │ (Fast patterns)  │ │ (Quick classify) │ │ (Full planning) │          │
+│   └────────┬─────────┘ └────────┬─────────┘ └────────┬────────┘          │
+│            │                    │                    │                    │
+│   ┌────────▼────────┐  ┌────────▼────────┐  ┌────────▼────────┐          │
+│   │   DELEGATE      │  │   DELEGATE      │  │   DELEGATE      │          │
+│   └────────┬────────┘  └────────┬────────┘  └────────┬────────┘          │
+│            │                    │                    │                    │
+│   ┌────────▼──────────────────────────────────────────▼──────┐           │
+│   │                      EXECUTE → REVIEW                    │           │
+│   └────────┬─────────────────────────────────────────┬───────┘           │
+│            │                                         │                    │
+│   ┌────────▼────────┐                        ┌──────▼──────┐             │
+│   │   TOOL          │                        │    END      │             │
+│   └────────┬────────┘                        └─────────────┘             │
+│            │                                                              │
+│   ┌────────▼──────────┐                                                  │
+│   │ continue → back   │                                                  │
+│   │ to TEXTUAL PRE    │                                                  │
+│   └───────────────────┘                                                  │
+│                                                                            │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Key Files
@@ -61,32 +69,49 @@ Codur uses **LangGraph** to orchestrate an agentic workflow. The system follows 
 ## Graph Flow
 
 ### Entry Point
-The graph starts at the **plan** node. See `main_graph.py:55`.
+The graph starts at the **textual_pre_plan** node (Phase 0). See `main_graph.py:91`.
 
 ### Nodes
 
-1. **plan** → Analyzes task, decides action (delegate/tool/end)
-2. **delegate** → Routes to selected agent
-3. **execute** → Runs the agent with tool-using loop
-4. **tool** → Executes filesystem/MCP tools directly
-5. **review** → Verifies result, decides to loop or end
+**Planning Phase (Phases 0-2):**
+1. **textual_pre_plan** → Fast pattern-based detection (Phase 0)
+2. **llm_pre_plan** → Quick LLM classification for high-confidence cases (Phase 1)
+3. **llm_plan** → Full LLM planning for uncertain cases (Phase 2)
+
+**Execution Phase:**
+4. **delegate** → Routes task to selected agent
+5. **execute** → Runs the agent with tool-using loop
+6. **tool** → Executes filesystem/MCP tools directly
+7. **review** → Verifies result, decides to loop or end
 
 ### Edges
 
 ```python
-# From plan node (conditional)
-plan → delegate    # if next_action == "delegate"
-plan → tool        # if next_action == "tool"
-plan → END         # if next_action == "end"
+# Phase 0 → Phase 1 (textual_pre_plan → llm_pre_plan)
+textual_pre_plan → llm_pre_plan      # if next_action == "continue_to_llm_pre_plan"
+textual_pre_plan → delegate           # if next_action == "delegate" (fast-path resolved)
+textual_pre_plan → tool               # if next_action == "tool" (fast-path resolved)
+textual_pre_plan → END                # if next_action == "end" (fast-path resolved)
 
-# Fixed edges
-delegate → execute
-execute → review
-tool → review
+# Phase 1 → Phase 2 (llm_pre_plan → llm_plan)
+llm_pre_plan → llm_plan               # if next_action == "continue_to_llm_plan"
+llm_pre_plan → delegate               # if next_action == "delegate" (high confidence)
+llm_pre_plan → tool                   # if next_action == "tool" (high confidence)
+llm_pre_plan → END                    # if next_action == "end" (high confidence)
 
-# From review node (conditional)
-review → plan      # if next_action == "continue" (retry loop)
-review → END       # if next_action == "end"
+# Phase 2 → Execution (llm_plan → delegate/tool/END)
+llm_plan → delegate                   # if next_action == "delegate"
+llm_plan → tool                       # if next_action == "tool"
+llm_plan → END                        # if next_action == "end"
+
+# Execution phase
+delegate → execute                    # Fixed edge
+execute → review                      # Fixed edge
+tool → review                         # Fixed edge
+
+# Retry loop (review → back to Phase 0)
+review → textual_pre_plan             # if next_action == "continue" (retry)
+review → END                          # if next_action == "end" (done)
 ```
 
 ### Recursion Limit
@@ -128,6 +153,11 @@ To prevent context explosion during retry loops, `_prune_messages()` in `executi
 - Last 4 verification error messages
 - Discards older intermediate messages
 
+**Note:** Message pruning can cause flakiness if it discards important context. Consider:
+- Keeping more recent error messages (6-8 instead of 4) for complex tasks
+- Including AIMessage outputs from recent attempts (agents learn from their own attempts)
+- Preserving agent reasoning if available
+
 ---
 
 ## Node Implementations
@@ -147,8 +177,8 @@ To prevent context explosion during retry loops, `_prune_messages()` in `executi
 **Decision Format:**
 ```json
 {
-    "action": "delegate" | "tool" | "respond" | "done",
-    "agent": "agent:ollama" | "llm:groq-qwen3-32b" | null,
+    "action": "delegate" OR "tool" OR "respond" OR "done",
+    "agent": "agent:ollama" OR "llm:groq-qwen3-32b" OR null,
     "reasoning": "brief explanation",
     "response": "only for greetings",
     "tool_calls": [{"tool": "read_file", "args": {"path": "..."}}]
@@ -156,6 +186,8 @@ To prevent context explosion during retry loops, `_prune_messages()` in `executi
 ```
 
 **Returns:** `PlanNodeResult` with `next_action`, `selected_agent`, `tool_calls`, etc.
+
+**Flakiness Note:** Phase 1 quick classification is used for high-confidence cases (≥80%), but can cause issues if it misclassifies complex tasks. Current implementation has safeguards but consider being more conservative with Phase 1 to avoid wrong routing.
 
 ---
 
@@ -377,6 +409,47 @@ Controlled by `config.runtime.max_iterations` (default 10).
 "llm:groq-qwen3-32b"     # LLM profile
 "agent:groq-qwen3-32b"   # Config-defined agent
 ```
+
+---
+
+## Flakiness & Reliability
+
+### Common Sources of Flakiness
+
+1. **Aggressive Message Pruning** - Only keeping last 4 error messages can lose context agents need to fix issues
+2. **Phase 1 Over-Confidence** - Quick classification at 80% confidence might route complex tasks incorrectly
+3. **Pattern-Based Tool Detection** - Agents might format tool calls differently than expected
+4. **Limited Error Information** - Truncated error messages don't show full context of what failed
+5. **Limited Repair Patterns** - Only 3 mutation patterns covers a tiny fraction of possible bugs
+
+### Strategies for Improving Reliability
+
+#### Message Pruning
+- Keep more error messages (6-8 instead of 4) to preserve agent learning context
+- Include recent AIMessage outputs so agents see their own attempts
+- Only prune very old messages (> 5 iterations ago)
+
+#### Phase 1 Safety
+- Use Phase 1 only for truly obvious cases: greetings, simple file ops
+- For code tasks, always use Phase 2 LLM to get proper routing
+- Require 90%+ confidence for Phase 1 code task decisions
+
+#### Error Message Quality
+- Show more context (30 lines instead of 20) for error messages
+- Include which attempts failed and why
+- Show agent previous attempts so they don't repeat mistakes
+- Format with clear structure: Expected → Actual → Error → Context
+
+#### Tool Detection Robustness
+- Support multiple tool call formats (agent might use backticks, code blocks, etc)
+- Fall back to LLM-based tool detection if pattern matching fails
+- Log what tool detection found for debugging
+
+#### Better Repair Patterns
+- Add pattern for `list comprehension` errors
+- Add pattern for `string formatting` bugs
+- Add pattern for `type mismatch` issues
+- Support agent hints ("looks like off-by-one")
 
 ---
 

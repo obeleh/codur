@@ -151,6 +151,8 @@ providers:
 # Runtime Settings - Control agent behavior and async execution
 runtime:
   max_iterations: 10
+  # Global timeout for a single Codur run (seconds). Set to null to disable.
+  max_runtime_s: null
   verbose: true
   allow_outside_workspace: true
   # This allows tool detection outside LLM calls (RECOMMENDED: keeps it reliable)

@@ -29,6 +29,96 @@ from .classifier import (
 console = Console()
 
 
+# Three-phase planning: textual-pre-plan → llm-pre-plan → llm-plan
+
+def textual_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
+    """Phase 0: Textual (pattern-based) pre-planning without LLM.
+
+    Fast path for obvious cases detected by pattern matching:
+    - Greetings
+    - File operations
+    - Obvious non-coding requests
+
+    If no match, passes to llm-pre-plan.
+    """
+    messages = _normalize_messages(state.get("messages"))
+    iterations = state.get("iterations", 0)
+
+    if state.get("verbose"):
+        console.print("[bold blue]Planning (Phase 0: Textual)...[/bold blue]")
+
+    # Fast path: non-LLM tool detection
+    if config.runtime.detect_tool_calls_from_text:
+        non_llm_result = run_non_llm_tools(messages, state)
+        if non_llm_result:
+            if state.get("verbose"):
+                console.print("[green]✓ Textual pre-plan resolved[/green]")
+            return non_llm_result
+
+    # No match - pass to llm-pre-plan
+    if state.get("verbose"):
+        console.print("[dim]No textual patterns matched, moving to llm-pre-plan[/dim]")
+
+    return {
+        "next_action": "continue_to_llm_pre_plan",
+        "iterations": iterations,
+    }
+
+
+def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
+    """Phase 1: LLM-based quick classification.
+
+    Fast classification for obvious cases without full LLM planning:
+    - Greetings
+    - Simple file operations
+    - Clear code fix/generation tasks (90%+ confidence)
+
+    If confident, returns routing decision directly.
+    If uncertain, passes to llm-plan for full LLM analysis.
+    """
+    messages = _normalize_messages(state.get("messages"))
+    iterations = state.get("iterations", 0)
+
+    if state.get("verbose"):
+        console.print("[bold blue]Planning (Phase 1: LLM Pre-Plan)...[/bold blue]")
+
+    tool_results_present = any(
+        isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:")
+        for msg in messages
+    )
+
+    # Quick classification
+    classification = quick_classify(messages, config)
+
+    if state.get("verbose"):
+        console.print(f"[dim]Classification: {classification.task_type.value} "
+                     f"(confidence: {classification.confidence:.0%})[/dim]")
+
+    # Handle high-confidence classifications without full LLM planning
+    if classification.is_confident and not tool_results_present:
+        user_message = messages[-1].content if messages else ""
+
+        planning_orchestrator = PlanningOrchestrator(config)
+        phase1_result = planning_orchestrator._handle_confident_classification(
+            classification, iterations, user_message
+        )
+
+        if phase1_result:
+            if state.get("verbose"):
+                console.print("[green]✓ Phase 1 resolved (high confidence)[/green]")
+            return phase1_result
+
+    # Confidence not high enough - pass to llm-plan for full analysis
+    if state.get("verbose"):
+        console.print("[dim]Confidence insufficient, moving to full LLM planning[/dim]")
+
+    return {
+        "next_action": "continue_to_llm_plan",
+        "iterations": iterations,
+        "classification": classification,  # Pass classification to llm-plan for context
+    }
+
+
 class PlanningOrchestrator:
     def __init__(self, config: CodurConfig) -> None:
         self.config = config
@@ -36,11 +126,20 @@ class PlanningOrchestrator:
         self.decision_handler = PlanningDecisionHandler(config)
         self.json_parser = JSONResponseParser()
 
-    def plan(self, state: AgentState, llm: BaseChatModel) -> PlanNodeResult:
+    def llm_plan(self, state: AgentState, llm: BaseChatModel) -> PlanNodeResult:
+        """Phase 2: Full LLM planning for uncertain cases.
+
+        This is the main planning phase that handles cases where:
+        - Textual patterns didn't match (Phase 0)
+        - Classification confidence was insufficient (Phase 1)
+
+        Uses context-aware prompt based on Phase 1 classification to reduce token usage.
+        """
         if "config" not in state:
             raise ValueError("AgentState must include config")
+
         if state.get("verbose"):
-            console.print("[bold blue]Planning...[/bold blue]")
+            console.print("[bold blue]Planning (Phase 2: Full LLM Planning)...[/bold blue]")
 
         messages = _normalize_messages(state.get("messages"))
         iterations = state.get("iterations", 0)
@@ -50,33 +149,13 @@ class PlanningOrchestrator:
             for msg in messages
         )
 
-        # Fast path: non-LLM tool detection
-        if self.config.runtime.detect_tool_calls_from_text:
-            non_llm_result = run_non_llm_tools(messages, state)
-            if non_llm_result:
-                return non_llm_result
-
-        # === PHASE 1: Quick Classification ===
-        # Try to classify without LLM call for obvious cases
-        classification = quick_classify(messages, self.config)
-
-        if state.get("verbose"):
-            console.print(f"[dim]Phase 1: {classification.task_type.value} "
-                         f"(confidence: {classification.confidence:.0%})[/dim]")
-
-        # Handle high-confidence classifications without LLM
-        if classification.is_confident and not tool_results_present:
-            user_message = messages[-1].content if messages else ""
-            phase1_result = self._handle_confident_classification(classification, iterations, user_message)
-            if phase1_result:
-                if state.get("verbose"):
-                    console.print("[green]✓ Phase 1 resolved (no LLM needed)[/green]")
-                return phase1_result
-
-        # === PHASE 2: Context-Aware LLM Planning ===
-        # Use a focused prompt based on Phase 1 classification
-        if state.get("verbose"):
-            console.print("[dim]Phase 2: Using context-aware LLM planning[/dim]")
+        # Get classification from Phase 1 if available, otherwise do it again
+        classification = state.get("classification")
+        if not classification:
+            classification = quick_classify(messages, self.config)
+            if state.get("verbose"):
+                console.print(f"[dim]Classification (re-evaluated): {classification.task_type.value} "
+                             f"(confidence: {classification.confidence:.0%})[/dim]")
 
         prompt_messages = self._build_phase2_messages(
             messages, tool_results_present, classification
@@ -312,23 +391,29 @@ class PlanningOrchestrator:
             }
 
         # Code fix/generation - delegate to appropriate agent
+        # NOTE: Only do Phase 1 routing for code tasks if confidence is very high (>90%)
+        # Otherwise let Phase 2 LLM handle routing to avoid wrong agent selection
         if task_type in (TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR):
-            agent = get_agent_for_task_type(
-                task_type,
-                self.config,
-                classification.detected_files,
-                user_message
-            )
-            return {
-                "next_action": "delegate",
-                "selected_agent": agent,
-                "iterations": iterations + 1,
-                "llm_debug": {
-                    "phase1_resolved": True,
-                    "task_type": task_type.value,
-                    "selected_agent": agent
-                },
-            }
+            if classification.confidence >= 0.90:
+                # High confidence - safe to route in Phase 1
+                agent = get_agent_for_task_type(
+                    task_type,
+                    self.config,
+                    classification.detected_files,
+                    user_message
+                )
+                return {
+                    "next_action": "delegate",
+                    "selected_agent": agent,
+                    "iterations": iterations + 1,
+                    "llm_debug": {
+                        "phase1_resolved": True,
+                        "task_type": task_type.value,
+                        "selected_agent": agent
+                    },
+                }
+            # Confidence not high enough - let Phase 2 LLM handle routing
+            return None
 
         # Cannot resolve in Phase 1
         return None
@@ -339,22 +424,23 @@ class PlanningOrchestrator:
         has_tool_results: bool,
         classification: ClassificationResult
     ) -> list[BaseMessage]:
-        """Build context-aware prompt messages for Phase 2.
+        """Build prompt messages for Phase 2 with full planning guidance.
 
-        Uses classification from Phase 1 to create a focused prompt,
-        reducing token usage compared to the full generic prompt.
+        Uses the full planning prompt (not context-aware) to ensure the LLM
+        has complete guidance for returning properly formatted JSON.
         """
-        # Build context-aware system prompt based on classification
-        context_prompt = build_context_aware_prompt(classification, self.config)
-
-        system_message = SystemMessage(content=context_prompt)
+        # Use the full planning prompt to ensure proper JSON formatting
+        planning_prompt = self.prompt_builder.build_system_prompt()
+        system_message = SystemMessage(content=planning_prompt)
         prompt_messages = [system_message] + list(messages)
 
         if has_tool_results:
+            # For retries with error context, be explicit about retry strategy
             followup_prompt = SystemMessage(
                 content=(
-                    "Tool results are available above. Use them to complete the task. "
-                    "Respond with valid JSON only."
+                    "Error/verification results are available above. Review them and respond with valid JSON.\n"
+                    "If the verification failed, delegate to an agent again with a request to fix the issues.\n"
+                    "Return ONLY valid JSON in the required format."
                 )
             )
             prompt_messages.insert(1, followup_prompt)
