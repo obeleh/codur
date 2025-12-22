@@ -44,6 +44,20 @@ from codur.tools.mcp_tools import (
     list_mcp_resource_templates,
     read_mcp_resource,
 )
+from codur.tools.git import (
+    git_status,
+    git_diff,
+    git_log,
+)
+from codur.tools.webrequests import (
+    fetch_webpage,
+)
+from codur.tools.duckduckgo import (
+    duckduckgo_search,
+)
+from codur.tools.pandoc import (
+    convert_document,
+)
 from codur.tools.registry import (
     list_tool_directory,
     get_tool_help,
@@ -82,6 +96,12 @@ __all__ = [
     "list_mcp_resources",
     "list_mcp_resource_templates",
     "read_mcp_resource",
+    "git_status",
+    "git_diff",
+    "git_log",
+    "fetch_webpage",
+    "duckduckgo_search",
+    "convert_document",
     "list_tool_directory",
     "get_tool_help",
 ]

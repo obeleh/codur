@@ -64,6 +64,11 @@ def _run_codur(prompt: str, cwd: Path) -> str:
         env=env,
     )
     stdout = (result.stdout or "").strip()
+
+    # Save debug output to log file
+    log_path = cwd / "codur_debug.log"
+    log_path.write_text(stdout + "\n" + (result.stderr or ""), encoding="utf-8")
+
     if result.returncode != 0:
         stderr = (result.stderr or "").strip()
         raise AssertionError(f"codur failed in {cwd}\nstdout: {stdout}\nstderr: {stderr}")
@@ -164,7 +169,8 @@ def test_challenge_outputs(challenge_dir: Path) -> None:
     actual = _run_challenge(main_path)
     assert actual == expected, (
         "Output mismatch in "
-        f"{challenge_dir.name}\nExpected:\n{expected}\nActual:\n{actual}"
+        f"{challenge_dir.name}\nExpected:\n{expected}\nActual:\n{actual}\n\n"
+        f"📝 Debug log: {challenge_dir}/codur_debug.log"
     )
     _print_main_diff(main_path)
     print(f"Challenge passed: {challenge_dir.name}")

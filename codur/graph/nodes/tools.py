@@ -41,6 +41,12 @@ from codur.tools import (
     list_tool_directory,
     get_tool_help,
     retry_in_agent,
+    git_status,
+    git_diff,
+    git_log,
+    fetch_webpage,
+    duckduckgo_search,
+    convert_document,
 )
 
 
@@ -107,6 +113,17 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
         "read_mcp_resource": lambda args: read_mcp_resource(state=tool_state, **args),
         "list_tool_directory": lambda args: list_tool_directory(state=tool_state, **args),
         "get_tool_help": lambda args: get_tool_help(state=tool_state, **args),
+        "git_status": lambda args: git_status(root=root, state=tool_state, **args),
+        "git_diff": lambda args: git_diff(root=root, state=tool_state, **args),
+        "git_log": lambda args: git_log(root=root, state=tool_state, **args),
+        "fetch_webpage": lambda args: fetch_webpage(state=tool_state, **args),
+        "duckduckgo_search": lambda args: duckduckgo_search(state=tool_state, **args),
+        "convert_document": lambda args: convert_document(
+            root=root,
+            allow_outside_root=allow_outside_root,
+            state=tool_state,
+            **args,
+        ),
     }
 
     for call in tool_calls:

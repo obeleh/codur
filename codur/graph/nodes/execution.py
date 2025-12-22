@@ -250,15 +250,24 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
 
             error_parts = ["Verification failed: Output does not match expected."]
 
-            # Include truncated outputs for context
+            # Determine error type: output mismatch vs execution error
             if "expected_truncated" in verification_result:
+                # This was an output mismatch with expected.txt
+                error_parts = ["Verification failed: Output does not match expected."]
                 error_parts.append(f"\n=== Expected Output ===\n{verification_result['expected_truncated']}")
-            if "actual_truncated" in verification_result:
-                error_parts.append(f"\n=== Actual Output ===\n{verification_result['actual_truncated']}")
+                if "actual_truncated" in verification_result:
+                    error_parts.append(f"\n=== Actual Output ===\n{verification_result['actual_truncated']}")
+            else:
+                # This was an execution error (exit code != 0)
+                if verification_result.get("return_code"):
+                    error_parts[0] = f"Verification failed: Code exited with code {verification_result['return_code']}"
+                if verification_result.get("stdout"):
+                    stdout_content = _truncate_output(verification_result['stdout'], max_lines=15)
+                    error_parts.append(f"\n=== Standard Output ===\n{stdout_content}")
 
-            # Include stderr if available
+            # Include stderr if available (for both error types)
             if verification_result.get("stderr"):
-                stderr_content = _truncate_output(verification_result['stderr'], max_lines=10)
+                stderr_content = _truncate_output(verification_result['stderr'], max_lines=15)
                 error_parts.append(f"\n=== Error/Exception ===\n{stderr_content}")
 
             # Try to include current main.py for context
