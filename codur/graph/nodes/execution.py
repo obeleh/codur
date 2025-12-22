@@ -1,6 +1,6 @@
 """Delegation, execution, and review nodes."""
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 from rich.console import Console
 
@@ -14,6 +14,7 @@ from codur.graph.nodes.utils import (
     _resolve_agent_reference,
     _normalize_messages,
 )
+from codur.graph.nodes.tool_detection import create_default_tool_detector
 
 # Import agents to ensure they are registered
 import codur.agents.ollama_agent  # noqa: F401
@@ -21,6 +22,7 @@ import codur.agents.codex_agent  # noqa: F401
 import codur.agents.claude_code_agent  # noqa: F401
 
 console = Console()
+_TOOL_DETECTOR = create_default_tool_detector()
 
 
 class AgentExecutor:
@@ -121,11 +123,100 @@ class AgentExecutor:
             raise ValueError(f"Unknown agent: {self.resolved_agent}. Available agents: {available}")
 
         agent = agent_class(self.config, override_config=self.profile_override)
-        result = agent.execute(task)
+
+        # Wrap agent in tool-using loop for iterative execution
+        return self._execute_agent_with_tools(agent, task)
+
+    def _execute_agent_with_tools(self, agent, task: str, max_tool_iterations: int = 5) -> str:
+        """Execute agent with automatic tool call detection and execution.
+
+        This implements a tool-using loop where:
+        1. Agent generates response
+        2. Response is checked for tool calls
+        3. Tools are executed and results fed back
+        4. Loop continues until no more tool calls or max iterations
+        """
+        messages = [HumanMessage(content=task)]
+        result = None
+        tool_iteration = 0
+
+        while tool_iteration < max_tool_iterations:
+            # Get agent response
+            if tool_iteration == 0:
+                # First call: use the task directly
+                result = agent.execute(task)
+            else:
+                # Subsequent calls: construct message with tool results
+                full_prompt = self._build_prompt_with_tool_results(task, messages)
+                result = agent.execute(full_prompt)
+
+            if self.state.get("verbose"):
+                console.print(f"[dim]Agent iteration {tool_iteration}: result length {len(result)} chars[/dim]")
+
+            # Check for tool calls in the response
+            tool_calls = _TOOL_DETECTOR.detect(result)
+
+            if not tool_calls:
+                # No tool calls detected, return final result
+                if self.state.get("verbose"):
+                    console.print(f"[dim]Agent finished after {tool_iteration} iterations[/dim]")
+                return result
+
+            # Execute tools and collect results
+            if self.state.get("verbose"):
+                console.print(f"[yellow]Detected {len(tool_calls)} tool call(s), executing...[/yellow]")
+
+            tool_results = self._execute_tool_calls(tool_calls)
+            messages.append(AIMessage(content=result))
+            messages.append(SystemMessage(content=f"Tool results:\n{tool_results}"))
+
+            tool_iteration += 1
+
         if self.state.get("verbose"):
-            console.print(f"[dim]Agent result length: {len(result)} chars[/dim]")
-            console.print(f"[dim]Agent result preview: {result[:300]}...[/dim]")
+            console.print(f"[yellow]Max tool iterations ({max_tool_iterations}) reached[/yellow]")
         return result
+
+    def _build_prompt_with_tool_results(self, original_task: str, messages: list) -> str:
+        """Build a prompt that includes tool results for the agent to continue."""
+        # Extract tool results from messages
+        tool_results = []
+        for msg in messages:
+            if isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:"):
+                tool_results.append(msg.content)
+
+        if tool_results:
+            return f"{original_task}\n\n{chr(10).join(tool_results)}\n\nContinue fixing the implementation based on the tool results."
+        return original_task
+
+    def _execute_tool_calls(self, tool_calls: list[dict]) -> str:
+        """Execute detected tool calls and return results."""
+        from pathlib import Path
+        from codur.tools import read_file, write_file
+
+        results = []
+        root = Path.cwd()
+        allow_outside_root = self.config.runtime.allow_outside_workspace
+
+        for call in tool_calls:
+            tool_name = call.get("tool")
+            args = call.get("args", {})
+
+            if not isinstance(args, dict):
+                args = {}
+
+            try:
+                if tool_name == "read_file":
+                    output = read_file(root=root, allow_outside_root=allow_outside_root, **args)
+                    results.append(f"read_file: {args.get('path', 'unknown')} -> {len(output) if isinstance(output, str) else len(str(output))} chars")
+                elif tool_name == "write_file":
+                    output = write_file(root=root, allow_outside_root=allow_outside_root, **args)
+                    results.append(f"write_file: {args.get('path', 'unknown')} -> {output}")
+                else:
+                    results.append(f"Unknown tool: {tool_name}")
+            except Exception as e:
+                results.append(f"{tool_name} failed: {str(e)}")
+
+        return "\n".join(results) if results else "Tools executed (no output)"
 
 
 def delegate_node(state: AgentState, config: CodurConfig) -> DelegateNodeResult:
@@ -173,7 +264,8 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     1. Detects if this was a fix/debug task
     2. Runs verification (e.g., python main.py)
     3. Loops back if verification fails (up to max_iterations)
-    4. Accepts if verification succeeds or max iterations reached
+    4. Exits early if same error repeats (agent is stuck)
+    5. Accepts if verification succeeds or max iterations reached
 
     Args:
         state: Current agent state with agent_outcome
@@ -223,6 +315,23 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 "next_action": "end",
             }
         else:
+            # Check for repeated errors (agent is stuck)
+            error_msg = verification_result.get("message", "")
+            current_error_hash = hash(error_msg)
+            error_history = state.get("error_hashes", [])
+
+            # If same error appears 2+ times in recent history, agent is stuck
+            if error_history and current_error_hash in error_history[-3:]:
+                if state.get("verbose"):
+                    console.print(f"[red]✗ Repeated error detected - agent is stuck, stopping[/red]")
+                return {
+                    "final_response": result,
+                    "next_action": "end",
+                }
+
+            # Track this error for future checks
+            error_history.append(current_error_hash)
+
             local_repair_attempted = state.get("local_repair_attempted", False)
             if not local_repair_attempted:
                 repair_result = _attempt_local_repair(state)
@@ -296,6 +405,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 "next_action": "continue",
                 "messages": pruned_messages,
                 "local_repair_attempted": True,
+                "error_hashes": error_history,
             }
 
     # Accept result if:
@@ -372,6 +482,9 @@ def _prune_messages(messages: list, max_to_keep: int = 10) -> list:
 def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
     """Verify if a fix actually works by running tests.
 
+    Implements streaming verification with early exit on output mismatch.
+    This prevents wasting time on obviously failed implementations.
+
     Args:
         state: Current agent state
         config: Codur configuration
@@ -396,29 +509,72 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
     if verbose:
         console.print(f"[dim]Running verification: python main.py[/dim]")
 
-    try:
-        # Run main.py and capture output
-        result = subprocess.run(
-            ["python", "main.py"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=str(cwd)
-        )
+    # Check for expected.txt to enable streaming verification
+    expected_file = cwd / "expected.txt"
+    use_streaming = expected_file.exists()
 
-        # Check for expected.txt to compare output
-        expected_file = cwd / "expected.txt"
-        if expected_file.exists():
-            expected_output = expected_file.read_text().strip()
-            actual_output = result.stdout.strip()
+    if use_streaming:
+        expected_output = expected_file.read_text().strip()
+        expected_lines = expected_output.split('\n')
 
-            if actual_output == expected_output:
+        try:
+            # Run with streaming for early exit on mismatch
+            process = subprocess.Popen(
+                ["python", "main.py"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=str(cwd)
+            )
+
+            output_lines = []
+            mismatch_at_line = None
+
+            try:
+                # Stream output line by line and compare
+                for line in process.stdout:
+                    output_lines.append(line.rstrip('\n'))
+                    line_idx = len(output_lines) - 1
+
+                    # Check for mismatch (early exit)
+                    if line_idx < len(expected_lines):
+                        if line.rstrip('\n') != expected_lines[line_idx]:
+                            mismatch_at_line = line_idx
+                            process.terminate()
+                            break
+                    else:
+                        # Output has more lines than expected
+                        mismatch_at_line = line_idx
+                        process.terminate()
+                        break
+
+                # Wait for process to finish
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+
+                stderr = process.stderr.read() if process.stderr else ""
+
+            except Exception as e:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                return {"success": False, "message": f"Verification interrupted: {str(e)}"}
+
+            # Check results
+            actual_output = '\n'.join(output_lines).strip()
+
+            if mismatch_at_line is None and actual_output == expected_output:
                 return {
                     "success": True,
                     "message": f"Output matches expected: {actual_output}"
                 }
             else:
-                # Provide both full and truncated versions
+                # Build detailed mismatch info
                 return {
                     "success": False,
                     "message": f"Output mismatch.\nExpected: {expected_output}\nActual: {actual_output}",
@@ -426,37 +582,56 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
                     "actual_output": actual_output,
                     "expected_truncated": _truncate_output(expected_output),
                     "actual_truncated": _truncate_output(actual_output),
-                    "stderr": result.stderr.strip() if result.stderr else None
+                    "mismatch_at_line": mismatch_at_line,
+                    "stderr": stderr.strip() if stderr else None
                 }
 
-        # If no expected.txt, just check for success exit code
-        if result.returncode == 0:
-            return {
-                "success": True,
-                "message": f"Execution successful. Output: {result.stdout.strip()}"
-            }
-        else:
-            return {
-                "success": False,
-                "message": f"Execution failed (exit code {result.returncode})\nStderr: {result.stderr.strip()}",
-                "stderr": result.stderr.strip(),
-                "stdout": result.stdout.strip(),
-                "return_code": result.returncode
-            }
+        except subprocess.TimeoutExpired:
+            return {"success": False, "message": "Execution timed out after 10 seconds"}
+        except Exception as e:
+            return {"success": False, "message": f"Verification error: {str(e)}"}
+    else:
+        # No expected.txt - use standard verification
+        try:
+            result = subprocess.run(
+                ["python", "main.py"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=str(cwd)
+            )
 
-    except subprocess.TimeoutExpired:
-        return {"success": False, "message": "Execution timed out after 10 seconds"}
-    except Exception as e:
-        return {"success": False, "message": f"Verification error: {str(e)}"}
+            # Just check for success exit code
+            if result.returncode == 0:
+                return {
+                    "success": True,
+                    "message": f"Execution successful. Output: {result.stdout.strip()}"
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Execution failed (exit code {result.returncode})\nStderr: {result.stderr.strip()}",
+                    "stderr": result.stderr.strip(),
+                    "stdout": result.stdout.strip(),
+                    "return_code": result.returncode
+                }
+
+        except subprocess.TimeoutExpired:
+            return {"success": False, "message": "Execution timed out after 10 seconds"}
+        except Exception as e:
+            return {"success": False, "message": f"Verification error: {str(e)}"}
 
 
 def _attempt_local_repair(state: AgentState) -> dict:
     """Attempt a small, local repair for common mismatch patterns.
 
     This is a last-resort fallback when external agents are unavailable.
+    Uses parallel execution for faster mutation testing.
     """
     import re
     import subprocess
+    import tempfile
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from pathlib import Path
 
     cwd = Path.cwd()
@@ -492,6 +667,7 @@ def _attempt_local_repair(state: AgentState) -> dict:
         mutate_remove_div_100,
     ]
 
+    # Build all candidate mutations
     candidates = []
     for mutate in mutations:
         updated = mutate(original)
@@ -507,21 +683,61 @@ def _attempt_local_repair(state: AgentState) -> dict:
             if second != first and second != original:
                 candidates.append(second)
 
+    # Deduplicate candidates
     seen = set()
+    unique_candidates = []
     for candidate in candidates:
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        main_py.write_text(candidate)
-        result = subprocess.run(
-            ["python", "main.py"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            cwd=str(cwd),
-        )
-        if result.returncode == 0 and result.stdout.strip() == expected_output:
-            return {"success": True, "message": "Applied local repair based on verification output"}
+        if candidate not in seen:
+            seen.add(candidate)
+            unique_candidates.append(candidate)
 
-    main_py.write_text(original)
+    if not unique_candidates:
+        return {"success": False, "message": "No applicable mutations found"}
+
+    def try_mutation(candidate_code: str) -> dict:
+        """Test a mutation in a temporary file to allow parallel execution."""
+        try:
+            # Create temp file with mutation
+            with tempfile.NamedTemporaryFile(
+                mode='w',
+                suffix='.py',
+                dir=str(cwd),
+                delete=False
+            ) as tmp:
+                tmp.write(candidate_code)
+                tmp_path = Path(tmp.name)
+
+            try:
+                result = subprocess.run(
+                    ["python", str(tmp_path)],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    cwd=str(cwd),
+                )
+                if result.returncode == 0 and result.stdout.strip() == expected_output:
+                    return {"success": True, "code": candidate_code}
+                return {"success": False}
+            finally:
+                tmp_path.unlink(missing_ok=True)
+        except Exception:
+            return {"success": False}
+
+    # Run mutations in parallel
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(try_mutation, c): c for c in unique_candidates}
+
+        for future in as_completed(futures, timeout=10):
+            try:
+                result = future.result()
+                if result.get("success"):
+                    # Found a working mutation - apply it to main.py
+                    main_py.write_text(result["code"])
+                    # Cancel remaining futures
+                    for f in futures:
+                        f.cancel()
+                    return {"success": True, "message": "Applied local repair based on verification output"}
+            except Exception:
+                continue
+
     return {"success": False, "message": "Local repair did not find a matching fix"}

@@ -63,6 +63,8 @@ class LLMSettings(BaseModel):
     default_profile: str
     profiles: Dict[str, LLMProfile] = Field(default_factory=dict)
     default_temperature: float = 0.7
+    planning_temperature: float = 0.3  # Lower temperature for planning (more deterministic)
+    generation_temperature: float = 0.7  # Normal temperature for code generation
     # Runtime API keys (loaded from environment)
     anthropic_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
@@ -129,6 +131,7 @@ class ToolSettings(BaseModel):
             ".pytest_cache",
         }
     )
+    allow_git_write: bool = False
 
     @field_validator("default_max_bytes", "default_max_results")
     @classmethod

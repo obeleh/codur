@@ -23,6 +23,11 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     BeautifulSoup = None
 
+try:
+    from markdownify import markdownify as _markdownify
+except ImportError:  # pragma: no cover - optional dependency
+    _markdownify = None
+
 
 def _truncate(text: str, max_bytes: int) -> str:
     if len(text) <= max_bytes:
@@ -45,6 +50,88 @@ def _basic_title(html: str) -> str:
     return title_tag.get_text(strip=True) if title_tag else ""
 
 
+def _clean_html_basic(html: str) -> str:
+    if BeautifulSoup is None:
+        return html
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "svg"]):
+        tag.decompose()
+    return str(soup)
+
+
+def _clean_html_serp(html: str) -> str:
+    if BeautifulSoup is None:
+        return html
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup([
+        "script",
+        "style",
+        "noscript",
+        "svg",
+        "header",
+        "footer",
+        "nav",
+        "aside",
+        "form",
+        "input",
+        "button",
+        "select",
+        "textarea",
+        "iframe",
+        "canvas",
+        "img",
+        "picture",
+        "figure",
+    ]):
+        tag.decompose()
+
+    noise_keywords = {
+        "nav",
+        "navbar",
+        "header",
+        "footer",
+        "sidebar",
+        "cookie",
+        "consent",
+        "advert",
+        "ads",
+        "sponsor",
+        "promo",
+        "banner",
+        "login",
+        "signin",
+        "sign-in",
+        "signup",
+        "sign-up",
+        "subscribe",
+        "newsletter",
+        "modal",
+        "popup",
+        "breadcrumb",
+        "filters",
+        "filter",
+        "pagination",
+        "pager",
+        "topbar",
+        "toolbar",
+        "searchbox",
+        "search-box",
+        "related",
+    }
+    for element in soup.find_all(True):
+        classes = " ".join(element.get("class", [])).lower()
+        element_id = (element.get("id") or "").lower()
+        if any(keyword in classes for keyword in noise_keywords) or any(
+            keyword in element_id for keyword in noise_keywords
+        ):
+            element.decompose()
+
+    main = soup.find("main")
+    if main is not None and main.get_text(strip=True):
+        return str(main)
+    return str(soup)
+
+
 def _extract_text_from_html(html: str) -> str:
     if BeautifulSoup is not None:
         soup = BeautifulSoup(html, "html.parser")
@@ -54,6 +141,14 @@ def _extract_text_from_html(html: str) -> str:
     else:
         text = re.sub(r"<[^>]+>", " ", html)
     return _collapse_whitespace(unescape(text))
+
+
+def _html_to_markdown(html: str) -> str:
+    if _markdownify is not None:
+        return _collapse_whitespace(_markdownify(html, heading_style="ATX"))
+    if BeautifulSoup is not None:
+        return _extract_text_from_html(html)
+    raise RuntimeError("markdownify is not installed")
 
 
 def _extract_readability(html: str) -> dict[str, str]:
@@ -73,8 +168,18 @@ def _extract_basic(html: str) -> dict[str, str]:
     return {
         "title": _basic_title(html),
         "text": _extract_text_from_html(html),
-        "html": html,
+        "html": _clean_html_basic(html),
         "extractor": "basic",
+    }
+
+
+def _extract_serp(html: str) -> dict[str, str]:
+    cleaned = _clean_html_serp(html)
+    return {
+        "title": _basic_title(html),
+        "text": _extract_text_from_html(cleaned),
+        "html": cleaned,
+        "extractor": "serp",
     }
 
 
@@ -86,6 +191,10 @@ def _extract_main(html: str, mode: str) -> dict[str, str]:
         return _extract_readability(html)
     if normalized == "basic":
         return _extract_basic(html)
+    if normalized == "serp":
+        return _extract_serp(html)
+    if normalized == "none":
+        return {"title": _basic_title(html), "text": _extract_text_from_html(html), "html": html, "extractor": "none"}
     if normalized == "auto":
         if Document is not None:
             try:
@@ -93,7 +202,28 @@ def _extract_main(html: str, mode: str) -> dict[str, str]:
             except Exception:
                 pass
         return _extract_basic(html)
-    raise ValueError("extract_mode must be one of: auto, readability, basic")
+    raise ValueError("cleanup_level must be one of: auto, readability, basic, serp, none")
+
+
+def _resolve_cleanup_level(
+    cleanup_level: str | None,
+    clean: bool,
+    extract_mode: str,
+) -> str:
+    if cleanup_level:
+        return cleanup_level
+    if not clean:
+        return "none"
+    return extract_mode or "auto"
+
+
+def _resolve_output_format(requested: str | None) -> str:
+    normalized = (requested or "markdown").lower().strip()
+    if normalized in {"markdown", "md"}:
+        return "markdown"
+    if normalized in {"text", "plain"}:
+        return "text"
+    raise ValueError("output_format must be one of: markdown, text")
 
 
 def fetch_webpage(
@@ -104,13 +234,17 @@ def fetch_webpage(
     data: dict[str, Any] | str | None = None,
     timeout_s: float = 20.0,
     max_bytes: int = DEFAULT_MAX_BYTES,
+    cleanup_level: str | None = None,
+    output_format: str = "markdown",
     clean: bool = True,
     extract_mode: str = "auto",
     include_html: bool = False,
     state: AgentState | None = None,
 ) -> dict:
     """
-    Fetch a webpage and optionally extract the main text content.
+    Fetch a webpage and extract main content with optional cleanup.
+
+    cleanup_level values: auto, readability, basic, serp, none.
     """
     merged_headers = {"User-Agent": "codur/1.0"}
     if headers:
@@ -131,12 +265,17 @@ def fetch_webpage(
     extractor = "raw"
     text = html
     html_output = html
-    if clean and "html" in content_type.lower():
-        extracted = _extract_main(html, extract_mode)
+    cleanup = _resolve_cleanup_level(cleanup_level, clean, extract_mode)
+    output_format = _resolve_output_format(output_format)
+    if "html" in content_type.lower():
+        extracted = _extract_main(html, cleanup)
         title = extracted.get("title", "")
         extractor = extracted.get("extractor", "auto")
-        text = extracted.get("text", "")
         html_output = extracted.get("html", html)
+        if output_format == "markdown":
+            text = _html_to_markdown(html_output)
+        else:
+            text = extracted.get("text", "")
 
     text = _truncate(text, max_bytes)
     result = {
@@ -146,6 +285,7 @@ def fetch_webpage(
         "content_type": content_type,
         "title": title,
         "extractor": extractor,
+        "format": output_format,
         "text": text,
     }
 

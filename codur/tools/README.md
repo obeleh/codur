@@ -13,6 +13,7 @@ safe, and easy to serialize.
    `allow_outside_root`.
 6) Return JSON-serializable data and keep outputs reasonably small.
 7) Add any required dependencies to `pyproject.toml`.
+8) For write-capable git tools, check `tools.allow_git_write` in `codur.yaml`.
 
 ## Example
 
@@ -33,4 +34,40 @@ def example_tool(
     """One-line summary shown in tool listings."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     return {"path": str(target)}
+```
+
+## Tool Call Example
+
+```json
+{
+  "tool": "fetch_webpage",
+  "args": {
+    "url": "https://duckduckgo.com/?q=codur",
+    "cleanup_level": "serp",
+    "output_format": "markdown",
+    "include_html": false
+  }
+}
+```
+
+```json
+{
+  "tool": "python_ast_graph",
+  "args": {
+    "path": "codur/tools/webrequests.py",
+    "max_nodes": 400
+  }
+}
+```
+
+```json
+{
+  "tool": "python_dependency_graph",
+  "args": {
+    "root": ".",
+    "include_external": false,
+    "max_nodes": 500,
+    "max_edges": 1500
+  }
+}
 ```

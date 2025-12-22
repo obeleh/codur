@@ -48,6 +48,9 @@ from codur.tools.git import (
     git_status,
     git_diff,
     git_log,
+    git_stage_files,
+    git_stage_all,
+    git_commit,
 )
 from codur.tools.webrequests import (
     fetch_webpage,
@@ -57,6 +60,13 @@ from codur.tools.duckduckgo import (
 )
 from codur.tools.pandoc import (
     convert_document,
+)
+from codur.tools.python_ast import (
+    python_ast_graph,
+    python_ast_outline,
+)
+from codur.tools.project_analysis import (
+    python_dependency_graph,
 )
 from codur.tools.registry import (
     list_tool_directory,
@@ -99,9 +109,15 @@ __all__ = [
     "git_status",
     "git_diff",
     "git_log",
+    "git_stage_files",
+    "git_stage_all",
+    "git_commit",
     "fetch_webpage",
     "duckduckgo_search",
     "convert_document",
+    "python_ast_graph",
+    "python_ast_outline",
+    "python_dependency_graph",
     "list_tool_directory",
     "get_tool_help",
 ]

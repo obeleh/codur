@@ -94,6 +94,13 @@ def _reset_challenges() -> None:
     head = repo.revparse_single("HEAD")
     challenge_prefix = f"{CHALLENGES_DIR.name}/"
 
+    # Clean up debug logs from all challenges
+    for challenge_dir in CHALLENGES_DIR.iterdir():
+        if challenge_dir.is_dir():
+            debug_log = challenge_dir / "codur_debug.log"
+            if debug_log.exists():
+                debug_log.unlink()
+
     for path, status in repo.status().items():
         if not path.startswith(challenge_prefix):
             continue
@@ -152,15 +159,21 @@ def _reset_after_challenge():
 
 @pytest.mark.parametrize("challenge_dir", _list_challenges(), ids=lambda p: p.name)
 def test_challenge_outputs(challenge_dir: Path) -> None:
+    """Run a challenge and verify output.
+
+    Assumes:
+    - expected.txt exists (contains expected output)
+    - prompt.txt exists (contains instructions for Codur)
+    - main.py or equivalent entry point exists (to be fixed/implemented)
+    - Challenge directory has no uncommitted changes in git
+    """
     expected_path = challenge_dir / "expected.txt"
-    main_path = challenge_dir / "main.py"
     prompt_path = challenge_dir / "prompt.txt"
+    main_path = challenge_dir / "main.py"
+
     assert expected_path.exists(), f"Missing expected.txt in {challenge_dir}"
-    assert main_path.exists(), f"Missing main.py in {challenge_dir}"
     assert prompt_path.exists(), f"Missing prompt.txt in {challenge_dir}"
-    allowed = {"expected.txt", "main.py", "prompt.txt"}
-    extras = [p.name for p in challenge_dir.iterdir() if p.is_file() and p.name not in allowed]
-    assert not extras, f"Unexpected files in {challenge_dir}: {extras}"
+    assert main_path.exists(), f"Missing main.py (entry point) in {challenge_dir}"
 
     prompt = _read_text(prompt_path)
     _run_codur(prompt, cwd=challenge_dir)

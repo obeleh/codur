@@ -44,9 +44,15 @@ from codur.tools import (
     git_status,
     git_diff,
     git_log,
+    git_stage_files,
+    git_stage_all,
+    git_commit,
     fetch_webpage,
     duckduckgo_search,
     convert_document,
+    python_ast_graph,
+    python_ast_outline,
+    python_dependency_graph,
 )
 
 
@@ -116,9 +122,35 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
         "git_status": lambda args: git_status(root=root, state=tool_state, **args),
         "git_diff": lambda args: git_diff(root=root, state=tool_state, **args),
         "git_log": lambda args: git_log(root=root, state=tool_state, **args),
+        "git_stage_files": lambda args: git_stage_files(
+            root=root,
+            allow_outside_root=allow_outside_root,
+            state=tool_state,
+            **args,
+        ),
+        "git_stage_all": lambda args: git_stage_all(root=root, state=tool_state, **args),
+        "git_commit": lambda args: git_commit(root=root, state=tool_state, **args),
         "fetch_webpage": lambda args: fetch_webpage(state=tool_state, **args),
         "duckduckgo_search": lambda args: duckduckgo_search(state=tool_state, **args),
         "convert_document": lambda args: convert_document(
+            root=root,
+            allow_outside_root=allow_outside_root,
+            state=tool_state,
+            **args,
+        ),
+        "python_ast_graph": lambda args: python_ast_graph(
+            root=root,
+            allow_outside_root=allow_outside_root,
+            state=tool_state,
+            **args,
+        ),
+        "python_ast_outline": lambda args: python_ast_outline(
+            root=root,
+            allow_outside_root=allow_outside_root,
+            state=tool_state,
+            **args,
+        ),
+        "python_dependency_graph": lambda args: python_dependency_graph(
             root=root,
             allow_outside_root=allow_outside_root,
             state=tool_state,

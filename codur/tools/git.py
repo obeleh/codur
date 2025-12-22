@@ -8,9 +8,10 @@ from pathlib import Path
 
 import pygit2
 
+from codur.config import CodurConfig
 from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS
 from codur.graph.state import AgentState
-from codur.utils.path_utils import resolve_root
+from codur.utils.path_utils import resolve_root, resolve_path
 
 
 _INDEX_FLAGS = (
@@ -43,6 +44,58 @@ def _truncate(text: str, max_bytes: int) -> str:
     if len(text) <= max_bytes:
         return text
     return text[:max_bytes] + "\n... [truncated]"
+
+
+def _resolve_config(config: CodurConfig | None, state: AgentState | None) -> CodurConfig:
+    if config is not None:
+        return config
+    if state is not None and hasattr(state, "get_config"):
+        cfg = state.get_config()
+        if cfg is not None:
+            return cfg
+    raise ValueError("Config not available in tool state")
+
+
+def _require_git_write_enabled(config: CodurConfig) -> None:
+    if not config.tools.allow_git_write:
+        raise ValueError("Git write tools are disabled. Set tools.allow_git_write: true in codur.yaml.")
+
+
+def _repo_workdir(repo: pygit2.Repository) -> Path:
+    if not repo.workdir:
+        raise ValueError("Bare repositories are not supported")
+    return Path(repo.workdir).resolve()
+
+
+def _resolve_repo_path(
+    raw_path: str,
+    repo_root: Path,
+    root: str | Path | None,
+    allow_outside_root: bool,
+) -> tuple[Path, Path]:
+    base_root = resolve_root(root) if root else repo_root
+    abs_path = resolve_path(raw_path, base_root, allow_outside_root=allow_outside_root)
+    try:
+        rel_path = abs_path.relative_to(repo_root)
+    except ValueError as exc:
+        raise ValueError(f"Path is outside repository: {raw_path}") from exc
+    return abs_path, rel_path
+
+
+def _resolve_signature(
+    repo: pygit2.Repository,
+    name: str | None,
+    email: str | None,
+    role: str,
+) -> pygit2.Signature:
+    if name and email:
+        return pygit2.Signature(name, email)
+    try:
+        return repo.default_signature
+    except Exception as exc:
+        raise ValueError(
+            f"{role} name/email not set. Provide {role}_name/{role}_email or set git user.name/user.email."
+        ) from exc
 
 
 def git_status(
@@ -183,3 +236,121 @@ def git_log(
         if len(commits) >= max_count:
             break
     return commits
+
+
+def git_stage_files(
+    paths: list[str],
+    root: str | Path | None = None,
+    allow_outside_root: bool = False,
+    config: CodurConfig | None = None,
+    state: AgentState | None = None,
+) -> dict:
+    """
+    Stage file paths for commit (git add).
+    """
+    if not paths:
+        raise ValueError("git_stage_files requires a non-empty 'paths' list")
+
+    config = _resolve_config(config, state)
+    _require_git_write_enabled(config)
+
+    repo = _open_repo(root)
+    repo_root = _repo_workdir(repo)
+    index = repo.index
+
+    added: list[str] = []
+    removed: list[str] = []
+    staged_dirs: list[str] = []
+    errors: list[str] = []
+
+    for path in paths:
+        try:
+            abs_path, rel_path = _resolve_repo_path(path, repo_root, root, allow_outside_root)
+            rel_str = str(rel_path)
+            if abs_path.is_dir():
+                index.add_all([rel_str])
+                staged_dirs.append(rel_str)
+            elif abs_path.exists():
+                index.add(rel_str)
+                added.append(rel_str)
+            else:
+                index.remove(rel_str)
+                removed.append(rel_str)
+        except Exception as exc:
+            errors.append(f"{path}: {exc}")
+
+    index.write()
+    return {
+        "added": added,
+        "removed": removed,
+        "staged_dirs": staged_dirs,
+        "errors": errors,
+    }
+
+
+def git_stage_all(
+    root: str | Path | None = None,
+    config: CodurConfig | None = None,
+    state: AgentState | None = None,
+) -> dict:
+    """
+    Stage all changes (git add -A).
+    """
+    config = _resolve_config(config, state)
+    _require_git_write_enabled(config)
+
+    repo = _open_repo(root)
+    index = repo.index
+    index.add_all()
+    index.write()
+    return {"staged": True}
+
+
+def git_commit(
+    message: str,
+    root: str | Path | None = None,
+    allow_empty: bool = False,
+    author_name: str | None = None,
+    author_email: str | None = None,
+    committer_name: str | None = None,
+    committer_email: str | None = None,
+    config: CodurConfig | None = None,
+    state: AgentState | None = None,
+) -> dict:
+    """
+    Create a git commit from the current index.
+    """
+    if not message:
+        raise ValueError("git_commit requires a commit message")
+
+    config = _resolve_config(config, state)
+    _require_git_write_enabled(config)
+
+    repo = _open_repo(root)
+    repo_root = _repo_workdir(repo)
+    index = repo.index
+    index.write()
+    tree_id = index.write_tree()
+
+    if repo.head_is_unborn:
+        if not allow_empty and len(index) == 0:
+            raise ValueError("Cannot create empty initial commit without allow_empty=true")
+        parents: list[pygit2.Oid] = []
+        ref_name = repo.head.name if repo.head is not None else "HEAD"
+    else:
+        if not allow_empty:
+            diff = repo.diff("HEAD", cached=True)
+            if diff.stats.files_changed == 0:
+                raise ValueError("No staged changes to commit (use allow_empty=true to override)")
+        parents = [repo.head.target]
+        ref_name = repo.head.name
+
+    author = _resolve_signature(repo, author_name, author_email, "author")
+    committer = _resolve_signature(repo, committer_name, committer_email, "committer")
+
+    commit_id = repo.create_commit(ref_name, author, committer, message, tree_id, parents)
+    return {
+        "commit": str(commit_id),
+        "repo_root": str(repo_root),
+        "ref": ref_name,
+    }

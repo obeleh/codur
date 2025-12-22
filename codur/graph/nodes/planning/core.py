@@ -18,6 +18,13 @@ from .decision_handler import PlanningDecisionHandler
 from .prompt_builder import PlanningPromptBuilder
 from .validators import looks_like_change_request, mentions_file_path, has_mutation_tool
 from .json_parser import JSONResponseParser
+from .classifier import (
+    quick_classify,
+    TaskType,
+    ClassificationResult,
+    get_agent_for_task_type,
+    build_context_aware_prompt,
+)
 
 console = Console()
 
@@ -43,12 +50,37 @@ class PlanningOrchestrator:
             for msg in messages
         )
 
+        # Fast path: non-LLM tool detection
         if self.config.runtime.detect_tool_calls_from_text:
             non_llm_result = run_non_llm_tools(messages, state)
             if non_llm_result:
                 return non_llm_result
 
-        prompt_messages = self.prompt_builder.build_prompt_messages(messages, tool_results_present)
+        # === PHASE 1: Quick Classification ===
+        # Try to classify without LLM call for obvious cases
+        classification = quick_classify(messages, self.config)
+
+        if state.get("verbose"):
+            console.print(f"[dim]Phase 1: {classification.task_type.value} "
+                         f"(confidence: {classification.confidence:.0%})[/dim]")
+
+        # Handle high-confidence classifications without LLM
+        if classification.is_confident and not tool_results_present:
+            user_message = messages[-1].content if messages else ""
+            phase1_result = self._handle_confident_classification(classification, iterations, user_message)
+            if phase1_result:
+                if state.get("verbose"):
+                    console.print("[green]✓ Phase 1 resolved (no LLM needed)[/green]")
+                return phase1_result
+
+        # === PHASE 2: Context-Aware LLM Planning ===
+        # Use a focused prompt based on Phase 1 classification
+        if state.get("verbose"):
+            console.print("[dim]Phase 2: Using context-aware LLM planning[/dim]")
+
+        prompt_messages = self._build_phase2_messages(
+            messages, tool_results_present, classification
+        )
 
         retry_strategy = LLMRetryStrategy(
             max_attempts=self.config.planning.max_retry_attempts,
@@ -56,9 +88,20 @@ class PlanningOrchestrator:
             backoff_factor=self.config.planning.retry_backoff_factor,
         )
         try:
+            # Create LLM for planning with lower temperature for more deterministic JSON output
+            from codur.llm import create_llm_profile
+            planning_llm = create_llm_profile(
+                self.config,
+                self.config.llm.default_profile,
+                json_mode=True
+            )
+            # Override temperature for planning (lower = more deterministic)
+            if hasattr(planning_llm, 'temperature'):
+                planning_llm.temperature = self.config.llm.planning_temperature
+
             active_llm, response, profile_name = retry_strategy.invoke_with_fallbacks(
                 self.config,
-                llm,
+                planning_llm,
                 prompt_messages,
             )
             content = response.content
@@ -216,3 +259,104 @@ class PlanningOrchestrator:
             if isinstance(msg, HumanMessage):
                 return msg.content
         return None
+
+    def _handle_confident_classification(
+        self,
+        classification: ClassificationResult,
+        iterations: int,
+        user_message: str = ""
+    ) -> PlanNodeResult | None:
+        """Handle high-confidence Phase 1 classifications without LLM.
+
+        Returns a PlanNodeResult if we can resolve without LLM, None otherwise.
+        """
+        task_type = classification.task_type
+
+        # Greetings - respond directly
+        if task_type == TaskType.GREETING:
+            return {
+                "next_action": "end",
+                "final_response": "Hello! How can I help you with your coding tasks today?",
+                "iterations": iterations + 1,
+                "llm_debug": {"phase1_resolved": True, "task_type": "greeting"},
+            }
+
+        # File operations - generate tool calls
+        if task_type == TaskType.FILE_OPERATION and classification.detected_files:
+            action = classification.detected_action
+            if action and classification.detected_files:
+                tool_call = {"tool": action, "args": {"path": classification.detected_files[0]}}
+                # Handle move/copy which need source and destination
+                if action in ("move_file", "copy_file") and len(classification.detected_files) >= 2:
+                    tool_call = {
+                        "tool": action,
+                        "args": {
+                            "source": classification.detected_files[0],
+                            "destination": classification.detected_files[1]
+                        }
+                    }
+                return {
+                    "next_action": "tool",
+                    "tool_calls": [tool_call],
+                    "iterations": iterations + 1,
+                    "llm_debug": {"phase1_resolved": True, "task_type": "file_operation"},
+                }
+
+        # Explanation requests - read file first
+        if task_type == TaskType.EXPLANATION and classification.detected_files:
+            return {
+                "next_action": "tool",
+                "tool_calls": [{"tool": "read_file", "args": {"path": classification.detected_files[0]}}],
+                "iterations": iterations + 1,
+                "llm_debug": {"phase1_resolved": True, "task_type": "explanation"},
+            }
+
+        # Code fix/generation - delegate to appropriate agent
+        if task_type in (TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR):
+            agent = get_agent_for_task_type(
+                task_type,
+                self.config,
+                classification.detected_files,
+                user_message
+            )
+            return {
+                "next_action": "delegate",
+                "selected_agent": agent,
+                "iterations": iterations + 1,
+                "llm_debug": {
+                    "phase1_resolved": True,
+                    "task_type": task_type.value,
+                    "selected_agent": agent
+                },
+            }
+
+        # Cannot resolve in Phase 1
+        return None
+
+    def _build_phase2_messages(
+        self,
+        messages: list[BaseMessage],
+        has_tool_results: bool,
+        classification: ClassificationResult
+    ) -> list[BaseMessage]:
+        """Build context-aware prompt messages for Phase 2.
+
+        Uses classification from Phase 1 to create a focused prompt,
+        reducing token usage compared to the full generic prompt.
+        """
+        # Build context-aware system prompt based on classification
+        context_prompt = build_context_aware_prompt(classification, self.config)
+
+        system_message = SystemMessage(content=context_prompt)
+        prompt_messages = [system_message] + list(messages)
+
+        if has_tool_results:
+            followup_prompt = SystemMessage(
+                content=(
+                    "Tool results are available above. Use them to complete the task. "
+                    "Respond with valid JSON only."
+                )
+            )
+            prompt_messages.insert(1, followup_prompt)
+
+        return prompt_messages

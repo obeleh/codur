@@ -114,6 +114,8 @@ agents:
 llm:
   default_profile: groq-qwen3-32b
   default_temperature: 0.7
+  planning_temperature: 0.3   # Lower temperature for more deterministic JSON output in planning
+  generation_temperature: 0.7 # Normal temperature for code generation
 
   profiles:
     gemini-3-flash-preview:
@@ -153,6 +155,10 @@ runtime:
   allow_outside_workspace: true
   # This allows tool detection outside LLM calls (RECOMMENDED: keeps it reliable)
   detect_tool_calls_from_text: true
+  # Planner fallback profiles if primary LLM fails
+  planner_fallback_profiles:
+    - groq-70b
+    - ollama-ministral
 
   # Async execution settings
   async:
@@ -162,3 +168,21 @@ runtime:
     user_input_poll_ms: 100        # How often to check for user input
     tool_timeout_s: 600            # Timeout for tool execution (10 min)
     cancel_grace_s: 5              # Grace period for cancellation
+
+# Planning Settings - Control planning behavior
+planning:
+  debug_truncate_short: 300        # Reduce debug output length
+  debug_truncate_long: 800         # Reduce error message length
+  max_retry_attempts: 2            # Fewer retries for faster failure
+  retry_initial_delay: 0.3         # Faster initial retry
+  retry_backoff_factor: 1.5        # Less backoff between retries
+
+# Agent Execution Settings - Control how agents are executed
+agent_execution:
+  default_cli_timeout: 300         # 5 minutes instead of 10
+  claude_code_max_tokens: 8000     # Max tokens for Claude Code
+
+# Tool settings
+tools:
+  # Allow git write operations like staging or commits.
+  allow_git_write: true

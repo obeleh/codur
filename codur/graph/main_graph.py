@@ -79,9 +79,11 @@ def create_agent_graph(config: CodurConfig):
     )
 
     # Compile the graph with increased recursion limit for trial-error loops
-    # Each loop iteration uses multiple nodes (plan→delegate→execute→review→continue)
-    # With max_iterations=10, we need at least 10*5=50 recursion depth
+    # Each loop iteration: plan→delegate→execute→review→continue (5 nodes)
+    # With max_iterations=10 and max_tool_iterations=5 per agent:
+    # Estimate: 10 iterations * 5 nodes + (5 tool iterations * 2 nodes per agent execution) = 60 nodes
+    # Using 300 for comprehensive tool-using trial-error loops
     try:
-        return workflow.compile(recursion_limit=60)
+        return workflow.compile(recursion_limit=300)
     except TypeError:
         return workflow.compile()
