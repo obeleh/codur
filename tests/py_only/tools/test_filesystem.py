@@ -119,3 +119,33 @@ def test_replace_lines_invalid_range(temp_fs):
     write_file("lines.txt", "Line 1\n", root=temp_fs)
     with pytest.raises(ValueError):
         replace_lines("lines.txt", start_line=3, end_line=2, content="Nope\n", root=temp_fs)
+
+
+def test_replace_in_file_no_matches(temp_fs):
+    write_file("no_match.txt", "alpha beta", root=temp_fs)
+    result = replace_in_file("no_match.txt", "gamma", "delta", root=temp_fs)
+    assert result["replacements"] == 0
+    assert (temp_fs / "no_match.txt").read_text(encoding="utf-8") == "alpha beta"
+
+
+def test_inject_lines_line_too_large(temp_fs):
+    write_file("lines.txt", "Line 1\n", root=temp_fs)
+    with pytest.raises(ValueError, match="line exceeds file length"):
+        inject_lines("lines.txt", line=3, content="Nope\n", root=temp_fs)
+
+
+def test_replace_lines_end_line_too_large(temp_fs):
+    write_file("lines.txt", "Line 1\n", root=temp_fs)
+    with pytest.raises(ValueError, match="end_line exceeds file length"):
+        replace_lines("lines.txt", start_line=1, end_line=3, content="Nope\n", root=temp_fs)
+
+
+def test_line_count_empty_file(temp_fs):
+    write_file("empty.txt", "", root=temp_fs)
+    result = line_count("empty.txt", root=temp_fs)
+    assert result["lines"] == 0
+
+
+def test_read_file_rejects_outside_root(temp_fs):
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        read_file("../outside.txt", root=temp_fs)

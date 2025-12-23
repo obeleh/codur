@@ -40,11 +40,12 @@ def _resolve_api_key(config: CodurConfig, provider: str, api_key_env: str | None
     return None
 
 
-def create_llm(config: CodurConfig) -> BaseChatModel:
+def create_llm(config: CodurConfig, temperature: float | None = None) -> BaseChatModel:
     """Create an LLM instance using the default profile.
 
     Args:
         config: Codur configuration
+        temperature: Optional temperature override
 
     Returns:
         BaseChatModel: Configured LLM instance
@@ -54,16 +55,22 @@ def create_llm(config: CodurConfig) -> BaseChatModel:
     """
     if not config.llm.default_profile:
         raise ValueError("No default LLM profile configured (llm.default_profile)")
-    return create_llm_profile(config, config.llm.default_profile)
+    return create_llm_profile(config, config.llm.default_profile, temperature=temperature)
 
 
-def create_llm_profile(config: CodurConfig, profile_name: str, json_mode: bool = False) -> BaseChatModel:
+def create_llm_profile(
+    config: CodurConfig,
+    profile_name: str,
+    json_mode: bool = False,
+    temperature: float | None = None
+) -> BaseChatModel:
     """Create an LLM instance for a specific profile using the provider registry.
 
     Args:
         config: Codur configuration
         profile_name: Name of the profile to use
         json_mode: If True, force JSON output format (supported by Groq and Ollama)
+        temperature: Optional temperature override (overrides profile and default)
 
     Returns:
         BaseChatModel: Configured LLM instance
@@ -76,7 +83,11 @@ def create_llm_profile(config: CodurConfig, profile_name: str, json_mode: bool =
         raise ValueError(f"Unknown LLM profile: {profile_name}")
 
     provider = profile.provider.lower()
-    temperature = profile.temperature if profile.temperature is not None else config.llm.default_temperature
+    
+    # Resolve temperature: override > profile > default
+    if temperature is None:
+        temperature = profile.temperature if profile.temperature is not None else config.llm.default_temperature
+    
     model = profile.model
     api_key = _resolve_api_key(config, provider, profile.api_key_env)
 

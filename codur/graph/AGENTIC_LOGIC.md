@@ -256,7 +256,9 @@ while tool_iteration < max_tool_iterations:  # default 5
 **Flow:**
 1. Read the `codur-coding` agent config
 2. Build a challenge + context prompt
-3. Invoke the matching LLM profile with the agent system prompt
+3. Invoke the matching LLM profile with the agent system prompt (**JSON mode enabled**)
+4. Parse JSON response and apply tool calls directly (no tool detector loop)
+5. If JSON parse or tool application fails, retry once with explicit error feedback
 
 ---
 
@@ -445,6 +447,34 @@ The `codur-coding` agent profile is a coding-optimized LLM configuration intende
 - Restates assumptions briefly
 - Produces correct, efficient code with edge cases
 - Asks a single concise clarification only if the task is ambiguous
+
+**JSON Output Requirement (enforced):**
+The coding node runs the LLM in JSON mode and expects a valid JSON object with tool calls:
+```json
+{
+  "thought": "brief reasoning",
+  "tool_calls": [
+    {
+      "tool": "replace_function",
+      "args": {
+        "path": "main.py",
+        "function_name": "name_of_function",
+        "new_code": "def name_of_function(...):\n    ..."
+      }
+    }
+  ]
+}
+```
+
+**Available Coding Tools:**
+- `replace_function(path, function_name, new_code)`
+- `replace_class(path, class_name, new_code)`
+- `replace_method(path, class_name, method_name, new_code)`
+- `replace_file_content(path, new_code)`
+
+**Fallback/Defaults:**
+- If `tool_calls` is missing but `code` exists, the node treats it as a full file replacement of `main.py`.
+- If a tool call omits `path`, it defaults to `main.py`.
 
 Use this profile when routing tasks that are primarily coding challenges and include supplemental context that should be considered during solution.
 

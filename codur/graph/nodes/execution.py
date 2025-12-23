@@ -96,7 +96,7 @@ class AgentExecutor:
         profile_name = self.agent_name.split(":", 1)[1]
         if self.state.get("verbose"):
             console.print(f"[dim]Using LLM profile: {profile_name}[/dim]")
-        llm = create_llm_profile(self.config, profile_name)
+        llm = create_llm_profile(self.config, profile_name, temperature=self.config.llm.generation_temperature)
         response = invoke_llm(
             llm,
             [HumanMessage(content=task)],
@@ -124,7 +124,7 @@ class AgentExecutor:
                 matching_profile = profile_name
                 break
 
-        llm = create_llm_profile(self.config, matching_profile) if matching_profile else create_llm(self.config)
+        llm = create_llm_profile(self.config, matching_profile, temperature=self.config.llm.generation_temperature) if matching_profile else create_llm(self.config, temperature=self.config.llm.generation_temperature)
         response = invoke_llm(
             llm,
             [HumanMessage(content=task)],

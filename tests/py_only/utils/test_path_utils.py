@@ -29,3 +29,8 @@ def test_resolve_path_allows_outside_root(tmp_path) -> None:
     outside = tmp_path.parent / "outside.txt"
     result = resolve_path(str(outside), tmp_path, allow_outside_root=True)
     assert result == outside.resolve()
+
+
+def test_resolve_path_rejects_parent_traversal(tmp_path) -> None:
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        resolve_path("../outside.txt", tmp_path)

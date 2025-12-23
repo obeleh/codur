@@ -4,6 +4,7 @@ Codur CLI - Command-line interface for the coding agent
 """
 
 import warnings
+from tabnanny import verbose
 
 warnings.filterwarnings(
     "ignore",
@@ -354,6 +355,7 @@ def interactive(
                 "config": cfg,
                 "llm_calls": 0,
                 "max_llm_calls": cfg.runtime.max_llm_calls,
+                "verbose": verbose,
             }, cfg.runtime.max_runtime_s)
 
             selected_agent = result.get("selected_agent")

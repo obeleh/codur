@@ -60,14 +60,42 @@ def process(self, data):
         assert directive["class_name"] == "MyClass"
 
     def test_parse_full_file_response_no_directive(self):
-        """Test that full file response returns no directive."""
+        """Test that full file response returns a replace_full_file directive."""
         response = """```python
 def title_case(sentence: str) -> str:
     return sentence.upper()
 ```"""
 
         directive = _parse_replacement_directive(response)
-        assert directive is None
+        assert directive is not None
+        assert directive["operation"] == "replace_full_file"
+        assert "def title_case" in directive["code"]
+
+    def test_parse_explicit_full_file_directive(self):
+        """Test parsing explicit 'Replace full file' directive."""
+        response = """Replace full file with:
+```python
+def new_content():
+    pass
+```"""
+
+        directive = _parse_replacement_directive(response)
+        assert directive is not None
+        assert directive["operation"] == "replace_full_file"
+        assert "def new_content" in directive["code"]
+
+    def test_parse_explicit_entire_file_directive(self):
+        """Test parsing explicit 'Replace entire file' directive."""
+        response = """Replace entire file with:
+```python
+def entire_new_content():
+    pass
+```"""
+
+        directive = _parse_replacement_directive(response)
+        assert directive is not None
+        assert directive["operation"] == "replace_full_file"
+        assert "def entire_new_content" in directive["code"]
 
     def test_extract_code_block_from_full_file(self):
         """Test code block extraction from full file response."""
@@ -149,10 +177,10 @@ def title_case(sentence: str) -> str:
 
             try:
                 # Create response with invalid syntax
-                response = '''Replace function foo with:
+                invalid_code = "def foo(\n    this is invalid syntax!"
+                response = f'''Replace function foo with:
 ```python
-def foo(
-    this is invalid syntax!
+{invalid_code}
 ```'''
 
                 config = MagicMock()
@@ -165,6 +193,37 @@ def foo(
                 # Should return an error
                 assert error is not None
                 assert "Syntax error" in error or "Invalid Python syntax" in error
+                
+            finally:
+                os.chdir(old_cwd)
+
+    def test_apply_invalid_syntax_includes_code_in_error(self):
+        """Test that invalid syntax error includes the attempted code for context."""
+        with TemporaryDirectory() as tmpdir:
+            # Create a test file
+            test_file = Path(tmpdir) / "main.py"
+            test_file.write_text('def foo():\n    pass\n')
+
+            import os
+            old_cwd = os.getcwd()
+            os.chdir(tmpdir)
+
+            try:
+                # Create response with invalid syntax
+                invalid_code = "def broken_func():\n    return 'missing quote"
+                response = f"```python\n{invalid_code}\n```"
+
+                config = MagicMock()
+                config.runtime.allow_outside_workspace = False
+                state = {}
+
+                # Apply the result
+                error = _apply_coding_result(response, state, config)
+
+                # Should return an error containing the code
+                assert error is not None
+                assert invalid_code in error
+                assert "Invalid Python syntax" in error
 
             finally:
                 os.chdir(old_cwd)
@@ -203,7 +262,7 @@ def nonexistent():
                 os.chdir(old_cwd)
 
     def test_apply_full_file_replacement(self):
-        """Test that full file replacement still works."""
+        """Test that full file replacement (implicit) works."""
         with TemporaryDirectory() as tmpdir:
             # Create a test file
             test_file = Path(tmpdir) / "main.py"
@@ -234,6 +293,84 @@ def new():
                 new_content = test_file.read_text()
                 assert "def new" in new_content
                 assert "def old" not in new_content
+
+            finally:
+                os.chdir(old_cwd)
+
+    def test_apply_explicit_full_file_directive(self):
+        """Test that explicit 'Replace full file' directive works."""
+        with TemporaryDirectory() as tmpdir:
+            # Create a test file
+            test_file = Path(tmpdir) / "main.py"
+            test_file.write_text('def old():\n    pass\n')
+
+            import os
+            old_cwd = os.getcwd()
+            os.chdir(tmpdir)
+
+            try:
+                # Create response with explicit full file directive
+                response = '''Replace full file with:
+```python
+def explicit_new():
+    return "explicitly replaced"
+```'''
+
+                config = MagicMock()
+                config.runtime.allow_outside_workspace = False
+                state = {}
+
+                # Apply the result
+                error = _apply_coding_result(response, state, config)
+
+                # Should succeed
+                assert error is None
+
+                # Verify the file was completely replaced
+                new_content = test_file.read_text()
+                assert "def explicit_new" in new_content
+                assert "def old" not in new_content
+
+            finally:
+                os.chdir(old_cwd)
+
+    def test_full_file_replacement_persists_to_disk(self):
+        """Test that full file replacement actually persists changes to disk."""
+        with TemporaryDirectory() as tmpdir:
+            # Create a test file
+            test_file = Path(tmpdir) / "main.py"
+            test_file.write_text('original content')
+            
+            # Verify initial state
+            assert test_file.read_text() == 'original content'
+
+            import os
+            old_cwd = os.getcwd()
+            os.chdir(tmpdir)
+
+            try:
+                # Create response with full file replacement
+                response = '''```python
+def new_function():
+    print("New content persisted")
+```'''
+
+                config = MagicMock()
+                config.runtime.allow_outside_workspace = False
+                state = {}
+
+                # Apply the result
+                error = _apply_coding_result(response, state, config)
+                
+                assert error is None
+
+                # Explicitly read from disk again to verify persistence
+                with open("main.py", "r") as f:
+                    content_on_disk = f.read()
+                
+                assert 'def new_function():' in content_on_disk
+                assert 'print("New content persisted")' in content_on_disk
+                assert 'original content' not in content_on_disk
 
             finally:
                 os.chdir(old_cwd)

@@ -56,3 +56,61 @@ def test_detect_json_tool_calls():
     # In this case likely None unless it matches textual patterns
     result4 = detector.detect(message4)
     assert result4 is None
+
+
+def test_detect_json_tool_calls_multiple_tools():
+    detector = create_default_tool_detector()
+
+    message = """
+    ```json
+    [
+        {"tool": "read_file", "args": {"path": "a.py"}},
+        {"tool": "list_files", "args": {"root": "."}}
+    ]
+    ```
+    """
+    result = detector.detect(message)
+    assert result is not None
+    assert len(result) == 2
+    assert result[0]["tool"] == "read_file"
+    assert result[1]["tool"] == "list_files"
+
+
+def test_detect_json_tool_calls_skips_invalid_block():
+    detector = create_default_tool_detector()
+
+    message = """
+    ```json
+    { "tool": "broken" ... }
+    ```
+    ```json
+    {"tool": "read_file", "args": {"path": "ok.py"}}
+    ```
+    """
+    result = detector.detect(message)
+    assert result is not None
+    assert result[0]["tool"] == "read_file"
+
+
+def test_detect_json_tool_calls_uppercase_fence_ignored():
+    detector = create_default_tool_detector()
+
+    message = """
+    ```JSON
+    {"tool": "read_file", "args": {"path": "ok.py"}}
+    ```
+    """
+    result = detector.detect(message)
+    assert result is None
+
+
+def test_detect_json_tool_calls_wrapped_object_ignored():
+    detector = create_default_tool_detector()
+
+    message = """
+    ```json
+    {"tool_calls": [{"tool": "read_file", "args": {"path": "ok.py"}}]}
+    ```
+    """
+    result = detector.detect(message)
+    assert result is None

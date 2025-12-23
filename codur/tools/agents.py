@@ -68,7 +68,7 @@ def agent_call(
 
     if agent_name.startswith("llm:"):
         profile_name = agent_name.split(":", 1)[1]
-        llm = create_llm_profile(config, profile_name)
+        llm = create_llm_profile(config, profile_name, temperature=config.llm.generation_temperature)
         response = invoke_llm(
             llm,
             [HumanMessage(content=task)],
@@ -95,7 +95,7 @@ def agent_call(
         coding_state = {
             "messages": [HumanMessage(content=task)],
             "iterations": 0,
-            "verbose": False,
+            "verbose": state.get("verbose", False) if state else False,
             "config": config,
             "llm_calls": int(state.get("llm_calls", 0)) if state else 0,
             "max_llm_calls": state.get("max_llm_calls") if state else config.runtime.max_llm_calls,
@@ -154,7 +154,7 @@ def retry_in_agent(
 
     if agent_name.startswith("llm:"):
         profile_name = agent_name.split(":", 1)[1]
-        llm = create_llm_profile(config, profile_name)
+        llm = create_llm_profile(config, profile_name, temperature=config.llm.generation_temperature)
         response = invoke_llm(
             llm,
             [HumanMessage(content=task)],

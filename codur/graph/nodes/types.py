@@ -55,7 +55,7 @@ class PlanningDecision(TypedDict):
 
 class ReplacementDirective(TypedDict):
     """Directive to replace a specific function/class/method in a file."""
-    operation: Literal["replace_function", "replace_class", "replace_method"]
-    target_name: str  # function/class/method name
+    operation: Literal["replace_function", "replace_class", "replace_method", "replace_full_file"]
+    target_name: NotRequired[str]  # function/class/method name
     class_name: NotRequired[Optional[str]]  # for methods only
     code: str  # the replacement code

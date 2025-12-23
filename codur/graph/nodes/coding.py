@@ -1,22 +1,24 @@
 """Dedicated coding node for the codur-coding agent."""
-import os
-import re
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
-from codur.graph.nodes.types import ExecuteNodeResult, ReplacementDirective
+from codur.graph.nodes.types import ExecuteNodeResult
 from codur.graph.nodes.utils import _normalize_messages
 from codur.llm import create_llm_profile, create_llm
-from codur.tools import write_file, read_file, replace_lines
-from codur.tools.validation import validate_python_syntax
-from codur.tools.ast_utils import find_function_lines, find_class_lines, find_method_lines
 from codur.utils.llm_calls import invoke_llm
+from codur.tools.code_modification import (
+    replace_function,
+    replace_class,
+    replace_method,
+    replace_file_content,
+    inject_function,
+)
 
 console = Console()
 
@@ -24,63 +26,77 @@ console = Console()
 # Built-in system prompt for the coding agent
 CODING_AGENT_SYSTEM_PROMPT = """You are Codur Coding Agent, a specialized coding solver.
 
-Your mission: Solve coding challenges end-to-end with correct, efficient, and robust implementations.
+Your mission: Solve coding requests with correct, efficient, and robust implementations.
 
 ## Key Principles
 
-1. **Understand Requirements**: Carefully read the challenge and any provided context
-2. **Edge Cases First**: Consider boundary conditions, empty inputs, large inputs, special characters
-3. **Correctness Over Cleverness**: Prioritize working code over premature optimization
-4. **Learn from Errors**: If this is a retry, analyze the verification failure carefully
-
-## When This is a Retry (you'll see "Verification failed" or "PREVIOUS ATTEMPT FAILED"):
-
-- **Compare expected vs actual output**: Identify exactly what differs
-- **Check for common bugs**:
-  - Off-by-one errors (range boundaries, string indices)
-  - Missing edge cases (empty input, single element, null/None)
-  - String formatting issues (trailing spaces, newlines, capitalization)
-  - Type mismatches (int vs float, string vs number)
-  - Logic inversions (< instead of <=, and vs or)
-- **Review the implementation**: If provided, identify the specific line(s) causing the issue
-- **Fix precisely**: Don't rewrite everything, fix the identified bug
+1. **Understand Requirements**: Carefully read the challenge and any provided context.
+2. **Edge Cases First**: Consider boundary conditions, empty inputs, large inputs, special characters.
+3. **Correctness Over Cleverness**: Prioritize working code over premature optimization.
+4. **Targeted Changes**: Prefer modifying specific functions/classes over rewriting the whole file when possible.
 
 ## Output Format
 
-You can respond in two ways:
+You MUST return a valid JSON object with the following structure:
 
-### 1. FULL FILE REPLACEMENT (default, for complete implementations)
-Return the entire file content in a ```python fenced code block:
+{
+  "thought": "Your reasoning about the problem and your plan...",
+  "tool_calls": [
+    {
+      "tool": "replace_function",
+      "args": {
+        "path": "main.py",
+        "function_name": "name_of_function",
+        "new_code": "def name_of_function(...):\\n    ..."
+      }
+    }
+  ]
+}
 
-```python
-<full file content>
-```
+Respond with ONLY a valid JSON object. Do not wrap it in backticks or add extra text.
 
-### 2. TARGETED REPLACEMENT (for single function/class updates)
-When updating a specific function or class, use this format:
+Examples:
+{
+  "thought": "Replace title_case with a correct implementation.",
+  "tool_calls": [
+    {
+      "tool": "replace_function",
+      "args": {
+        "path": "main.py",
+        "function_name": "title_case",
+        "new_code": "def title_case(sentence: str) -> str:\\n    words = sentence.split()\\n    if not words:\\n        return \\\"\\\"\\n    result = []\\n    for i, word in enumerate(words):\\n        result.append(word.capitalize())\\n    return \\\" \\\".join(result)"
+      }
+    }
+  ]
+}
 
-Replace function `function_name` with:
-```python
-def function_name(args):
-    # implementation
-```
+{
+  "thought": "Replace the whole file to match the spec.",
+  "tool_calls": [
+    {
+      "tool": "replace_file_content",
+      "args": {
+        "path": "main.py",
+        "new_code": "def main():\\n    print(\\\"ok\\\")\\n\\nif __name__ == \\\"__main__\\\":\\n    main()"
+      }
+    }
+  ]
+}
 
-Or for classes:
+## Available Tools
 
-Replace class `ClassName` with:
-```python
-class ClassName:
-    # implementation
-```
+1. `replace_function(path, function_name, new_code)`: Replace a specific function.
+2. `replace_class(path, class_name, new_code)`: Replace a specific class.
+3. `replace_method(path, class_name, method_name, new_code)`: Replace a specific method in a class.
+4. `replace_file_content(path, new_code)`: Replace the entire file content (use if others don't apply).
+5. `inject_function(path, new_code, function_name?)`: Insert a new top-level function (optional name check).
 
-**Important**: For targeted replacements:
-- The function/class must already exist in the file
-- Provide complete, syntactically valid code
-- Include proper indentation
+**Important**:
+- `new_code` must be complete, valid Python code (including indentation).
+- `path` should match the file path in the request
+- You can include multiple tool calls in the list if needed.
 
-## Clarifications
-
-Only ask for clarification if the task is genuinely ambiguous. If requirements are clear, proceed with implementation.
+You MUST return a valid JSON object!
 """
 
 
@@ -102,7 +118,14 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
         console.print(f"[bold blue]Running codur-coding node (iteration {iterations})...[/bold blue]")
 
     # Resolve LLM (uses default LLM - system prompt is self-contained)
-    llm = _resolve_llm_for_model(config, None)
+    # Use generation temperature for coding tasks
+    # Enable JSON mode for structured output
+    llm = _resolve_llm_for_model(
+        config,
+        None,
+        temperature=config.llm.generation_temperature,
+        json_mode=True
+    )
 
     # Build context-aware prompt
     prompt = _build_coding_prompt(state.get("messages", []), iterations)
@@ -115,35 +138,46 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
 
     # Invoke LLM
     if verbose:
-        console.log("[bold cyan]Invoking codur-coding LLM...[/bold cyan]")
-    response = invoke_llm(
-        llm,
-        messages,
-        invoked_by="coding.primary",
-        state=state,
-        config=config,
-    )
-    result = response.content
-
-    if not _extract_code_block(result):
-        # One strict retry to force code-only output with a python code block.
-        strict_messages = [
-            SystemMessage(content=CODING_AGENT_SYSTEM_PROMPT),
-            SystemMessage(content="Output only a single ```python fenced code block with the full file. No other text."),
-            HumanMessage(content=prompt),
-        ]
+        console.log("[bold cyan]Invoking codur-coding LLM (JSON mode)...[/bold cyan]")
+    
+    try:
         response = invoke_llm(
             llm,
-            strict_messages,
-            invoked_by="coding.strict",
+            messages,
+            invoked_by="coding.primary",
             state=state,
             config=config,
         )
-        result = response.content
+    except Exception as e:
+        # Check for JSON validation error (common with some Groq models like Qwen)
+        error_msg = str(e)
+        if "json_validate_failed" in error_msg or ("400" in error_msg and "JSON" in error_msg):
+            console.log("[yellow]Primary LLM failed JSON validation. Falling back to Llama 3.3...[/yellow]")
+            fallback_model = "llama-3.3-70b-versatile"
+            fallback_llm = _resolve_llm_for_model(
+                config, 
+                model=fallback_model,
+                temperature=config.llm.generation_temperature,
+                json_mode=True
+            )
+            response = invoke_llm(
+                fallback_llm,
+                messages,
+                invoked_by="coding.fallback",
+                state=state,
+                config=config,
+            )
+        else:
+            raise e
+
+    result = response.content
 
     # Apply result and check for validation errors
     error = _apply_coding_result(result, state, config)
     if error:
+        console.log("[red]Validation/application error detected.[/red]")
+        console.log(f"[red]{error}[/red]")
+        
         # Validation or application failed - retry once with explicit error
         if iterations >= 1:
             # Already tried at least once, give up
@@ -157,8 +191,12 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
 
         # Retry with error feedback
         retry_message = SystemMessage(
-            content=f"Previous attempt failed:\n{error}\n\nPlease return valid, complete Python code in a ```python fenced code block or use a targeted replacement format."
+            content=f"Previous attempt failed with error:\n{error}\n\nPlease ensure you return valid JSON and correct code."
         )
+        console.log("[yellow]Preparing retry prompt...[/yellow]")
+        if verbose:
+            console.print(f"[dim]{prompt}[/dim]")
+            
         messages_for_retry = [
             SystemMessage(content=CODING_AGENT_SYSTEM_PROMPT),
             retry_message,
@@ -207,40 +245,26 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
     }
 
 
-def _resolve_llm_for_model(config: CodurConfig, model: str | None):
-    """Resolve LLM instance from model identifier.
-
-    Args:
-        config: Runtime configuration
-        model: Model identifier (e.g., "qwen/qwen3-32b")
-
-    Returns:
-        LLM instance
-    """
+def _resolve_llm_for_model(config: CodurConfig, model: str | None, temperature: float | None = None, json_mode: bool = False):
+    """Resolve LLM instance from model identifier."""
     matching_profile = None
     if model:
         for profile_name, profile in config.llm.profiles.items():
             if profile.model == model:
                 matching_profile = profile_name
                 break
-    return create_llm_profile(config, matching_profile) if matching_profile else create_llm(config)
+    
+    profile_to_use = matching_profile if matching_profile else config.llm.default_profile
+    if not profile_to_use:
+         raise ValueError("No default LLM profile configured.")
+         
+    return create_llm_profile(config, profile_to_use, temperature=temperature, json_mode=json_mode)
 
 
 def _build_coding_prompt(raw_messages, iterations: int = 0) -> str:
-    """Build context-aware prompt from graph state messages.
-
-    Handles both fresh attempts and retry scenarios with verification errors.
-
-    Args:
-        raw_messages: Message history from state
-        iterations: Current retry iteration count
-
-    Returns:
-        Formatted prompt with challenge and relevant context
-    """
+    """Build context-aware prompt from graph state messages."""
     messages = _normalize_messages(raw_messages)
 
-    # Extract components
     challenge = None
     verification_errors = []
     previous_attempts = []
@@ -248,56 +272,32 @@ def _build_coding_prompt(raw_messages, iterations: int = 0) -> str:
 
     for message in messages:
         if isinstance(message, HumanMessage) and challenge is None:
-            # First HumanMessage is the original task/challenge
             challenge = message.content
-
         elif isinstance(message, SystemMessage):
             content = message.content
-
-            # Detect verification error
             if "Verification failed" in content or "=== Expected Output ===" in content:
                 verification_errors.append(content)
             else:
                 context_parts.append(content)
-
         elif isinstance(message, AIMessage):
-            # Track previous attempts for context
             previous_attempts.append(message.content)
-
         elif isinstance(message, HumanMessage):
-            # Additional human context
             context_parts.append(message.content)
 
-    # Fallback if no challenge found
     if challenge is None:
         challenge = messages[-1].content if messages else "No task provided."
 
-    # Build prompt based on context
     if verification_errors:
-        # RETRY SCENARIO - use most recent error
         return _build_retry_prompt(challenge, verification_errors[-1], iterations)
     elif context_parts:
-        # FIRST ATTEMPT WITH CONTEXT
         context_text = "\n\n---\n\n".join(context_parts)
         return f"CODING CHALLENGE:\n{challenge}\n\nADDITIONAL CONTEXT:\n{context_text}"
     else:
-        # SIMPLE FIRST ATTEMPT
         return challenge
 
 
 def _build_retry_prompt(challenge: str, verification_error: str, iterations: int) -> str:
-    """Build focused prompt for retry attempts with error context.
-
-    Provides iteration-specific guidance to help agent learn from mistakes.
-
-    Args:
-        challenge: Original coding challenge
-        verification_error: Structured error message from review node
-        iterations: Current retry count
-
-    Returns:
-        Prompt emphasizing error analysis and targeted fix
-    """
+    """Build focused prompt for retry attempts with error context."""
     prompt_parts = [
         f"CODING CHALLENGE (Retry Attempt {iterations}):",
         challenge,
@@ -308,217 +308,88 @@ def _build_retry_prompt(challenge: str, verification_error: str, iterations: int
         "INSTRUCTIONS FOR THIS RETRY:",
     ]
 
-    # Provide iteration-specific guidance
     if iterations <= 2:
         prompt_parts.append(
             "- Carefully compare the Expected vs Actual output above\n"
             "- Identify the specific difference (missing line, wrong format, logic error)\n"
-            "- Fix the precise issue without rewriting unrelated code"
-        )
-    elif iterations <= 5:
-        prompt_parts.append(
-            f"- This is retry attempt {iterations}. Previous attempts failed.\n"
-            "- Check for common bugs: off-by-one errors, edge cases, string formatting\n"
-            "- Review the Current Implementation section if provided\n"
-            "- Focus on what's different between expected and actual"
+            "- Fix the precise issue using targeted replacement tools if possible"
         )
     else:
         prompt_parts.append(
             "- Multiple attempts have failed. Be very systematic:\n"
-            "- Step 1: Identify EXACTLY what's wrong (line-by-line comparison)\n"
-            "- Step 2: Check edge cases (empty input, single element, boundaries)\n"
-            "- Step 3: Verify string formatting (spaces, newlines, capitalization)\n"
-            "- Step 4: Implement the fix and DOUBLE CHECK your logic"
+            "- Check common bugs: off-by-one, edge cases, string formatting\n"
+            "- Review the logic carefully and ensure your JSON response is valid"
         )
 
     return "\n".join(prompt_parts)
 
 
-def _parse_replacement_directive(text: str) -> Optional[ReplacementDirective]:
-    """
-    Parse replacement directive from coding agent response.
-
-    Supports formats:
-    1. "Replace function `name` with:" followed by code block
-    2. "Replace class `Name` with:" followed by code block
-    3. "Update method `ClassName.method_name`:" followed by code block
-    4. JSON format: {"operation": "replace_function", "name": "...", "code": "..."}
-
-    Returns:
-        ReplacementDirective if found, None otherwise
-    """
-    # Try JSON format first
-    json_match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
-    if json_match:
-        try:
-            data = json.loads(json_match.group(1))
-            if 'operation' in data and 'name' in data and 'code' in data:
-                return ReplacementDirective(
-                    operation=data['operation'],  # type: ignore
-                    target_name=data['name'],
-                    class_name=data.get('class_name'),
-                    code=data['code']
-                )
-        except (json.JSONDecodeError, KeyError):
-            pass
-
-    # Try natural language patterns
-    # Pattern: "Replace function `name` with:" or "Replace function name with:"
-    func_match = re.search(
-        r'Replace function\s+[`\']?(\w+)[`\']?\s+with:',
-        text,
-        re.IGNORECASE
-    )
-    if func_match:
-        code = _extract_code_block(text)
-        if code:
-            return ReplacementDirective(
-                operation="replace_function",  # type: ignore
-                target_name=func_match.group(1),
-                code=code
-            )
-
-    # Pattern: "Replace class `Name` with:"
-    class_match = re.search(
-        r'Replace class\s+[`\']?(\w+)[`\']?\s+with:',
-        text,
-        re.IGNORECASE
-    )
-    if class_match:
-        code = _extract_code_block(text)
-        if code:
-            return ReplacementDirective(
-                operation="replace_class",  # type: ignore
-                target_name=class_match.group(1),
-                code=code
-            )
-
-    # Pattern: "Update method `ClassName.method_name`:" or "Update method ClassName.method_name:"
-    method_match = re.search(
-        r'Update method\s+[`]?(\w+)\.(\w+)[`]?\s+with:',
-        text,
-        re.IGNORECASE | re.DOTALL
-    )
-    if method_match:
-        code = _extract_code_block(text)
-        if code:
-            return ReplacementDirective(
-                operation="replace_method",  # type: ignore
-                target_name=method_match.group(2),
-                class_name=method_match.group(1),
-                code=code
-            )
-
-    return None
-
-
 def _apply_coding_result(result: str, state: AgentState, config: CodurConfig) -> Optional[str]:
     """
-    Apply coding result to file using either:
-    1. Targeted replacement (replace specific function/class)
-    2. Full file write (default)
-
-    Args:
-        result: The LLM response containing code
-        state: Current graph state
-        config: Runtime configuration
-
-    Returns:
-        Error message if validation/application fails, None on success
+    Parse JSON result and apply tool calls.
     """
-    # Check if target file exists
-    target_file = Path.cwd() / "main.py"
-    if not target_file.exists():
-        return None  # File doesn't exist, skip application
+    try:
+        # Simple JSON extraction if wrapped in code blocks
+        if "```json" in result:
+            json_str = result.split("```json")[1].split("```")[0].strip()
+        elif "```" in result:
+            json_str = result.split("```")[1].split("```")[0].strip()
+        else:
+            json_str = result
 
-    # Parse directive
-    directive = _parse_replacement_directive(result)
+        data = json.loads(json_str)
+    except json.JSONDecodeError as e:
+        return f"Failed to parse JSON response: {str(e)}"
 
-    if directive:
-        # TARGETED REPLACEMENT PATH
-        code = directive["code"]
+    tool_calls = data.get("tool_calls", [])
+    if not tool_calls:
+        # Fallback: check if 'code' is directly in the object (legacy/fallback)
+        if "code" in data:
+             # Treat as full file replacement
+             return replace_file_content(path="main.py", new_code=data["code"], root=Path.cwd(), allow_outside_root=config.runtime.allow_outside_workspace, state=state)
+        return "No 'tool_calls' found in JSON response."
 
-        # Validate syntax
-        is_valid, error_msg = validate_python_syntax(code)
-        if not is_valid:
-            return f"Invalid Python syntax in replacement code:\n{error_msg}"
+    errors = []
+    
+    # Map tool names to functions
+    tool_map = {
+        "replace_function": replace_function,
+        "replace_class": replace_class,
+        "replace_method": replace_method,
+        "replace_file_content": replace_file_content,
+        "inject_function": inject_function,
+    }
 
+    for call in tool_calls:
+        tool_name = call.get("tool")
+        args = call.get("args", {})
+        
+        if tool_name not in tool_map:
+            errors.append(f"Unknown tool: {tool_name}")
+            continue
+            
+        # Execute tool
         try:
-            # Read current file
-            current_content = read_file("main.py")
-
-            # Find line range based on operation type
-            if directive["operation"] == "replace_function":
-                line_range = find_function_lines(current_content, directive["target_name"])
-                target_desc = f"function {directive['target_name']}"
-            elif directive["operation"] == "replace_class":
-                line_range = find_class_lines(current_content, directive["target_name"])
-                target_desc = f"class {directive['target_name']}"
-            elif directive["operation"] == "replace_method":
-                if not directive.get("class_name"):
-                    return "Method replacement requires class_name"
-                line_range = find_method_lines(
-                    current_content,
-                    directive["class_name"],
-                    directive["target_name"]
-                )
-                target_desc = f"method {directive['class_name']}.{directive['target_name']}"
+            func = tool_map[tool_name]
+            # Inject common args
+            args["root"] = Path.cwd()
+            args["allow_outside_root"] = config.runtime.allow_outside_workspace
+            args["state"] = state
+            
+            # Default path to main.py if missing (common fallback)
+            if "path" not in args:
+                args["path"] = "main.py"
+                
+            outcome = func(**args)
+            if "Failed" in outcome or "Invalid" in outcome or "Could not find" in outcome:
+                errors.append(outcome)
             else:
-                return f"Unknown operation: {directive['operation']}"
-
-            if not line_range:
-                return f"Could not find {target_desc} in main.py"
-
-            start_line, end_line = line_range
-
-            # Apply replacement
-            replace_lines(
-                path="main.py",
-                start_line=start_line,
-                end_line=end_line,
-                content=code,
-                root=Path.cwd(),
-                allow_outside_root=config.runtime.allow_outside_workspace,
-            )
-
-
-            if os.environ.get("EARLY_FAILURE_HELPERS_FOR_TESTS") == "1":
-                # read file and make sure if if __name__ == "__main__": still is in the file
-                updated_content = read_file("main.py")
-                if '__name__ == "__main__":' not in updated_content:
-                    return "Replacement removed the main entry point."
-
-            return None  # Success
+                console.log(f"[green]{outcome}[/green]")
+                
         except Exception as e:
-            return f"Failed to apply replacement: {str(e)}"
+            errors.append(f"Error executing {tool_name}: {str(e)}")
 
-    else:
-        # FULL FILE WRITE PATH (existing behavior)
-        code_block = _extract_code_block(result)
-        if not code_block:
-            return "No valid ```python code block found in response."
+    if errors:
+        return "\n".join(errors)
 
-        # Validate syntax
-        is_valid, error_msg = validate_python_syntax(code_block)
-        if not is_valid:
-            return f"Invalid Python syntax:\n{error_msg}"
-
-        # Write full file
-        try:
-            write_file(
-                path="main.py",
-                content=code_block,
-                root=Path.cwd(),
-                allow_outside_root=config.runtime.allow_outside_workspace,
-                state=state,
-            )
-            return None  # Success
-        except Exception as e:
-            return f"Failed to write file: {str(e)}"
-
-
-def _extract_code_block(text: str) -> str | None:
-    match = re.search(r"```(?:python)?\n(.*?)```", text, re.DOTALL | re.IGNORECASE)
-    if not match:
-        return None
-    return match.group(1).strip()
+    return None

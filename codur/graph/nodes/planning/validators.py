@@ -29,6 +29,7 @@ def has_mutation_tool(tool_calls: list[dict]) -> bool:
         "set_yaml_value",
         "write_ini",
         "set_ini_value",
+        "inject_function",
     }
     for call in tool_calls or []:
         tool_name = call.get("tool")

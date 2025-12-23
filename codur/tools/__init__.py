@@ -80,6 +80,9 @@ from codur.tools.ast_utils import (
     find_class_lines,
     find_method_lines,
 )
+from codur.tools.code_modification import (
+    inject_function,
+)
 from codur.tools.registry import (
     list_tool_directory,
     get_tool_help,
@@ -138,6 +141,7 @@ __all__ = [
     "find_function_lines",
     "find_class_lines",
     "find_method_lines",
+    "inject_function",
     "list_tool_directory",
     "get_tool_help",
 ]

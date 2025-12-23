@@ -44,3 +44,24 @@ def test_ini_ops(temp_fs):
     set_ini_value("test.ini", "Section", "key", "updated", root=temp_fs)
     loaded = read_ini("test.ini", root=temp_fs)
     assert loaded["Section"]["key"] == "updated"
+
+
+def test_set_json_value_rejects_non_dict_container(temp_fs):
+    data = {"key": "value"}
+    write_json("test.json", data, root=temp_fs)
+
+    with pytest.raises(ValueError, match="Cannot set nested value on non-dict container"):
+        set_json_value("test.json", "key.sub", "nope", root=temp_fs)
+
+
+def test_read_yaml_empty_file_returns_none(temp_fs):
+    (temp_fs / "empty.yaml").write_text("", encoding="utf-8")
+    assert read_yaml("empty.yaml", root=temp_fs) is None
+
+
+def test_set_ini_value_creates_section(temp_fs):
+    (temp_fs / "new.ini").write_text("", encoding="utf-8")
+    set_ini_value("new.ini", "NewSection", "flag", "true", root=temp_fs)
+
+    loaded = read_ini("new.ini", root=temp_fs)
+    assert loaded["NewSection"]["flag"] == "true"

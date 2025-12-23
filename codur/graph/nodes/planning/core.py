@@ -177,11 +177,9 @@ class PlanningOrchestrator:
             planning_llm = create_llm_profile(
                 self.config,
                 self.config.llm.default_profile,
-                json_mode=True
+                json_mode=True,
+                temperature=self.config.llm.planning_temperature
             )
-            # Override temperature for planning (lower = more deterministic)
-            if hasattr(planning_llm, 'temperature'):
-                planning_llm.temperature = self.config.llm.planning_temperature
 
             active_llm, response, profile_name = retry_strategy.invoke_with_fallbacks(
                 self.config,
