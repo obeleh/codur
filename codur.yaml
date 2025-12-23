@@ -20,6 +20,7 @@ mcp_servers:
 agents:
   preferences:
     default_agent: "agent:groq-qwen3-32b"
+    fallback_model: "llama-3.3-70b-versatile"
 
     # Routing rules: which agent to use for which task type
     routing:

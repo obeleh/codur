@@ -6,41 +6,22 @@ MINOR_WORDS = {
 }
 
 def title_case(sentence: str) -> str:
-    """Convert a sentence to title case with specified rules."""
-    words = sentence.strip().split()
-    processed = []
-    for i, word in enumerate(words):
-        if word.isupper() and len(word) >= 2:
-            processed.append(word)
-            continue
-        if "-" in word:
-            subwords = word.split("-")
-            processed_subwords = []
-            for j, subword in enumerate(subwords):
-                is_first_sub = j == 0
-                is_last_sub = j == len(subwords) - 1
-                is_parent_first = i == 0
-                is_parent_last = i == len(words) - 1
-                is_first = is_first_sub and is_parent_first
-                is_last = is_last_sub and is_parent_last
-                if is_first or is_last:
-                    processed_subwords.append(subword.capitalize())
-                else:
-                    if subword.lower() in MINOR_WORDS:
-                        processed_subwords.append(subword.lower())
-                    else:
-                        processed_subwords.append(subword.capitalize())
-            processed_word = "-".join(processed_subwords)
-        else:
-            if i == 0 or i == len(words) - 1:
-                processed_word = word.capitalize()
-            else:
-                if word.lower() in MINOR_WORDS:
-                    processed_word = word.lower()
-                else:
-                    processed_word = word.capitalize()
-        processed.append(processed_word)
-    return " ".join(processed)
+    """
+    Convert a sentence to title case with these rules:
+
+    1. Trim leading/trailing whitespace and collapse internal whitespace.
+    2. Split the sentence into words by whitespace.
+    3. Preserve words that are already all-caps (length >= 2).
+    4. For hyphenated words, split them by hyphen, apply capitalization rules to each subword, and rejoin with hyphens.
+       The first subword is considered the "First Word" only if the parent word is the First Word.
+       The last subword is considered the "Last Word" only if the parent word is the Last Word.
+    5. Capitalize the first and last word of the sentence.
+    6. Lowercase minor words unless they are the first or last word.
+    7. Capitalize all other words.
+    8. Join the processed words back into a sentence with single spaces.
+    """
+    # TODO: implement
+    raise NotImplementedError
 
 def _run_tests() -> None:
     cases = [

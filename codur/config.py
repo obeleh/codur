@@ -32,6 +32,7 @@ class AgentConfig(BaseModel):
 class AgentPreferences(BaseModel):
     """Agent routing and preferences"""
     default_agent: str = ""
+    fallback_model: str = "llama-3.3-70b-versatile"
     routing: Dict[str, str] = Field(default_factory=dict)
     fallback_order: List[str] = Field(default_factory=list)
 

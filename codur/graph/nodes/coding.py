@@ -152,8 +152,8 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
         # Check for JSON validation error (common with some Groq models like Qwen)
         error_msg = str(e)
         if "json_validate_failed" in error_msg or ("400" in error_msg and "JSON" in error_msg):
-            console.log("[yellow]Primary LLM failed JSON validation. Falling back to Llama 3.3...[/yellow]")
-            fallback_model = "llama-3.3-70b-versatile"
+            fallback_model = config.agents.preferences.fallback_model
+            console.log(f"[yellow]Primary LLM failed JSON validation. Falling back to {fallback_model}...[/yellow]")
             fallback_llm = _resolve_llm_for_model(
                 config, 
                 model=fallback_model,
