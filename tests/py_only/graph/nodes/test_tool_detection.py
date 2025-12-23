@@ -25,3 +25,15 @@ def test_lint_python_tree() -> None:
     detector = create_default_tool_detector()
     result = detector.detect("lint python tree src")
     assert result == [{"tool": "lint_python_tree", "args": {"root": "src"}}]
+
+
+def test_read_file_requires_path_like_token() -> None:
+    detector = create_default_tool_detector()
+    result = detector.detect("read the file")
+    assert result is None
+
+
+def test_change_intent_ignores_non_path_after_in() -> None:
+    detector = create_default_tool_detector()
+    result = detector.detect("fix the bug in the code")
+    assert result is None

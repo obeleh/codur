@@ -10,7 +10,7 @@ from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import ExecuteNodeResult
 from codur.graph.nodes.utils import _normalize_messages
-from codur.llm import create_llm_profile, create_llm
+from codur.llm import create_llm_profile
 from codur.utils.llm_calls import invoke_llm
 from codur.tools.code_modification import (
     replace_function,
@@ -45,7 +45,7 @@ You MUST return a valid JSON object with the following structure:
     {
       "tool": "replace_function",
       "args": {
-        "path": "main.py",
+        "path": "path/to/file.py",
         "function_name": "name_of_function",
         "new_code": "def name_of_function(...):\\n    ..."
       }
@@ -62,7 +62,7 @@ Examples:
     {
       "tool": "replace_function",
       "args": {
-        "path": "main.py",
+        "path": "string_utils.py",
         "function_name": "title_case",
         "new_code": "def title_case(sentence: str) -> str:\\n    words = sentence.split()\\n    if not words:\\n        return \\\"\\\"\\n    result = []\\n    for i, word in enumerate(words):\\n        result.append(word.capitalize())\\n    return \\\" \\\".join(result)"
       }
@@ -76,7 +76,7 @@ Examples:
     {
       "tool": "replace_file_content",
       "args": {
-        "path": "main.py",
+        "path": "app.py",
         "new_code": "def main():\\n    print(\\\"ok\\\")\\n\\nif __name__ == \\\"__main__\\\":\\n    main()"
       }
     }
@@ -346,7 +346,10 @@ def _apply_coding_result(result: str, state: AgentState, config: CodurConfig) ->
         # Fallback: check if 'code' is directly in the object (legacy/fallback)
         if "code" in data:
              # Treat as full file replacement
-             return replace_file_content(path="main.py", new_code=data["code"], root=Path.cwd(), allow_outside_root=config.runtime.allow_outside_workspace, state=state)
+             default_path = _get_default_path(state, data)
+             if not default_path:
+                 return "Could not determine target file path for code replacement."
+             return replace_file_content(path=default_path, new_code=data["code"], root=Path.cwd(), allow_outside_root=config.runtime.allow_outside_workspace, state=state)
         return "No 'tool_calls' found in JSON response."
 
     errors = []
@@ -359,6 +362,9 @@ def _apply_coding_result(result: str, state: AgentState, config: CodurConfig) ->
         "replace_file_content": replace_file_content,
         "inject_function": inject_function,
     }
+
+    # Pre-determine a default path for all tool calls in this result
+    common_default_path = _get_default_path(state, data)
 
     for call in tool_calls:
         tool_name = call.get("tool")
@@ -376,9 +382,12 @@ def _apply_coding_result(result: str, state: AgentState, config: CodurConfig) ->
             args["allow_outside_root"] = config.runtime.allow_outside_workspace
             args["state"] = state
             
-            # Default path to main.py if missing (common fallback)
+            # Use dynamic default path if missing
             if "path" not in args:
-                args["path"] = "main.py"
+                if not common_default_path:
+                    errors.append(f"Missing 'path' for tool '{tool_name}' and could not determine a default.")
+                    continue
+                args["path"] = common_default_path
                 
             outcome = func(**args)
             if "Failed" in outcome or "Invalid" in outcome or "Could not find" in outcome:
@@ -391,5 +400,25 @@ def _apply_coding_result(result: str, state: AgentState, config: CodurConfig) ->
 
     if errors:
         return "\n".join(errors)
+
+    return None
+
+
+def _get_default_path(state: AgentState, data: dict) -> Optional[str]:
+    """Try to determine the target file path from state or JSON data."""
+    # 1. Check if any tool call in the current response has a path
+    tool_calls = data.get("tool_calls", [])
+    for call in tool_calls:
+        path = call.get("args", {}).get("path")
+        if path:
+            return path
+
+    # 2. Check if the state has previous tool calls with a path (from planner)
+    planner_tool_calls = state.get("tool_calls", [])
+    for call in planner_tool_calls:
+        args = call.get("args", {})
+        path = args.get("path") or args.get("file_path")
+        if path:
+            return path
 
     return None

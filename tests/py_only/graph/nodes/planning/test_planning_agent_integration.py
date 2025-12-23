@@ -326,6 +326,62 @@ class TestPlanningNodeMessageHandling:
         assert result is not None
 
 
+class TestPlanningNodeFileDiscovery:
+    """Test planner file discovery when no file hint is provided."""
+
+    @pytest.fixture
+    def config(self):
+        config = MagicMock()
+        config.runtime = MagicMock()
+        config.runtime.detect_tool_calls_from_text = False
+        config.runtime.max_iterations = 10
+        return config
+
+    def test_llm_pre_plan_lists_files_without_hint(self, config):
+        state = {
+            "messages": [HumanMessage(content="Fix the failing tests")],
+            "iterations": 0,
+            "verbose": False,
+        }
+
+        result = llm_pre_plan(state, config)
+        assert result is not None
+        assert result["next_action"] == "tool"
+        assert result["tool_calls"][0]["tool"] == "list_files"
+
+    def test_llm_pre_plan_selects_app_py_from_list(self, config):
+        state = {
+            "messages": [
+                HumanMessage(content="Fix the bug in the challenge"),
+                SystemMessage(content="Tool results:\nlist_files: ['app.py', 'expected.txt']"),
+            ],
+            "iterations": 1,
+            "verbose": False,
+        }
+
+        result = llm_pre_plan(state, config)
+        assert result is not None
+        assert result["next_action"] == "tool"
+        assert result["tool_calls"] == [{"tool": "read_file", "args": {"path": "app.py"}}]
+
+    def test_llm_plan_selects_app_py_from_list(self, config):
+        state = {
+            "messages": [
+                HumanMessage(content="Fix the bug in the challenge"),
+                SystemMessage(content="Tool results:\nlist_files: ['app.py', 'expected.txt']"),
+            ],
+            "iterations": 1,
+            "verbose": False,
+            "config": config,
+        }
+
+        orchestrator = PlanningOrchestrator(config)
+        result = orchestrator.llm_plan(state, MagicMock())
+        assert result is not None
+        assert result["next_action"] == "tool"
+        assert result["tool_calls"] == [{"tool": "read_file", "args": {"path": "app.py"}}]
+
+
 class TestPlanningNodeEdgeCases:
     """Test planning node edge cases and error handling."""
 

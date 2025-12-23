@@ -183,6 +183,9 @@ To prevent context explosion during retry loops, `_prune_messages()` in `executi
 3. Parse LLM response as JSON decision
 4. Handle fallbacks if parsing fails
 
+**File Discovery (no hint):**
+If a code fix/generation task has no file hint, Phase 1 issues `list_files`, then selects a likely Python file (`app.py`, `main.py`, or a single `.py` candidate) and calls `read_file`.
+
 **Decision Format:**
 ```json
 {
@@ -275,6 +278,11 @@ while tool_iteration < max_tool_iterations:  # default 5
 - Git: `git_status`, `git_diff`, `git_log`, `git_stage_files`, `git_commit`
 - MCP: `list_mcp_tools`, `call_mcp_tool`, `read_mcp_resource`
 - Web: `fetch_webpage`, `duckduckgo_search`
+- Python AST: `python_ast_graph`, `python_ast_outline`, `python_ast_dependencies`, `python_ast_dependencies_multifile`
+
+**Automatic Augmentation:**
+When `read_file` targets a `.py` file, the tool node automatically adds a `python_ast_dependencies` call for the same path.
+When `list_files` returns 1-5 Python files, the tool node adds `python_ast_dependencies_multifile` for those paths.
 
 ---
 
@@ -459,7 +467,7 @@ The coding node runs the LLM in JSON mode and expects a valid JSON object with t
       "args": {
         "path": "main.py",
         "function_name": "name_of_function",
-        "new_code": "def name_of_function(...):\n    ..."
+        "new_code": "def name_of_function(...):\\n    ..."
       }
     }
   ]
@@ -471,6 +479,7 @@ The coding node runs the LLM in JSON mode and expects a valid JSON object with t
 - `replace_class(path, class_name, new_code)`
 - `replace_method(path, class_name, method_name, new_code)`
 - `replace_file_content(path, new_code)`
+- `inject_function(path, new_code, function_name?)`
 
 **Fallback/Defaults:**
 - If `tool_calls` is missing but `code` exists, the node treats it as a full file replacement of `main.py`.

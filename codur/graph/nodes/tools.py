@@ -57,6 +57,8 @@ from codur.tools import (
     convert_document,
     python_ast_graph,
     python_ast_outline,
+    python_ast_dependencies,
+    python_ast_dependencies_multifile,
     python_dependency_graph,
     agent_call,
 )
@@ -75,12 +77,14 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
     """
     if "config" not in state:
         raise ValueError("AgentState must include config")
-    tool_calls = state.get("tool_calls", []) or []
+    tool_calls = _augment_tool_calls(state.get("tool_calls", []) or [])
     root = Path.cwd()
     tool_state = state if hasattr(state, "get_config") else AgentStateData(state)
     allow_outside_root = config.runtime.allow_outside_workspace
     results = []
     errors = []
+    last_read_file_output = None
+    has_multifile_call = any(call.get("tool") == "python_ast_dependencies_multifile" for call in tool_calls)
     # When adding a new tool, register it here and export it in codur/tools/__init__.py.
     last_human_msg = None
     for msg in reversed(state.get("messages", []) or []):
@@ -161,6 +165,18 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
             state=tool_state,
             **args,
         ),
+        "python_ast_dependencies": lambda args: python_ast_dependencies(
+            root=root,
+            allow_outside_root=allow_outside_root,
+            state=tool_state,
+            **args,
+        ),
+        "python_ast_dependencies_multifile": lambda args: python_ast_dependencies_multifile(
+            root=root,
+            allow_outside_root=allow_outside_root,
+            state=tool_state,
+            **args,
+        ),
         "python_dependency_graph": lambda args: python_dependency_graph(
             root=root,
             allow_outside_root=allow_outside_root,
@@ -174,7 +190,9 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
         ),
     }
 
-    for i, call in enumerate(tool_calls):
+    i = 0
+    while i < len(tool_calls):
+        call = tool_calls[i]
         if config.verbose:
             console.log(f"Executing tool call: {call}")
         tool_name = call.get("tool")
@@ -183,22 +201,32 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
             args = {}
         _normalize_tool_args(args)
 
-        # For agent_call, inject file_contents from previous read_file result
-        if tool_name == "agent_call" and i > 0:
-            prev_call = tool_calls[i - 1]
-            if prev_call.get("tool") == "read_file" and results:
-                prev_result = results[-1]
-                if prev_result.get("tool") == "read_file":
-                    args["file_contents"] = prev_result.get("output", "")
+        # For agent_call, inject file_contents from the most recent read_file result
+        if tool_name == "agent_call" and last_read_file_output is not None:
+            args["file_contents"] = last_read_file_output
 
         if tool_name not in tool_map:
             errors.append(f"Unknown tool: {tool_name}")
+            i += 1
             continue
         try:
             output = tool_map[tool_name](args)
             results.append({"tool": tool_name, "output": output})
+            if tool_name == "read_file":
+                last_read_file_output = output
+            if tool_name == "list_files" and not has_multifile_call:
+                py_files = []
+                if isinstance(output, list):
+                    py_files = [item for item in output if isinstance(item, str) and item.endswith(".py")]
+                if 0 < len(py_files) <= 5:
+                    tool_calls.insert(
+                        i + 1,
+                        {"tool": "python_ast_dependencies_multifile", "args": {"paths": py_files}},
+                    )
+                    has_multifile_call = True
         except Exception as exc:
             errors.append(f"{tool_name} failed: {exc}")
+        i += 1
 
     summary_lines = []
     for item in results:
@@ -216,6 +244,38 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
         "messages": [SystemMessage(content=f"Tool results:\n{summary}")],
         "llm_calls": tool_state.get("llm_calls", state.get("llm_calls", 0)),
     }
+
+
+def _augment_tool_calls(tool_calls: list[dict]) -> list[dict]:
+    """Add python_ast_dependencies when reading Python files."""
+    augmented: list[dict] = []
+    existing_deps: set[str] = set()
+    for call in tool_calls:
+        if call.get("tool") == "python_ast_dependencies":
+            args = call.get("args", {})
+            if isinstance(args, dict):
+                path = args.get("path")
+                if isinstance(path, str):
+                    existing_deps.add(_strip_at_prefix(path))
+
+    for call in tool_calls:
+        augmented.append(call)
+        if call.get("tool") != "read_file":
+            continue
+        args = call.get("args", {})
+        if not isinstance(args, dict):
+            continue
+        path = args.get("path")
+        if not isinstance(path, str):
+            continue
+        clean_path = _strip_at_prefix(path)
+        if not clean_path.endswith(".py"):
+            continue
+        if clean_path in existing_deps:
+            continue
+        augmented.append({"tool": "python_ast_dependencies", "args": {"path": clean_path}})
+        existing_deps.add(clean_path)
+    return augmented
 
 
 def _normalize_tool_args(args: dict) -> None:

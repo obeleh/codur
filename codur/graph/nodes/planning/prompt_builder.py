@@ -42,6 +42,8 @@ class PlanningPromptBuilder:
 5. If user asks code generation (no specific file) → use action: "delegate"
 6. For bug fixes, debugging, or tasks requiring iteration on a file → read file first, then delegate with context
 7. For simple file operations (move/copy/delete) → use tool, not delegate
+8. When you call read_file on a .py file, also call python_ast_dependencies on the same path
+9. If the task is a code fix/generation and no file is mentioned, call list_files first to discover likely involved files, then read a likely .py file
 
 **WEB SEARCH & RESEARCH:**
 When user asks for information you don't have (real-time data, current weather, latest news):
@@ -102,4 +104,3 @@ Examples:
 - "Solve this coding challenge: [problem] with context [additional info]" -> {{"action": "delegate", "agent": "agent:codur-coding", "reasoning": "structured coding challenge with optional context", "response": null, "tool_calls": []}}
 - "Write a sorting function" -> {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
 """
-

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
@@ -96,10 +97,50 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
         console.print(f"[dim]Classification: {classification.task_type.value} "
                      f"(confidence: {classification.confidence:.0%})[/dim]")
 
+    user_message = messages[-1].content if messages else ""
+
+    # If this looks like a coding task with no file hint, list files first.
+    if (
+        not tool_results_present
+        and classification.task_type in (TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.EXPLANATION)
+        and not classification.detected_files
+    ):
+        if state.get("verbose"):
+            console.print("[dim]No file hint detected - listing files[/dim]")
+        return {
+            "next_action": "tool",
+            "tool_calls": [{"tool": "list_files", "args": {}}],
+            "iterations": iterations + 1,
+            "llm_debug": {
+                "phase1_resolved": True,
+                "task_type": classification.task_type.value,
+                "file_discovery": "list_files",
+            },
+        }
+
+    # If we already listed files, try to pick a likely python file and read it.
+    if (
+        tool_results_present
+        and not classification.detected_files
+        and not PlanningOrchestrator._tool_results_include_read_file(messages)
+    ):
+        candidate = PlanningOrchestrator._select_file_from_tool_results(messages)
+        if candidate:
+            if state.get("verbose"):
+                console.print(f"[dim]Selected file from tool results: {candidate}[/dim]")
+            return {
+                "next_action": "tool",
+                "tool_calls": [{"tool": "read_file", "args": {"path": candidate}}],
+                "iterations": iterations + 1,
+                "llm_debug": {
+                    "phase1_resolved": True,
+                    "task_type": classification.task_type.value,
+                    "file_discovery": candidate,
+                },
+            }
+
     # Handle high-confidence classifications without full LLM planning
     if classification.is_confident and not tool_results_present:
-        user_message = messages[-1].content if messages else ""
-
         planning_orchestrator = PlanningOrchestrator(config)
         phase1_result = planning_orchestrator._handle_confident_classification(
             classification, iterations, user_message
@@ -166,6 +207,44 @@ class PlanningOrchestrator:
         prompt_messages = self._build_phase2_messages(
             messages, tool_results_present, classification
         )
+
+        # If list_files results are present, select a likely python file and read it.
+        if (
+            tool_results_present
+            and not classification.detected_files
+            and not self._tool_results_include_read_file(messages)
+        ):
+            candidate = self._select_file_from_tool_results(messages)
+            if candidate:
+                return _with_llm_calls({
+                    "next_action": "tool",
+                    "tool_calls": [{"tool": "read_file", "args": {"path": candidate}}],
+                    "iterations": iterations + 1,
+                    "llm_debug": {
+                        "phase2_resolved": True,
+                        "task_type": classification.task_type.value,
+                        "file_discovery": candidate,
+                    },
+                })
+
+        # If no file hint is available for a change request, list files for discovery.
+        last_human_msg = self._last_human_message(messages)
+        if (
+            not tool_results_present
+            and not classification.detected_files
+            and last_human_msg
+            and looks_like_change_request(last_human_msg)
+        ):
+            return _with_llm_calls({
+                "next_action": "tool",
+                "tool_calls": [{"tool": "list_files", "args": {}}],
+                "iterations": iterations + 1,
+                "llm_debug": {
+                    "phase2_resolved": True,
+                    "task_type": classification.task_type.value,
+                    "file_discovery": "list_files",
+                },
+            })
 
         retry_strategy = LLMRetryStrategy(
             max_attempts=self.config.planning.max_retry_attempts,
@@ -382,6 +461,48 @@ class PlanningOrchestrator:
                 if "read_file:" in msg.content:
                     return True
         return False
+
+    @staticmethod
+    def _select_file_from_tool_results(messages: list[BaseMessage]) -> str | None:
+        files = PlanningOrchestrator._extract_list_files(messages)
+        return PlanningOrchestrator._pick_preferred_python_file(files)
+
+    @staticmethod
+    def _extract_list_files(messages: list[BaseMessage]) -> list[str]:
+        for msg in messages:
+            if not isinstance(msg, SystemMessage):
+                continue
+            if not msg.content.startswith("Tool results:"):
+                continue
+            for line in msg.content.splitlines():
+                if not line.startswith("list_files:"):
+                    continue
+                payload = line.split("list_files:", 1)[1].strip()
+                try:
+                    parsed = ast.literal_eval(payload)
+                except (ValueError, SyntaxError):
+                    return []
+                if isinstance(parsed, list):
+                    return [item for item in parsed if isinstance(item, str)]
+        return []
+
+    @staticmethod
+    def _pick_preferred_python_file(files: list[str]) -> str | None:
+        if not files:
+            return None
+        py_files = [path for path in files if path.endswith(".py")]
+        if not py_files:
+            return None
+        for preferred in ("app.py", "main.py"):
+            if preferred in py_files:
+                return preferred
+        for preferred in ("app.py", "main.py"):
+            matches = [path for path in py_files if path.endswith(f"/{preferred}")]
+            if matches:
+                return min(matches, key=lambda p: (p.count("/"), len(p)))
+        if len(py_files) == 1:
+            return py_files[0]
+        return min(py_files, key=lambda p: (p.count("/"), len(p)))
 
     def _handle_confident_classification(
         self,

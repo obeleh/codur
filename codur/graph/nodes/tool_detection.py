@@ -19,13 +19,26 @@ def _extract_quoted(text: str) -> Optional[str]:
     return match.group(1) or match.group(2)
 
 
+def _looks_like_path(token: str) -> bool:
+    if token.startswith("@"):
+        return True
+    if "/" in token or "\\" in token:
+        return True
+    if re.search(r"\.[A-Za-z0-9]{1,5}$", token):
+        return True
+    return False
+
+
 def _extract_path_from_message(text: str) -> Optional[str]:
     at_match = re.search(r"@([^\s,]+)", text)
     if at_match:
         return at_match.group(1)
     in_match = re.search(r"(?:in|inside)\s+([^\s,]+)", text, re.IGNORECASE)
     if in_match:
-        return in_match.group(1)
+        candidate = in_match.group(1).strip().strip(".,:;()[]{}")
+        if _looks_like_path(candidate):
+            return candidate.lstrip("@")
+        return None
     path_match = re.search(r"([^\s,]+\.py)", text)
     if path_match:
         return path_match.group(1)
@@ -97,8 +110,16 @@ def create_default_tool_detector() -> ToolDetector:
 
     def read_file(msg: str, msg_lower: str) -> Optional[ToolCallList]:
         match = re.search(r"(?:read|show|open)\s+([^\s]+)", msg, re.IGNORECASE)
-        if match:
-            return [{"tool": "read_file", "args": {"path": match.group(1).strip()}}]
+        if not match:
+            return None
+        candidate = match.group(1).strip().strip(".,:;()[]{}")
+        if _looks_like_path(candidate):
+            if candidate.startswith("@"):
+                candidate = candidate[1:]
+            return [{"tool": "read_file", "args": {"path": candidate}}]
+        target = _extract_path_from_message(msg)
+        if target:
+            return [{"tool": "read_file", "args": {"path": target}}]
         return None
 
     def write_file(msg: str, msg_lower: str) -> Optional[ToolCallList]:

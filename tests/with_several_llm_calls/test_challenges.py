@@ -28,6 +28,26 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").strip()
 
 
+def _find_entrypoint(challenge_dir: Path) -> Path:
+    preferred = ("main.py", "app.py")
+    for name in preferred:
+        candidate = challenge_dir / name
+        if candidate.exists():
+            return candidate
+    py_files = [
+        path
+        for path in challenge_dir.iterdir()
+        if path.is_file() and path.suffix == ".py" and path.name != "__init__.py"
+    ]
+    if len(py_files) == 1:
+        return py_files[0]
+    names = ", ".join(sorted(p.name for p in py_files))
+    raise AssertionError(
+        f"Missing entry point in {challenge_dir}. Expected main.py/app.py or a single .py file. "
+        f"Found: {names or 'none'}"
+    )
+
+
 def _run_challenge(main_path: Path) -> str:
     result = subprocess.run(
         [sys.executable, str(main_path)],
@@ -171,11 +191,11 @@ def test_challenge_outputs(challenge_dir: Path) -> None:
     """
     expected_path = challenge_dir / "expected.txt"
     prompt_path = challenge_dir / "prompt.txt"
-    main_path = challenge_dir / "main.py"
+    main_path = _find_entrypoint(challenge_dir)
 
     assert expected_path.exists(), f"Missing expected.txt in {challenge_dir}"
     assert prompt_path.exists(), f"Missing prompt.txt in {challenge_dir}"
-    assert main_path.exists(), f"Missing main.py (entry point) in {challenge_dir}"
+    assert main_path.exists(), f"Missing entry point in {challenge_dir}"
 
     prompt = _read_text(prompt_path)
     _run_codur(prompt, cwd=challenge_dir)

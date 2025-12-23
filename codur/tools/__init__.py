@@ -68,6 +68,8 @@ from codur.tools.pandoc import (
 from codur.tools.python_ast import (
     python_ast_graph,
     python_ast_outline,
+    python_ast_dependencies,
+    python_ast_dependencies_multifile,
 )
 from codur.tools.project_analysis import (
     python_dependency_graph,
@@ -136,6 +138,8 @@ __all__ = [
     "convert_document",
     "python_ast_graph",
     "python_ast_outline",
+    "python_ast_dependencies",
+    "python_ast_dependencies_multifile",
     "python_dependency_graph",
     "validate_python_syntax",
     "find_function_lines",

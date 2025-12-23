@@ -88,8 +88,12 @@ def agent_call(
         return agent_instance.execute(task)
     if resolved_agent == "codur-coding":
         # Special handling for codur-coding agent - invoke the actual coding node
-        from codur.graph.nodes.coding import coding_node, _extract_code_block  # type: ignore
+        from codur.graph.nodes.coding import coding_node  # type: ignore
         from pathlib import Path
+
+        tool_calls = [{"tool": "read_file", "args": {"path": file_path}}] if file_path else []
+        if file_path.endswith(".py"):
+            tool_calls.append({"tool": "python_ast_dependencies", "args": {"path": file_path}})
 
         # Build minimal state for coding node
         coding_state = {
@@ -99,6 +103,7 @@ def agent_call(
             "config": config,
             "llm_calls": int(state.get("llm_calls", 0)) if state else 0,
             "max_llm_calls": state.get("max_llm_calls") if state else config.runtime.max_llm_calls,
+            "tool_calls": tool_calls
         }
 
         # Invoke coding node
@@ -106,16 +111,6 @@ def agent_call(
         if state is not None:
             state["llm_calls"] = coding_state.get("llm_calls", state.get("llm_calls", 0))
         result = result_dict["agent_outcome"]["result"]
-
-        # If file_path is provided and result contains code, write it to the file
-        if file_path:
-            code = _extract_code_block(result)
-            if code:
-                # Strip @prefix if present
-                clean_path = file_path[1:] if file_path.startswith("@") else file_path
-                target_path = Path.cwd() / clean_path
-                target_path.write_text(code)
-                return f"Successfully wrote code to {clean_path}\n\nCode:\n{code}"
 
         return result
 

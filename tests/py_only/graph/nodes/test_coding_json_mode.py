@@ -149,8 +149,8 @@ class TestCodingJsonMode:
             finally:
                 os.chdir(old_cwd)
 
-    def test_apply_json_missing_path_defaults_to_main(self):
-        """Test that missing path defaults to main.py."""
+    def test_apply_json_missing_path_fails(self):
+        """Test that missing path in tool call and state returns an error."""
         with TemporaryDirectory() as tmpdir:
             file_path = Path(tmpdir) / "main.py"
             file_path.write_text("def foo():\n    return 1\n")
@@ -172,15 +172,15 @@ class TestCodingJsonMode:
 
             config = MagicMock()
             config.runtime.allow_outside_workspace = False
-            state = {}
+            state = {} # Empty state, no tool_calls
 
             import os
             old_cwd = os.getcwd()
             os.chdir(tmpdir)
             try:
                 error = _apply_coding_result(response, state, config)
-                assert error is None
-                assert "return 3" in file_path.read_text()
+                assert error is not None
+                assert "Missing 'path'" in error
             finally:
                 os.chdir(old_cwd)
 
@@ -243,3 +243,42 @@ class TestCodingJsonMode:
         error = _apply_coding_result(response, state, config)
         assert error is not None
         assert "No 'tool_calls' found" in error
+
+    def test_apply_json_missing_path_gets_from_state(self):
+        """Test that missing path in tool call can be retrieved from state."""
+        with TemporaryDirectory() as tmpdir:
+            other_file = Path(tmpdir) / "other.py"
+            other_file.write_text("def bar():\n    pass")
+
+            json_payload = {
+                "thought": "Replace bar in other.py.",
+                "tool_calls": [
+                    {
+                        "tool": "replace_function",
+                        "args": {
+                            "function_name": "bar",
+                            "new_code": "def bar():\n    return 'from_state'",
+                        },
+                    }
+                ],
+            }
+            response = json.dumps(json_payload)
+
+            config = MagicMock()
+            config.runtime.allow_outside_workspace = False
+            # Simulate planner state having identified other.py
+            state = {
+                "tool_calls": [
+                    {"tool": "read_file", "args": {"path": "other.py"}}
+                ]
+            }
+
+            import os
+            old_cwd = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                error = _apply_coding_result(response, state, config)
+                assert error is None
+                assert "return 'from_state'" in other_file.read_text()
+            finally:
+                os.chdir(old_cwd)
