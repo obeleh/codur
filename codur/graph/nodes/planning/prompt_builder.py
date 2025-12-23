@@ -72,11 +72,12 @@ Example flow: "Implement the title case function in @main.py based on the docstr
 **Examples of CORRECT behavior:**
 - "copy file.py to backup.py" → {{"action": "tool", "agent": null, "reasoning": "copy file", "response": null, "tool_calls": [{{"tool": "copy_file", "args": {{"source": "file.py", "destination": "backup.py"}}}}]}}
 - "delete old.txt" → {{"action": "tool", "agent": null, "reasoning": "delete file", "response": null, "tool_calls": [{{"tool": "delete_file", "args": {{"path": "old.txt"}}}}]}}
-- "What does app.py do?" → {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
+- "What does app.py do?" → {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}, {{"tool": "python_ast_dependencies", "args": {{"path": "app.py"}}}}]}}
 - "What is the current price of Bitcoin?" → {{"action": "tool", "agent": null, "reasoning": "need real-time price info", "response": null, "tool_calls": [{{"tool": "duckduckgo_search", "args": {{"query": "current price of Bitcoin"}}}}]}}
 - "Hello" → {{"action": "respond", "agent": null, "reasoning": "greeting", "response": "Hello! How can I help?", "tool_calls": []}}
-- "Fix the bug in @main.py" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "bug fix requires analysis and iteration", "response": null, "tool_calls": []}}
+- "Fix the bug in @main.py" → {{"action": "tool", "agent": "agent:codur-coding", "reasoning": "read file to get context for coding agent", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "@main.py"}}}}, {{"tool": "python_ast_dependencies", "args": {{"path": "@main.py"}}}}]}}
 - "Implement the title case function in @main.py based on the docstring" → {{"action": "tool", "agent": "agent:codur-coding", "reasoning": "read file to get docstring and context for coding agent", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "@main.py"}}}}]}}
+- "Fix the off-by-one error" → {{"action": "tool", "agent": null, "reasoning": "discover likely involved files", "response": null, "tool_calls": [{{"tool": "list_files", "args": {{}}}}, {{"tool": "python_ast_dependencies_multifile", "args": {{"paths": ["app.py", "util.py"]}}}}]}}
 - "Write a sorting function" → {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
 
 **Agent reference format:**

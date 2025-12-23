@@ -12,7 +12,7 @@ from codur.graph.nodes.planning.core import (
     llm_pre_plan,
     PlanningOrchestrator,
 )
-from codur.graph.nodes.planning.classifier import TaskType
+from codur.graph.nodes.planning.types import TaskType
 
 
 class TestPlanningNodeWithCodingAgent:

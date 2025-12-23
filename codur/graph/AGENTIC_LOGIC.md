@@ -58,7 +58,9 @@ Codur uses **LangGraph** to orchestrate an agentic workflow. The system follows 
 | `main_graph.py` | Graph definition, node wiring, entry point |
 | `state.py` | AgentState TypedDict definition |
 | `nodes/routing.py` | `should_delegate()` and `should_continue()` routing functions |
-| `nodes/planning/core.py` | PlanningOrchestrator - analyzes task and decides action |
+| `nodes/planning/core.py` | PlanningOrchestrator - Phase 2 LLM planning |
+| `nodes/planning/hints/` | Phase 1 strategy package - task-specific "pre-hints" |
+| `nodes/planning/tool_analysis.py` | Helpers for analyzing tool outputs (discovery) |
 | `nodes/execution.py` | AgentExecutor, delegate_node, execute_node, review_node |
 | `nodes/tools.py` | Tool execution node |
 | `nodes/coding.py` | codur-coding dedicated execution node |
@@ -76,7 +78,7 @@ The graph starts at the **textual_pre_plan** node (Phase 0). See `main_graph.py:
 
 **Planning Phase (Phases 0-2):**
 1. **textual_pre_plan** → Fast pattern-based detection (Phase 0)
-2. **llm_pre_plan** → Quick LLM classification for high-confidence cases (Phase 1)
+2. **llm_pre_plan** → Quick classification + task-specific hints/strategies (Phase 1)
 3. **llm_plan** → Full LLM planning for uncertain cases (Phase 2)
 
 **Execution Phase:**
@@ -146,7 +148,7 @@ class AgentState(TypedDict):
     iterations: int                  # Current iteration count
     final_response: str              # Final output to return
     selected_agent: str              # Agent selected for delegation
-    tool_calls: list[dict]           # Tool calls requested by planner
+    tool_calls: list[dict]           # Tool calls requested by planner/hints
     verbose: bool                    # Enable verbose logging
     config: CodurConfig              # Runtime configuration
 ```
@@ -171,35 +173,28 @@ To prevent context explosion during retry loops, `_prune_messages()` in `executi
 
 ## Node Implementations
 
-### 1. Plan Node
+### 1. Plan Nodes
 
-**Location:** `nodes/planning/core.py` → `PlanningOrchestrator.plan()`
+#### textual_pre_plan (Phase 0)
+Check for non-LLM tool detection (fast path) via `run_non_llm_tools()`. Skips LLM entirely for greetings or simple file operations.
 
-**Purpose:** Analyze the task and decide what action to take.
+#### llm_pre_plan (Phase 1)
+**Location:** `nodes/planning/core.py` and `nodes/planning/hints/`
 
 **Flow:**
-1. Check for non-LLM tool detection (fast path) via `run_non_llm_tools()`
-2. If no fast-path match, call LLM with planning prompt
-3. Parse LLM response as JSON decision
-4. Handle fallbacks if parsing fails
+1. Call `quick_classify()` to determine `TaskType` and confidence.
+2. Resolve a **Strategy** from the `hints` package based on `TaskType`.
+3. Execute the strategy to potentially:
+   - Resolve simple tasks immediately (Greetings, basic File Ops).
+   - Trigger **discovery tools** (e.g., `list_files` if no path is mentioned).
+   - Select and **read files** from previously discovered lists.
+   - Delegate directly if confidence is extremely high.
+4. If the strategy returns `None`, proceed to Phase 2.
 
-**File Discovery (no hint):**
-If a code fix/generation task has no file hint, Phase 1 issues `list_files`, then selects a likely Python file (`app.py`, `main.py`, or a single `.py` candidate) and calls `read_file`.
+#### llm_plan (Phase 2)
+**Location:** `nodes/planning/core.py` → `PlanningOrchestrator.llm_plan()`
 
-**Decision Format:**
-```json
-{
-    "action": "delegate" OR "tool" OR "respond" OR "done",
-    "agent": "agent:ollama" OR "llm:groq-qwen3-32b" OR null,
-    "reasoning": "brief explanation",
-    "response": "only for greetings",
-    "tool_calls": [{"tool": "read_file", "args": {"path": "..."}}]
-}
-```
-
-**Returns:** `PlanNodeResult` with `next_action`, `selected_agent`, `tool_calls`, etc.
-
-**Flakiness Note:** Phase 1 quick classification is used for high-confidence cases (≥90%), but can cause issues if it misclassifies complex tasks. Current implementation has safeguards but consider being more conservative with Phase 1 to avoid wrong routing.
+Full LLM planning using context-aware prompts. Handles complex routing, compound tool calls, and retries based on verification errors.
 
 ---
 
@@ -252,16 +247,13 @@ while tool_iteration < max_tool_iterations:  # default 5
 
 **Location:** `nodes/coding.py` → `coding_node()`
 
-**Purpose:** Run the codur-coding agent with a structured coding prompt that includes:
-- The coding challenge (first HumanMessage)
-- Optional additional context (subsequent System/Human messages)
+**Purpose:** Run the codur-coding agent with a structured coding prompt (JSON mode).
 
-**Flow:**
-1. Read the `codur-coding` agent config
-2. Build a challenge + context prompt
-3. Invoke the matching LLM profile with the agent system prompt (**JSON mode enabled**)
-4. Parse JSON response and apply tool calls directly (no tool detector loop)
-5. If JSON parse or tool application fails, retry once with explicit error feedback
+**Dynamic Path Handling:**
+The coding node does **not** hardcode `main.py`. It determines the target path by:
+1. Checking current `tool_calls` in the LLM response.
+2. Checking `tool_calls` in the `AgentState` (populated by Phase 1 hints or Phase 2 planner).
+3. Failing gracefully if no path can be determined.
 
 ---
 
@@ -583,4 +575,4 @@ Edit `main_graph.py`:
 
 ---
 
-*Last updated: 2025-12-22*
+*Last updated: 2025-12-23*

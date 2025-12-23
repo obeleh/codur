@@ -21,12 +21,12 @@ from .decision_handler import PlanningDecisionHandler
 from .prompt_builder import PlanningPromptBuilder
 from .validators import looks_like_change_request, mentions_file_path, has_mutation_tool
 from .json_parser import JSONResponseParser
-from .classifier import (
-    quick_classify,
-    TaskType,
-    ClassificationResult,
-    get_agent_for_task_type,
-    build_context_aware_prompt,
+from .classifier import quick_classify
+from .types import ClassificationResult
+from .hints import get_strategy_for_task
+from .tool_analysis import (
+    tool_results_include_read_file,
+    select_file_from_tool_results,
 )
 
 console = Console()
@@ -97,63 +97,23 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
         console.print(f"[dim]Classification: {classification.task_type.value} "
                      f"(confidence: {classification.confidence:.0%})[/dim]")
 
-    user_message = messages[-1].content if messages else ""
+    # Use task-specific strategy for hints or direct resolution
+    strategy = get_strategy_for_task(classification.task_type)
+    result = strategy.execute(
+        classification,
+        tool_results_present,
+        messages,
+        iterations,
+        config,
+        verbose=state.get("verbose", False)
+    )
+    
+    if result:
+        return result
 
-    # If this looks like a coding task with no file hint, list files first.
-    if (
-        not tool_results_present
-        and classification.task_type in (TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.EXPLANATION)
-        and not classification.detected_files
-    ):
-        if state.get("verbose"):
-            console.print("[dim]No file hint detected - listing files[/dim]")
-        return {
-            "next_action": "tool",
-            "tool_calls": [{"tool": "list_files", "args": {}}],
-            "iterations": iterations + 1,
-            "llm_debug": {
-                "phase1_resolved": True,
-                "task_type": classification.task_type.value,
-                "file_discovery": "list_files",
-            },
-        }
-
-    # If we already listed files, try to pick a likely python file and read it.
-    if (
-        tool_results_present
-        and not classification.detected_files
-        and not PlanningOrchestrator._tool_results_include_read_file(messages)
-    ):
-        candidate = PlanningOrchestrator._select_file_from_tool_results(messages)
-        if candidate:
-            if state.get("verbose"):
-                console.print(f"[dim]Selected file from tool results: {candidate}[/dim]")
-            return {
-                "next_action": "tool",
-                "tool_calls": [{"tool": "read_file", "args": {"path": candidate}}],
-                "iterations": iterations + 1,
-                "llm_debug": {
-                    "phase1_resolved": True,
-                    "task_type": classification.task_type.value,
-                    "file_discovery": candidate,
-                },
-            }
-
-    # Handle high-confidence classifications without full LLM planning
-    if classification.is_confident and not tool_results_present:
-        planning_orchestrator = PlanningOrchestrator(config)
-        phase1_result = planning_orchestrator._handle_confident_classification(
-            classification, iterations, user_message
-        )
-
-        if phase1_result:
-            if state.get("verbose"):
-                console.print("[green]✓ Phase 1 resolved (high confidence)[/green]")
-            return phase1_result
-
-    # Confidence not high enough - pass to llm-plan for full analysis
+    # Confidence not high enough or strategy passed - pass to llm-plan for full analysis
     if state.get("verbose"):
-        console.print("[dim]Confidence insufficient, moving to full LLM planning[/dim]")
+        console.print("[dim]Confidence insufficient or strategy passed, moving to full LLM planning[/dim]")
 
     return {
         "next_action": "continue_to_llm_plan",
@@ -456,181 +416,11 @@ class PlanningOrchestrator:
 
     @staticmethod
     def _tool_results_include_read_file(messages: list[BaseMessage]) -> bool:
-        for msg in messages:
-            if isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:"):
-                if "read_file:" in msg.content:
-                    return True
-        return False
+        return tool_results_include_read_file(messages)
 
     @staticmethod
     def _select_file_from_tool_results(messages: list[BaseMessage]) -> str | None:
-        files = PlanningOrchestrator._extract_list_files(messages)
-        return PlanningOrchestrator._pick_preferred_python_file(files)
-
-    @staticmethod
-    def _extract_list_files(messages: list[BaseMessage]) -> list[str]:
-        for msg in messages:
-            if not isinstance(msg, SystemMessage):
-                continue
-            if not msg.content.startswith("Tool results:"):
-                continue
-            for line in msg.content.splitlines():
-                if not line.startswith("list_files:"):
-                    continue
-                payload = line.split("list_files:", 1)[1].strip()
-                try:
-                    parsed = ast.literal_eval(payload)
-                except (ValueError, SyntaxError):
-                    return []
-                if isinstance(parsed, list):
-                    return [item for item in parsed if isinstance(item, str)]
-        return []
-
-    @staticmethod
-    def _pick_preferred_python_file(files: list[str]) -> str | None:
-        if not files:
-            return None
-        py_files = [path for path in files if path.endswith(".py")]
-        if not py_files:
-            return None
-        for preferred in ("app.py", "main.py"):
-            if preferred in py_files:
-                return preferred
-        for preferred in ("app.py", "main.py"):
-            matches = [path for path in py_files if path.endswith(f"/{preferred}")]
-            if matches:
-                return min(matches, key=lambda p: (p.count("/"), len(p)))
-        if len(py_files) == 1:
-            return py_files[0]
-        return min(py_files, key=lambda p: (p.count("/"), len(p)))
-
-    def _handle_confident_classification(
-        self,
-        classification: ClassificationResult,
-        iterations: int,
-        user_message: str = ""
-    ) -> PlanNodeResult | None:
-        """Handle high-confidence Phase 1 classifications without LLM.
-
-        Returns a PlanNodeResult if we can resolve without LLM, None otherwise.
-        """
-        task_type = classification.task_type
-
-        # Greetings - respond directly
-        if task_type == TaskType.GREETING:
-            return {
-                "next_action": "end",
-                "final_response": "Hello! How can I help you with your coding tasks today?",
-                "iterations": iterations + 1,
-                "llm_debug": {"phase1_resolved": True, "task_type": "greeting"},
-            }
-
-        # File operations - generate tool calls
-        if task_type == TaskType.FILE_OPERATION and classification.detected_files:
-            action = classification.detected_action
-            if action and classification.detected_files:
-                tool_call = {"tool": action, "args": {"path": classification.detected_files[0]}}
-                # Handle move/copy which need source and destination
-                if action in ("move_file", "copy_file") and len(classification.detected_files) >= 2:
-                    tool_call = {
-                        "tool": action,
-                        "args": {
-                            "source": classification.detected_files[0],
-                            "destination": classification.detected_files[1]
-                        }
-                    }
-                return {
-                    "next_action": "tool",
-                    "tool_calls": [tool_call],
-                    "iterations": iterations + 1,
-                    "llm_debug": {"phase1_resolved": True, "task_type": "file_operation"},
-                }
-
-        # Explanation requests - read file first
-        if task_type == TaskType.EXPLANATION and classification.detected_files:
-            return {
-                "next_action": "tool",
-                "tool_calls": [{"tool": "read_file", "args": {"path": classification.detected_files[0]}}],
-                "iterations": iterations + 1,
-                "llm_debug": {"phase1_resolved": True, "task_type": "explanation"},
-            }
-
-        # Web searches - use duckduckgo_search
-        if task_type == TaskType.WEB_SEARCH:
-            return {
-                "next_action": "tool",
-                "tool_calls": [{"tool": "duckduckgo_search", "args": {"query": user_message}}],
-                "iterations": iterations + 1,
-                "llm_debug": {"phase1_resolved": True, "task_type": "web_search"},
-            }
-
-        # Code fix/generation - delegate to appropriate agent
-        # NOTE: Only do Phase 1 routing for code tasks if confidence is high (>90%)
-        # This allows Phase 1 to be proactive with intelligent pre-planning while still
-        # letting Phase 2 refine uncertain cases
-        if task_type in (TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR):
-            if classification.confidence >= 0.90:
-                # High confidence - safe to route in Phase 1
-                agent = get_agent_for_task_type(
-                    task_type,
-                    self.config,
-                    classification.detected_files,
-                    user_message
-                )
-
-                # For file-based code fix tasks with detected files:
-                # - Don't delegate to text-based LLMs (they can't modify files)
-                # - Pass to Phase 2 which can generate compound tool_calls
-                # - Exception: if agent is codur-coding, generate compound tool_calls here
-                if task_type == TaskType.CODE_FIX and classification.detected_files:
-                    if agent == "agent:codur-coding":
-                        # Generate compound tool_calls: read_file → agent_call
-                        file_path = classification.detected_files[0]
-                        return {
-                            "next_action": "tool",
-                            "tool_calls": [
-                                {
-                                    "tool": "read_file",
-                                    "args": {"path": file_path}
-                                },
-                                {
-                                    "tool": "agent_call",
-                                    "args": {
-                                        "agent": agent,
-                                        "challenge": user_message,
-                                        "file_path": file_path
-                                    }
-                                }
-                            ],
-                            "iterations": iterations + 1,
-                            "llm_debug": {
-                                "phase1_resolved": True,
-                                "task_type": task_type.value,
-                                "selected_agent": agent,
-                                "compound_tools": True
-                            },
-                        }
-                    else:
-                        # Text-based LLM cannot handle file modifications
-                        # Pass to Phase 2 for intelligent routing with compound tool_calls
-                        return None
-
-                # Standard delegation for non-file-based tasks or other task types
-                return {
-                    "next_action": "delegate",
-                    "selected_agent": agent,
-                    "iterations": iterations + 1,
-                    "llm_debug": {
-                        "phase1_resolved": True,
-                        "task_type": task_type.value,
-                        "selected_agent": agent
-                    },
-                }
-            # Confidence not high enough - let Phase 2 LLM handle routing
-            return None
-
-        # Cannot resolve in Phase 1
-        return None
+        return select_file_from_tool_results(messages)
 
     def _build_phase2_messages(
         self,
@@ -645,7 +435,8 @@ class PlanningOrchestrator:
         file-based coding tasks.
         """
         # Use context-aware prompt based on Phase 1 classification to guide multi-step planning
-        planning_prompt = build_context_aware_prompt(classification, self.config)
+        strategy = get_strategy_for_task(classification.task_type)
+        planning_prompt = strategy.build_phase2_prompt(classification, self.config)
         system_message = SystemMessage(content=planning_prompt)
         prompt_messages = [system_message] + list(messages)
 
