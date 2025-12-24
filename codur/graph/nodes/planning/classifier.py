@@ -82,7 +82,7 @@ def _build_candidates(
     candidates: list[ClassificationCandidate] = []
     for task_type in TaskType:
         score = scores.get(task_type, 0.0)
-        confidence = min(0.49, 0.4 + (score * 0.05))
+        confidence = min(0.95, 0.4 + (score * 0.5))
         reason_list = reasons.get(task_type, [])
         reasoning = "; ".join(reason_list) if reason_list else "baseline"
         candidates.append(

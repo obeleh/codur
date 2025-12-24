@@ -12,6 +12,7 @@ from codur.graph.nodes import (
     delegate_node,
     tool_node,
     coding_node,
+    explaining_node,
     review_node,
     should_continue,
     should_delegate,
@@ -47,8 +48,11 @@ def _route_based_on_decision(state: AgentState) -> str:
     """Route based on the planning decision (delegate, tool, or end)."""
     next_action = state.get("next_action")
     if next_action == "delegate":
-        if state.get("selected_agent") in ("agent:codur-coding", "codur-coding"):
+        selected_agent = state.get("selected_agent")
+        if selected_agent in ("agent:codur-coding", "codur-coding"):
             return "coding"
+        if selected_agent in ("agent:codur-explaining", "codur-explaining"):
+            return "explaining"
         return "delegate"
     elif next_action == "tool":
         return "tool"
@@ -88,6 +92,7 @@ def create_agent_graph(config: CodurConfig):
     workflow.add_node("delegate", lambda state: delegate_node(state, config))
     workflow.add_node("tool", lambda state: tool_node(state, config))
     workflow.add_node("coding", lambda state: coding_node(state, config))
+    workflow.add_node("explaining", lambda state: explaining_node(state, config))
     workflow.add_node("execute", lambda state: execute_node(state, config))
     workflow.add_node("review", lambda state: review_node(state, llm, config))
 
@@ -103,6 +108,7 @@ def create_agent_graph(config: CodurConfig):
             "delegate": "delegate",
             "tool": "tool",
             "coding": "coding",
+            "explaining": "explaining",
             "end": END,
         }
     )
@@ -115,6 +121,7 @@ def create_agent_graph(config: CodurConfig):
             "delegate": "delegate",
             "tool": "tool",
             "coding": "coding",
+            "explaining": "explaining",
             "end": END,
         }
     )
@@ -127,6 +134,7 @@ def create_agent_graph(config: CodurConfig):
             "delegate": "delegate",
             "tool": "tool",
             "coding": "coding",
+            "explaining": "explaining",
             "end": END,
         }
     )
@@ -136,6 +144,7 @@ def create_agent_graph(config: CodurConfig):
     workflow.add_edge("execute", "review")
     workflow.add_edge("tool", "review")
     workflow.add_edge("coding", "review")
+    workflow.add_edge("explaining", "review")
 
     # Review loop - on retry, go directly to full planning (Phase 2) since we already classified
     # This avoids re-running Phases 0 and 1 which are not necessary on retries
@@ -145,6 +154,7 @@ def create_agent_graph(config: CodurConfig):
         {
             "continue": "llm_plan",  # Skip to Phase 2 for retries (we already have classification)
             "coding": "coding",
+            "explaining": "explaining",
             "end": END,
         }
     )

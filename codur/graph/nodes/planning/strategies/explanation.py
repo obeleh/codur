@@ -139,13 +139,13 @@ class ExplanationStrategy:
                 },
             ),
             build_example_line(
-                "Explain how the project works",
+                "Explain the architecture of the project",
                 {
-                    "action": "tool",
-                    "agent": None,
-                    "reasoning": "discover relevant files for explanation",
+                    "action": "delegate",
+                    "agent": "agent:codur-explaining",
+                    "reasoning": "Delegate to specialized explaining agent for detailed documentation",
                     "response": None,
-                    "tool_calls": [{"tool": "list_files", "args": {}}],
+                    "tool_calls": [],
                 },
             ),
         ]
@@ -153,7 +153,9 @@ class ExplanationStrategy:
             "**Task Focus: Explanation**\n"
             "- If a file path is known, call read_file first (python files auto-trigger AST deps).\n"
             "- If no file path is known, call list_files to discover candidates.\n"
-            "- After tool results, respond with a concise explanation.\n"
+            "- After tool results, you have two options:\n"
+            "  1. Respond directly (action: 'respond') for simple questions.\n"
+            "  2. Delegate to 'agent:codur-explaining' (action: 'delegate') for detailed code explanation and documentation.\n"
             f"- {suggested_tools}\n"
             "- Return ONLY a valid JSON object.\n"
             "Examples (context-aware):\n"
