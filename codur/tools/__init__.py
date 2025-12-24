@@ -89,6 +89,13 @@ from codur.tools.registry import (
     list_tool_directory,
     get_tool_help,
 )
+from codur.tools.psutil_tools import (
+    system_cpu_stats,
+    system_memory_stats,
+    system_disk_usage,
+    system_process_snapshot,
+    system_processes_top,
+)
 
 __all__ = [
     "read_file",
@@ -148,4 +155,9 @@ __all__ = [
     "inject_function",
     "list_tool_directory",
     "get_tool_help",
+    "system_cpu_stats",
+    "system_memory_stats",
+    "system_disk_usage",
+    "system_process_snapshot",
+    "system_processes_top",
 ]

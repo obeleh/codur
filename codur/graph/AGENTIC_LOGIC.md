@@ -21,14 +21,21 @@ This document describes the current implementation of Codur's agentic orchestrat
 
 Codur uses **LangGraph** to orchestrate an agentic workflow. The system follows a three-phase planning architecture with automatic retry loops for fix tasks.
 
+**Phase Summary:**
+- **Phase 0** (pattern_plan): Pattern-based classification and routing (NO LLM)
+- **Phase 1** (llm_pre_plan): Fast LLM classification (**ENABLED BY DEFAULT**, uses Groq)
+- **Phase 2** (llm_plan): Full LLM planning with context-aware prompts (uses Groq)
+
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                           THREE-PHASE GRAPH FLOW                          │
 ├──────────────────────────────────────────────────────────────────────────┤
 │                                                                            │
 │   ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐          │
-│   │ TEXTUAL PRE-PLAN │►│  LLM PRE-PLAN   │►│    LLM PLAN     │          │
-│   │ (Fast patterns)  │ │ (Quick classify) │ │ (Full planning) │          │
+│   │  PATTERN PLAN    │►│ LLM PRE-PLAN    │►│    LLM PLAN     │          │
+│   │ (No LLM calls)   │ │ (Fast LLM)      │ │ (Full planning) │          │
+│   │ • Instant        │ │ • Experimental  │ │ • Groq-based    │          │
+│   │ • Classification │ │ • Config-gated  │ │ • Complex tools │          │
 │   └────────┬─────────┘ └────────┬─────────┘ └────────┬────────┘          │
 │            │                    │                    │                    │
 │   ┌────────▼────────┐  ┌────────▼────────┐  ┌────────▼────────┐          │
@@ -45,7 +52,7 @@ Codur uses **LangGraph** to orchestrate an agentic workflow. The system follows 
 │            │                                                              │
 │   ┌────────▼──────────┐                                                  │
 │   │ continue → back   │                                                  │
-│   │ to TEXTUAL PRE    │                                                  │
+│   │  to LLM PLAN      │                                                  │
 │   └───────────────────┘                                                  │
 │                                                                            │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -72,14 +79,19 @@ Codur uses **LangGraph** to orchestrate an agentic workflow. The system follows 
 ## Graph Flow
 
 ### Entry Point
-The graph starts at the **textual_pre_plan** node (Phase 0). See `main_graph.py:91`.
+The graph starts at the **textual_pre_plan** node (Phase 0, pattern-based). See `main_graph.py:95`.
 
 ### Nodes
 
 **Planning Phase (Phases 0-2):**
-1. **textual_pre_plan** → Fast pattern-based detection (Phase 0)
-2. **llm_pre_plan** → Quick classification + task-specific hints/strategies (Phase 1)
-3. **llm_plan** → Full LLM planning for uncertain cases (Phase 2)
+1. **pattern_plan** (aka textual_pre_plan) → Pattern-based detection (Phase 0, NO LLM)
+   - Instant resolution for trivial cases (greetings, basic file ops)
+   - Pattern classification with task-specific strategies
+2. **llm_pre_plan** → Fast LLM classification (Phase 1, **ENABLED BY DEFAULT**)
+   - Uses Groq for fast, smart classification (temp=0.2)
+   - Handles nuanced cases that patterns miss (e.g., "hey fix main.py" → CODE_FIX)
+   - Can be disabled with `config.planning.use_llm_pre_plan=False` for pattern-only mode
+3. **llm_plan** → Full LLM planning for uncertain cases (Phase 2, uses Groq)
 
 **Execution Phase:**
 4. **delegate** → Routes task to selected agent
@@ -175,26 +187,49 @@ To prevent context explosion during retry loops, `_prune_messages()` in `executi
 
 ### 1. Plan Nodes
 
-#### textual_pre_plan (Phase 0)
-Check for non-LLM tool detection (fast path) via `run_non_llm_tools()`. Skips LLM entirely for greetings or simple file operations.
+#### pattern_plan (Phase 0)
+**Location:** `nodes/planning/core.py:37`
+
+**No LLM calls** - Pure pattern matching combining:
+1. **Instant resolution** via `run_non_llm_tools()` for trivial cases (greetings, basic file ops)
+2. **Classification** via `quick_classify()` for task type detection (pattern-based, no LLM)
+3. **Strategy execution** from `hints/` package based on TaskType
+   - Resolve simple tasks immediately (greetings, file operations, web search)
+   - Trigger discovery tools (e.g., `list_files`, `read_file`)
+   - **Conservative**: Does NOT delegate code tasks (passes to Phase 2)
+
+**Design Philosophy**: Phase 0 focuses on **discovery and simple tasks only**. For code fix/generation/refactor tasks, it gathers context (reads files) but defers routing decisions to Phase 2 LLM planning. This prevents premature delegation of complex tasks.
+
+If no pattern matches, passes to Phase 1 (or Phase 2 if LLM pre-plan disabled).
 
 #### llm_pre_plan (Phase 1)
-**Location:** `nodes/planning/core.py` and `nodes/planning/hints/`
+**Location:** `nodes/planning/core.py:106`
+
+**Smart LLM-based classification** (ENABLED BY DEFAULT):
+- Uses Groq for fast classification with lightweight prompt
+- Handles nuanced cases that pattern matching misses:
+  - "hey fix main.py" → CODE_FIX (not GREETING)
+  - "remove debug prints from app.py" → CODE_FIX (not FILE_OPERATION)
+  - "What does app.py do? Please fix the bug." → CODE_FIX (not EXPLANATION)
+- Returns: `{task_type, confidence, detected_files, suggested_action, reasoning}`
+- High confidence (≥0.8) → may route or trigger discovery
+- Low confidence → passes to Phase 2
 
 **Flow:**
-1. Call `quick_classify()` to determine `TaskType` and confidence.
-2. Resolve a **Strategy** from the `hints` package based on `TaskType`.
-3. Execute the strategy to potentially:
-   - Resolve simple tasks immediately (Greetings, basic File Ops).
-   - Trigger **discovery tools** (e.g., `list_files` if no path is mentioned).
-   - Select and **read files** from previously discovered lists.
-   - Delegate directly if confidence is extremely high.
-4. If the strategy returns `None`, proceed to Phase 2.
+1. Call Groq with classification prompt (JSON mode, temp=0.2)
+2. Parse classification result with context understanding
+3. If confident → route; else → pass to Phase 2
+
+**Disabling (not recommended):**
+```yaml
+planning:
+  use_llm_pre_plan: false  # Fall back to pattern-only (less accurate)
+```
 
 #### llm_plan (Phase 2)
 **Location:** `nodes/planning/core.py` → `PlanningOrchestrator.llm_plan()`
 
-Full LLM planning using context-aware prompts. Handles complex routing, compound tool calls, and retries based on verification errors.
+Full LLM planning using context-aware prompts. Handles complex routing, compound tool calls, and retries based on verification errors. Uses Groq (default profile).
 
 ---
 
@@ -431,14 +466,38 @@ Controlled by `config.runtime.max_iterations` (default 10).
 
 ### Key Config Paths
 
-| Config | Purpose |
-|--------|---------|
-| `agents.preferences.default_agent` | Fallback agent |
-| `agents.configs.<name>` | Agent-specific config |
-| `llm.default_profile` | Default LLM for planning |
-| `runtime.max_iterations` | Max retry loops |
-| `runtime.detect_tool_calls_from_text` | Enable pattern detection |
-| `planning.max_retry_attempts` | LLM call retries |
+| Config | Purpose | Default |
+|--------|---------|---------|
+| `agents.preferences.default_agent` | Fallback agent | - |
+| `agents.configs.<name>` | Agent-specific config | - |
+| `llm.default_profile` | Default LLM for planning (Groq) | groq-qwen3-32b |
+| `runtime.max_iterations` | Max retry loops | 10 |
+| `runtime.detect_tool_calls_from_text` | Enable pattern detection | True |
+| `planning.max_retry_attempts` | LLM call retries | 3 |
+| **`planning.use_llm_pre_plan`** | **Enable Phase 1 LLM classification** | **True** ✅ |
+
+### LLM Pre-Plan (Phase 1) - ENABLED BY DEFAULT
+
+Phase 1 uses Groq for smart task classification, enabled by default for better accuracy.
+
+**Benefits:**
+- Handles nuanced cases that pattern matching misses
+- Understands context and intent, not just keywords
+- More flexible for novel task types
+- Better file path detection via LLM understanding
+
+**Performance:**
+- Adds ~200-500ms latency (Groq is fast)
+- Small cost increase (Groq is cheap)
+- Worth it for significantly better routing accuracy
+
+**Disabling (not recommended):**
+```yaml
+planning:
+  use_llm_pre_plan: false  # Fall back to pattern-only mode (less accurate)
+```
+
+**Why it's default:** Pattern-based classification has known misroutes (see `test_classifier_misroutes.py`). LLM classification solves these edge cases.
 
 ### Codur Coding Agent (agent:codur-coding)
 
@@ -496,10 +555,11 @@ Use this profile when routing tasks that are primarily coding challenges and inc
 ### Common Sources of Flakiness
 
 1. **Aggressive Message Pruning** - Only keeping last 4 error messages can lose context agents need to fix issues
-2. **Phase 1 Over-Confidence** - Quick classification at 80% confidence might route complex tasks incorrectly
+2. **Phase 0 Over-Confidence** - Pattern classification at 80% confidence might route complex tasks incorrectly
 3. **Pattern-Based Tool Detection** - Agents might format tool calls differently than expected
 4. **Limited Error Information** - Truncated error messages don't show full context of what failed
 5. **Limited Repair Patterns** - Only 3 mutation patterns covers a tiny fraction of possible bugs
+6. **Pattern Rigidity** - Phase 0 patterns are hardcoded and miss novel task variations (can be mitigated by enabling Phase 1 LLM pre-plan)
 
 ### Strategies for Improving Reliability
 
@@ -508,10 +568,11 @@ Use this profile when routing tasks that are primarily coding challenges and inc
 - Include recent AIMessage outputs so agents see their own attempts
 - Only prune very old messages (> 5 iterations ago)
 
-#### Phase 1 Safety
-- Use Phase 1 only for truly obvious cases: greetings, simple file ops
-- For code tasks, always use Phase 2 LLM to get proper routing
-- Require 90%+ confidence for Phase 1 code task decisions
+#### Phase 0/1 Safety
+- Phase 0 patterns work well for obvious cases but can be rigid
+- Consider enabling Phase 1 LLM pre-plan (`use_llm_pre_plan: true`) for better generalization
+- Pattern confidence threshold (0.8) is reasonable but may need tuning per task type
+- For novel task variations, Phase 1 LLM provides better adaptability than hardcoded patterns
 
 #### Error Message Quality
 - Show more context (30 lines instead of 20) for error messages
@@ -575,4 +636,32 @@ Edit `main_graph.py`:
 
 ---
 
-*Last updated: 2025-12-23*
+## Changelog
+
+### 2025-12-24
+- **Phase 1 LLM classification ENABLED BY DEFAULT**: Smart classification instead of pattern-only
+  - Changed `use_llm_pre_plan: false` → `true` in default config
+  - Fixes known misroutes: "hey fix main.py", "remove debug prints", etc.
+  - Uses Groq for fast LLM-based classification (~200-500ms)
+  - Pattern-only mode still available but not recommended
+- **Phase 0 conservative strategy**: Made Phase 0 more conservative to reduce brittleness
+  - Code fix/generation/refactor strategies now do **discovery only**, not delegation
+  - Phase 0 reads files and gathers context, Phase 2 makes routing decisions
+  - Prevents premature delegation of complex tasks with insufficient context
+  - Matches original safer behavior where Phase 1 did discovery before Phase 2 routing
+
+### 2025-12-23
+- **Phase 0 refactor**: Merged `textual_pre_plan` and old `llm_pre_plan` into unified `pattern_plan`
+  - Phase 0 now combines instant resolution + pattern classification (NO LLM calls)
+  - Clarified naming: Phase 0 = pattern-based, Phase 1 = LLM-based (experimental)
+- **Phase 1 enhancement**: Added true LLM-based classification (config-gated)
+  - New config flag: `planning.use_llm_pre_plan` (default: False)
+  - Uses Groq for fast classification when enabled
+  - More flexible than patterns for novel task types
+- **Documentation cleanup**: Fixed misleading "LLM Pre-Plan" terminology
+  - Updated all diagrams and descriptions to reflect actual LLM usage
+  - Added experimental flag documentation
+
+---
+
+*Last updated: 2025-12-24*

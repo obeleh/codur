@@ -28,31 +28,11 @@ class ComplexRefactorStrategy:
         config: CodurConfig,
         verbose: bool = False
     ) -> PlanNodeResult | None:
-        
-        # High confidence -> delegate
-        if classification.is_confident and not tool_results_present:
-            user_message = messages[-1].content if messages and isinstance(messages[-1], HumanMessage) else ""
-            agent = select_agent_for_task(
-                config=config,
-                user_message=user_message,
-                detected_files=classification.detected_files,
-                routing_key="complex",
-                prefer_multifile=True,
-                allow_coding_agent=False,
-            )
-            
-            if verbose:
-                console.print("[green]✓ Complex refactor resolved (high confidence)[/green]")
-            return {
-                "next_action": "delegate",
-                "selected_agent": agent,
-                "iterations": iterations + 1,
-                "llm_debug": {
-                    "phase1_resolved": True,
-                    "task_type": classification.task_type.value,
-                    "selected_agent": agent
-                },
-            }
+
+        # Complex refactoring is too risky to delegate from Phase 0
+        # Pass to Phase 2 for careful analysis and routing
+        if verbose and classification.is_confident:
+            console.print("[dim]Complex refactor detected, deferring to Phase 2 for analysis[/dim]")
 
         return None
 

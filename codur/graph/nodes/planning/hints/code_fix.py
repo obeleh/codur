@@ -64,50 +64,22 @@ class CodeFixStrategy:
                     },
                 }
 
-        # 3. High confidence with files -> delegate
+        # 3. High confidence with files -> read file for context, let Phase 2 decide routing
+        # Being conservative: Phase 0 does discovery only, Phase 2 makes routing decisions
         if classification.is_confident and not tool_results_present and classification.detected_files:
-            user_message = messages[-1].content if messages and isinstance(messages[-1], HumanMessage) else ""
-            agent = select_agent_for_task(
-                config=config,
-                user_message=user_message,
-                detected_files=classification.detected_files,
-                routing_key="simple",
-                prefer_multifile=len(classification.detected_files) > 1,
-                allow_coding_agent=True,
-            )
-            
-            if agent == "agent:codur-coding":
-                # Generate compound tool_calls: read_file → agent_call
-                file_path = classification.detected_files[0]
-                if verbose:
-                    console.print("[green]✓ Code fix resolved (high confidence, compound tools)[/green]")
-                return {
-                    "next_action": "tool",
-                    "tool_calls": [
-                        {
-                            "tool": "read_file",
-                            "args": {"path": file_path}
-                        },
-                        {
-                            "tool": "agent_call",
-                            "args": {
-                                "agent": agent,
-                                "challenge": user_message,
-                                "file_path": file_path
-                            }
-                        }
-                    ],
-                    "iterations": iterations + 1,
-                    "llm_debug": {
-                        "phase1_resolved": True,
-                        "task_type": classification.task_type.value,
-                        "selected_agent": agent,
-                        "compound_tools": True
-                    },
-                }
-            else:
-                # Pass to Phase 2 so the planner can build compound tool calls for edits.
-                return None
+            file_path = classification.detected_files[0]
+            if verbose:
+                console.print(f"[dim]Reading {file_path} for context, routing decision in Phase 2[/dim]")
+            return {
+                "next_action": "tool",
+                "tool_calls": [{"tool": "read_file", "args": {"path": file_path}}],
+                "iterations": iterations + 1,
+                "llm_debug": {
+                    "phase0_resolved": True,
+                    "task_type": classification.task_type.value,
+                    "discovery_only": True,
+                },
+            }
 
         return None
 

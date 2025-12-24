@@ -65,32 +65,25 @@ class CodeGenerationStrategy:
                     },
                 }
 
-        # 3. High confidence -> delegate
-        if classification.is_confident and not tool_results_present:
-            user_message = messages[-1].content if messages and isinstance(messages[-1], HumanMessage) else ""
-            agent = select_agent_for_task(
-                config=config,
-                user_message=user_message,
-                detected_files=classification.detected_files,
-                routing_key="simple",
-                prefer_multifile=len(classification.detected_files) > 1,
-                allow_coding_agent=True,
-            )
-            
-            # Standard delegation for generation
+        # 3. High confidence with files -> read file for context, let Phase 2 decide routing
+        # Being conservative: Phase 0 does discovery only, Phase 2 makes routing decisions
+        if classification.is_confident and not tool_results_present and classification.detected_files:
+            file_path = classification.detected_files[0]
             if verbose:
-                console.print("[green]✓ Code generation resolved (high confidence)[/green]")
+                console.print(f"[dim]Reading {file_path} for context, routing decision in Phase 2[/dim]")
             return {
-                "next_action": "delegate",
-                "selected_agent": agent,
+                "next_action": "tool",
+                "tool_calls": [{"tool": "read_file", "args": {"path": file_path}}],
                 "iterations": iterations + 1,
                 "llm_debug": {
-                    "phase1_resolved": True,
+                    "phase0_resolved": True,
                     "task_type": classification.task_type.value,
-                    "selected_agent": agent
+                    "discovery_only": True,
                 },
             }
 
+        # 4. High confidence without files -> pass to Phase 2 for smarter routing
+        # Don't delegate directly - let Phase 2 see full context
         return None
 
     def build_phase2_prompt(

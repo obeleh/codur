@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
@@ -20,6 +20,15 @@ class TaskType(Enum):
     UNKNOWN = "unknown"
 
 
+@dataclass(frozen=True)
+class ClassificationCandidate:
+    """Candidate classification with confidence and reasoning."""
+
+    task_type: TaskType
+    confidence: float
+    reasoning: str
+
+
 @dataclass
 class ClassificationResult:
     """Result from quick classification."""
@@ -29,6 +38,7 @@ class ClassificationResult:
     detected_files: list[str]
     detected_action: Optional[str]
     reasoning: str
+    candidates: list[ClassificationCandidate] = field(default_factory=list)
 
     @property
     def is_confident(self) -> bool:

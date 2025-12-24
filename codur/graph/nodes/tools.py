@@ -61,6 +61,11 @@ from codur.tools import (
     python_ast_dependencies_multifile,
     python_dependency_graph,
     agent_call,
+    system_cpu_stats,
+    system_memory_stats,
+    system_disk_usage,
+    system_process_snapshot,
+    system_processes_top,
 )
 
 console = console.Console()
@@ -183,6 +188,16 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
             state=tool_state,
             **args,
         ),
+        "system_cpu_stats": lambda args: system_cpu_stats(state=tool_state, **args),
+        "system_memory_stats": lambda args: system_memory_stats(state=tool_state, **args),
+        "system_disk_usage": lambda args: system_disk_usage(
+            root=root,
+            allow_outside_root=allow_outside_root,
+            state=tool_state,
+            **args,
+        ),
+        "system_process_snapshot": lambda args: system_process_snapshot(state=tool_state, **args),
+        "system_processes_top": lambda args: system_processes_top(state=tool_state, **args),
         "agent_call": lambda args: agent_call(
             config=config,
             state=tool_state,

@@ -79,8 +79,11 @@ def create_agent_graph(config: CodurConfig):
     workflow = StateGraph(AgentState)
 
     # Add nodes - Three-phase planning architecture
+    # Phase 0: Pattern-based (textual + classification)
     workflow.add_node("textual_pre_plan", lambda state: textual_pre_plan_node(state, config))
+    # Phase 1: LLM-based classification (experimental, config-gated)
     workflow.add_node("llm_pre_plan", lambda state: llm_pre_plan_node(state, config))
+    # Phase 2: Full LLM planning
     workflow.add_node("llm_plan", lambda state: llm_plan_node(state, llm, config))
     workflow.add_node("delegate", lambda state: delegate_node(state, config))
     workflow.add_node("tool", lambda state: tool_node(state, config))
@@ -91,7 +94,7 @@ def create_agent_graph(config: CodurConfig):
     # Set entry point to first planning phase
     workflow.set_entry_point("textual_pre_plan")
 
-    # Phase transitions: textual-pre-plan → llm-pre-plan → llm-plan
+    # Phase transitions: pattern-plan → llm-pre-plan (optional) → llm-plan
     workflow.add_conditional_edges(
         "textual_pre_plan",
         should_continue_to_llm_pre_plan,
@@ -147,8 +150,11 @@ def create_agent_graph(config: CodurConfig):
     )
 
     # Compile the graph with increased recursion limit for trial-error loops
-    # Initial: textual_pre_plan→llm_pre_plan→llm_plan→delegate→execute→review (6 nodes)
-    # Retries: llm_plan→delegate→execute→review→continue (4 nodes per retry)
+    # Initial path (LLM pre-plan disabled):
+    #   pattern_plan → llm_plan → delegate → execute → review (5 nodes)
+    # Initial path (LLM pre-plan enabled):
+    #   pattern_plan → llm_pre_plan → llm_plan → delegate → execute → review (6 nodes)
+    # Retries: llm_plan → delegate → execute → review → continue (4 nodes per retry)
     # With max_iterations=10 and max_tool_iterations=5 per agent:
     # Estimate: 6 (initial) + 10 * 4 (retries) + (5 tool iterations * 2) = 66 nodes
     # Using 350 for comprehensive trial-error loops with optimized retry path

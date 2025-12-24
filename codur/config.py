@@ -121,6 +121,7 @@ class PlanningSettings(BaseModel):
     max_retry_attempts: int = 3
     retry_initial_delay: float = 0.5
     retry_backoff_factor: float = 2.0
+    use_llm_pre_plan: bool = True  # Enable LLM-based Phase 1 classification (smarter than patterns)
 
     @field_validator("debug_truncate_short", "debug_truncate_long", "max_retry_attempts")
     @classmethod

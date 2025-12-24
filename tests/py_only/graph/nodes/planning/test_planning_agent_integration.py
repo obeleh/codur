@@ -10,6 +10,7 @@ from codur.graph.state import AgentState
 from codur.graph.nodes.planning.core import (
     textual_pre_plan,
     llm_pre_plan,
+    pattern_plan,
     PlanningOrchestrator,
 )
 from codur.graph.nodes.planning.types import TaskType
@@ -25,13 +26,15 @@ class TestPlanningNodeWithCodingAgent:
         config.runtime = MagicMock()
         config.runtime.detect_tool_calls_from_text = False
         config.runtime.max_iterations = 10
+        config.planning = MagicMock()
+        config.planning.use_llm_pre_plan = True  # Default: LLM-based classification
         return config
 
     def test_textual_pre_plan_no_match_continues_to_llm(self, config):
         """Test that textual pre-plan continues to llm-pre-plan when no pattern matches."""
         state = {
             "messages": [
-                HumanMessage(content="Implement a function that calculates fibonacci numbers")
+                HumanMessage(content="Can you help me optimize the algorithm performance?")
             ],
             "iterations": 0,
             "verbose": False,
@@ -92,6 +95,8 @@ class TestPlanningNodeCodeFixDetection:
         config.runtime = MagicMock()
         config.runtime.detect_tool_calls_from_text = False
         config.runtime.max_iterations = 10
+        config.planning = MagicMock()
+        config.planning.use_llm_pre_plan = True  # Default: LLM-based classification
         return config
 
     def test_detect_code_fix_keywords(self, config):
@@ -140,6 +145,8 @@ class TestPlanningNodeAgentSelection:
         config.runtime = MagicMock()
         config.runtime.detect_tool_calls_from_text = False
         config.runtime.max_iterations = 10
+        config.planning = MagicMock()
+        config.planning.use_llm_pre_plan = True  # Default: LLM-based classification
         return config
 
     def test_plan_selects_coding_agent_for_fix_task(self, config):
@@ -180,6 +187,8 @@ class TestPlanningNodeWithLineBasedEditing:
         config.runtime = MagicMock()
         config.runtime.detect_tool_calls_from_text = False
         config.runtime.max_iterations = 10
+        config.planning = MagicMock()
+        config.planning.use_llm_pre_plan = True  # Default: LLM-based classification
         return config
 
     def test_plan_routes_single_function_fix_to_coding_agent(self, config):
@@ -237,6 +246,8 @@ class TestPlanningNodeRetryBehavior:
         config.runtime = MagicMock()
         config.runtime.detect_tool_calls_from_text = False
         config.runtime.max_iterations = 10
+        config.planning = MagicMock()
+        config.planning.use_llm_pre_plan = True  # Default: LLM-based classification
         return config
 
     def test_plan_with_iteration_count_increments(self, config):
@@ -338,18 +349,21 @@ class TestPlanningNodeFileDiscovery:
         return config
 
     def test_llm_pre_plan_lists_files_without_hint(self, config):
+        """Test that pattern_plan (via llm_pre_plan wrapper) triggers file discovery."""
         state = {
             "messages": [HumanMessage(content="Fix the failing tests")],
             "iterations": 0,
             "verbose": False,
         }
 
-        result = llm_pre_plan(state, config)
+        # File discovery logic is now in pattern_plan (Phase 0), not llm_pre_plan
+        result = pattern_plan(state, config)
         assert result is not None
         assert result["next_action"] == "tool"
         assert result["tool_calls"][0]["tool"] == "list_files"
 
     def test_llm_pre_plan_selects_app_py_from_list(self, config):
+        """Test that pattern_plan (via llm_pre_plan wrapper) selects app.py from list."""
         state = {
             "messages": [
                 HumanMessage(content="Fix the bug in the challenge"),
@@ -359,7 +373,8 @@ class TestPlanningNodeFileDiscovery:
             "verbose": False,
         }
 
-        result = llm_pre_plan(state, config)
+        # File discovery logic is now in pattern_plan (Phase 0), not llm_pre_plan
+        result = pattern_plan(state, config)
         assert result is not None
         assert result["next_action"] == "tool"
         assert result["tool_calls"] == [{"tool": "read_file", "args": {"path": "app.py"}}]

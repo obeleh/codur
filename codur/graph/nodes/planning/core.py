@@ -32,70 +32,51 @@ from .tool_analysis import (
 console = Console()
 
 
-# Three-phase planning: textual-pre-plan → llm-pre-plan → llm-plan
+# Three-phase planning: pattern-plan → llm-pre-plan → llm-plan
 
-def textual_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
-    """Phase 0: Textual (pattern-based) pre-planning without LLM.
+def _format_candidates(candidates, limit: int = 5) -> str:
+    if not candidates:
+        return "none"
+    trimmed = candidates[:limit]
+    return ", ".join(f"{item.task_type.value}:{item.confidence:.0%}" for item in trimmed)
 
-    Fast path for obvious cases detected by pattern matching:
-    - Greetings
-    - File operations
-    - Obvious non-coding requests
 
-    If no match, passes to llm-pre-plan.
+def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
+    """Phase 0: Pattern-based pre-planning (no LLM calls).
+
+    Combines fast pattern matching with classification-based strategies:
+    1. Instant resolution for trivial cases (greetings, basic file ops)
+    2. Pattern classification with task-specific routing strategies
+
+    If resolved, routes directly. If uncertain, passes to llm-pre-plan.
     """
     messages = _normalize_messages(state.get("messages"))
     iterations = state.get("iterations", 0)
 
     if state.get("verbose"):
-        console.print("[bold blue]Planning (Phase 0: Textual)...[/bold blue]")
+        console.print("[bold blue]Planning (Phase 0: Pattern Matching)...[/bold blue]")
 
-    # Fast path: non-LLM tool detection
+    # Step 1: Try instant resolution for trivial cases
     if config.runtime.detect_tool_calls_from_text:
         non_llm_result = run_non_llm_tools(messages, state)
         if non_llm_result:
             if state.get("verbose"):
-                console.print("[green]✓ Textual pre-plan resolved[/green]")
+                console.print("[green]✓ Pattern resolved instantly[/green]")
             return non_llm_result
 
-    # No match - pass to llm-pre-plan
-    if state.get("verbose"):
-        console.print("[dim]No textual patterns matched, moving to llm-pre-plan[/dim]")
-
-    return {
-        "next_action": "continue_to_llm_pre_plan",
-        "iterations": iterations,
-    }
-
-
-def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
-    """Phase 1: LLM-based quick classification.
-
-    Fast classification for obvious cases without full LLM planning:
-    - Greetings
-    - Simple file operations
-    - Clear code fix/generation tasks (90%+ confidence)
-
-    If confident, returns routing decision directly.
-    If uncertain, passes to llm-plan for full LLM analysis.
-    """
-    messages = _normalize_messages(state.get("messages"))
-    iterations = state.get("iterations", 0)
-
-    if state.get("verbose"):
-        console.print("[bold blue]Planning (Phase 1: LLM Pre-Plan)...[/bold blue]")
-
+    # Step 2: Try classification-based strategy routing
     tool_results_present = any(
         isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:")
         for msg in messages
     )
 
-    # Quick classification
     classification = quick_classify(messages, config)
 
     if state.get("verbose"):
         console.print(f"[dim]Classification: {classification.task_type.value} "
                      f"(confidence: {classification.confidence:.0%})[/dim]")
+        if classification.candidates:
+            console.print(f"[dim]Candidates: {_format_candidates(classification.candidates)}[/dim]")
 
     # Use task-specific strategy for hints or direct resolution
     strategy = get_strategy_for_task(classification.task_type)
@@ -107,18 +88,166 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
         config,
         verbose=state.get("verbose", False)
     )
-    
+
     if result:
+        if state.get("verbose"):
+            console.print("[green]✓ Pattern resolved via strategy[/green]")
         return result
 
-    # Confidence not high enough or strategy passed - pass to llm-plan for full analysis
+    # No pattern match - pass to next phase
     if state.get("verbose"):
-        console.print("[dim]Confidence insufficient or strategy passed, moving to full LLM planning[/dim]")
+        next_phase = "LLM pre-plan" if config.planning.use_llm_pre_plan else "full LLM planning"
+        console.print(f"[dim]No patterns matched, moving to {next_phase}[/dim]")
 
+    return {
+        "next_action": "continue_to_llm_pre_plan",
+        "iterations": iterations,
+        "classification": classification,  # Pass to next phase for context
+    }
+
+
+# Keep old function names for backward compatibility
+def textual_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
+    """Deprecated: use pattern_plan instead."""
+    return pattern_plan(state, config)
+
+
+def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
+    """Phase 1: LLM-based quick classification (experimental, gated by config).
+
+    When enabled (config.planning.use_llm_pre_plan=True), uses a fast LLM
+    to classify the task and suggest routing. More flexible than pattern
+    matching for novel task types.
+
+    When disabled (default), passes directly to Phase 2 for full planning.
+    """
+    # If LLM pre-plan is disabled, skip directly to full planning
+    if not config.planning.use_llm_pre_plan:
+        if state.get("verbose"):
+            console.print("[dim]LLM pre-plan disabled, passing to full planning[/dim]")
+        return {
+            "next_action": "continue_to_llm_plan",
+            "iterations": state.get("iterations", 0),
+            "classification": state.get("classification"),
+        }
+
+    messages = _normalize_messages(state.get("messages"))
+    iterations = state.get("iterations", 0)
+
+    if state.get("verbose"):
+        console.print("[bold blue]Planning (Phase 1: LLM Classification)...[/bold blue]")
+
+    # Get classification from Phase 0 if available
+    classification = state.get("classification")
+
+    # Get last human message
+    user_message = ""
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            user_message = msg.content
+            break
+
+    # Build lightweight classification prompt with clear JSON schema
+    system_prompt = SystemMessage(content="""You are a task classifier. Analyze the user's request and classify it.
+
+**Task Types:**
+- greeting: greetings or thanks
+- file_operation: move, copy, delete, rename files
+- code_fix: fix bugs, debug, implement, solve
+- code_generation: write new code, create functions
+- explanation: explain, describe, summarize code
+- complex_refactor: refactor, redesign, migrate
+- web_search: weather, news, real-time data, search
+- unknown: anything else
+
+**Required JSON Response:**
+{
+  "task_type": "one of the types above",
+  "confidence": 0.0-1.0,
+  "detected_files": ["list", "of", "files"],
+  "suggested_action": "respond|tool|delegate",
+  "reasoning": "brief explanation"
+}
+
+**Examples:**
+
+User: "Hello!"
+{"task_type": "greeting", "confidence": 0.95, "detected_files": [], "suggested_action": "respond", "reasoning": "Simple greeting"}
+
+User: "Fix the bug in main.py"
+{"task_type": "code_fix", "confidence": 0.9, "detected_files": ["main.py"], "suggested_action": "delegate", "reasoning": "Bug fix request with file path"}
+
+User: "What does app.py do?"
+{"task_type": "explanation", "confidence": 0.85, "detected_files": ["app.py"], "suggested_action": "tool", "reasoning": "Explanation request for specific file"}
+
+User: "Write a sorting function"
+{"task_type": "code_generation", "confidence": 0.8, "detected_files": [], "suggested_action": "delegate", "reasoning": "New code generation request"}
+
+User: "What's the weather in Paris?"
+{"task_type": "web_search", "confidence": 0.9, "detected_files": [], "suggested_action": "tool", "reasoning": "Real-time weather data request"}
+
+User: "hey fix main.py"
+{"task_type": "code_fix", "confidence": 0.85, "detected_files": ["main.py"], "suggested_action": "delegate", "reasoning": "Casual greeting but primary intent is code fix"}
+
+Respond with ONLY valid JSON matching the schema above.""")
+
+    try:
+        # Use default profile (Groq) with JSON mode
+        planning_llm = create_llm_profile(
+            config,
+            config.llm.default_profile,
+            json_mode=True,
+            temperature=0.2  # Low temperature for deterministic classification
+        )
+
+        response = invoke_llm(
+            planning_llm,
+            [system_prompt, HumanMessage(content=user_message)],
+            invoked_by="planning.llm_pre_plan",
+            state=state,
+            config=config,
+        )
+
+        # Parse LLM response
+        import json
+        llm_result = json.loads(response.content)
+
+        if state.get("verbose"):
+            console.print(f"[dim]LLM classification: {llm_result.get('task_type')} "
+                         f"(confidence: {llm_result.get('confidence', 0):.0%})[/dim]")
+
+        # Check confidence
+        confidence = llm_result.get("confidence", 0)
+        if confidence >= 0.8:
+            # High confidence - route based on suggested action
+            action = llm_result.get("suggested_action", "delegate")
+            if action == "respond":
+                return {
+                    "next_action": "end",
+                    "final_response": llm_result.get("reasoning", "Task classified."),
+                    "iterations": iterations + 1,
+                    "llm_debug": {"phase1_llm_resolved": True},
+                }
+            elif action == "tool":
+                # Would need to determine specific tool - for now, pass to Phase 2
+                pass
+            elif action == "delegate":
+                # Could select agent here, but safer to pass to Phase 2
+                pass
+
+        # Pass to Phase 2 for routing decisions (Phase 1 only handles greetings)
+        if state.get("verbose"):
+            console.print("[dim]Passing to Phase 2 for agent routing and planning[/dim]")
+
+    except Exception as exc:
+        if state.get("verbose"):
+            console.print(f"[yellow]LLM pre-plan failed: {exc}[/yellow]")
+
+    # Pass to Phase 2 for full analysis
     return {
         "next_action": "continue_to_llm_plan",
         "iterations": iterations,
-        "classification": classification,  # Pass classification to llm-plan for context
+        "classification": classification,
     }
 
 
@@ -163,6 +292,8 @@ class PlanningOrchestrator:
             if state.get("verbose"):
                 console.print(f"[dim]Classification (re-evaluated): {classification.task_type.value} "
                              f"(confidence: {classification.confidence:.0%})[/dim]")
+                if classification.candidates:
+                    console.print(f"[dim]Candidates: {_format_candidates(classification.candidates)}[/dim]")
 
         prompt_messages = self._build_phase2_messages(
             messages, tool_results_present, classification

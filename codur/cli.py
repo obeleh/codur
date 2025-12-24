@@ -4,6 +4,7 @@ Codur CLI - Command-line interface for the coding agent
 """
 
 import warnings
+import os
 from tabnanny import verbose
 
 warnings.filterwarnings(
@@ -65,6 +66,7 @@ def _run_prompt(
     verbose: bool,
     raw: bool,
     max_llm_calls: int | None,
+    fail_early: bool,
 ) -> None:
     if not raw:
         console.print(Panel.fit(
@@ -72,6 +74,9 @@ def _run_prompt(
             f"Task: {prompt}",
             border_style="cyan"
         ))
+
+    if fail_early:
+        os.environ["EARLY_FAILURE_HELPERS_FOR_TESTS"] = "1"
 
     cfg = load_config(config)
     if max_llm_calls is not None:
@@ -134,9 +139,14 @@ def main_callback(
         "--max-llm-calls",
         help="Maximum number of LLM calls for a single run",
     ),
+    fail_early: bool = typer.Option(
+        False,
+        "--fail-early",
+        help="Enable early failure helpers for tests",
+    ),
 ):
     if command:
-        _run_prompt(command, config, verbose, raw, max_llm_calls)
+        _run_prompt(command, config, verbose, raw, max_llm_calls, fail_early)
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         console.print(ctx.get_help())
@@ -168,6 +178,11 @@ def run(
         "--max-llm-calls",
         help="Maximum number of LLM calls for a single run",
     ),
+    fail_early: bool = typer.Option(
+        False,
+        "--fail-early",
+        help="Enable early failure helpers for tests",
+    ),
 ):
     """
     Run a coding task through the agent orchestrator.
@@ -176,7 +191,7 @@ def run(
         codur run "Create a Python function to calculate fibonacci numbers"
         codur run "Refactor the authentication module" --verbose
     """
-    _run_prompt(prompt, config, verbose, raw, max_llm_calls)
+    _run_prompt(prompt, config, verbose, raw, max_llm_calls, fail_early)
 
 
 @app.command()
