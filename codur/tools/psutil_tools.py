@@ -167,3 +167,53 @@ def system_processes_top(
         entries.sort(key=lambda item: item["pid"] or 0)
 
     return entries[:limit]
+
+
+def system_processes_list(
+    limit: int = 50,
+    detailed: bool = False,
+    state: AgentState | None = None,
+) -> list[dict[str, Any]]:
+    """Return a list of running processes (pid, name, status)."""
+    limit = max(1, int(limit))
+    entries: list[dict[str, Any]] = []
+    base_attrs = ["pid", "name", "status"]
+    detailed_attrs = ["cpu_percent", "memory_percent", "create_time", "username", "cmdline"]
+    attrs = base_attrs + detailed_attrs if detailed else base_attrs
+    try:
+        iterator = psutil.process_iter(attrs)
+    except (psutil.Error, OSError, PermissionError, SystemError):
+        return []
+    try:
+        for process in iterator:
+            info = process.info
+            entry = {
+                "pid": info.get("pid"),
+                "name": info.get("name") or "",
+                "status": info.get("status") or "",
+            }
+            if detailed:
+                entry.update(
+                    {
+                        "cpu_percent": float(info.get("cpu_percent") or 0.0),
+                        "memory_percent": float(info.get("memory_percent") or 0.0),
+                        "create_time": float(info.get("create_time") or 0.0),
+                        "username": info.get("username") or "",
+                        "cmdline": info.get("cmdline") or [],
+                    }
+                )
+            entries.append(entry)
+            if len(entries) >= limit:
+                break
+    except (psutil.Error, OSError, PermissionError, SystemError):
+        return []
+    return entries
+
+if __name__ == "__main__":
+    # Example usage
+    print("CPU Stats:", system_cpu_stats(per_cpu=True, interval=1.0))
+    print("Memory Stats:", system_memory_stats())
+    #print("Disk Usage:", system_disk_usage(path="/"))
+    print("Current Process Snapshot:", system_process_snapshot())
+    print("Top Processes by CPU:", system_processes_top(limit=3, sort_by="cpu"))
+    print("Process List:", system_processes_list(limit=50, detailed=True))

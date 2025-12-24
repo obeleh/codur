@@ -66,6 +66,7 @@ from codur.tools import (
     system_disk_usage,
     system_process_snapshot,
     system_processes_top,
+    system_processes_list,
 )
 
 console = console.Console()
@@ -198,6 +199,7 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
         ),
         "system_process_snapshot": lambda args: system_process_snapshot(state=tool_state, **args),
         "system_processes_top": lambda args: system_processes_top(state=tool_state, **args),
+        "system_processes_list": lambda args: system_processes_list(state=tool_state, **args),
         "agent_call": lambda args: agent_call(
             config=config,
             state=tool_state,

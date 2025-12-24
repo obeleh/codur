@@ -95,6 +95,7 @@ from codur.tools.psutil_tools import (
     system_disk_usage,
     system_process_snapshot,
     system_processes_top,
+    system_processes_list,
 )
 
 __all__ = [
@@ -160,4 +161,5 @@ __all__ = [
     "system_disk_usage",
     "system_process_snapshot",
     "system_processes_top",
+    "system_processes_list",
 ]
