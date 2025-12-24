@@ -1,17 +1,20 @@
-# Planning Hints Package
+# Task Strategies Package
 
-This package contains Phase 1 planning strategies (hints) for different task types. Phase 1 aims to resolve simple tasks or provide discovery steps (like listing files) before proceeding to full LLM planning in Phase 2.
+This package contains task-specific strategies for the planning system. Each strategy owns the domain knowledge for one task type:
 
-## How to Create a New Hint/Strategy
+- **Discovery behavior** (Phase 0) - File listing, reading, etc.
+- **Prompt building** (Phase 2) - Task-specific LLM planning prompts
+
+## How to Create a New Strategy
 
 To add a new strategy for a task type:
 
 1.  **Define the TaskType**: If it's a new task type, add it to `TaskType` enum in `codur/graph/nodes/planning/types.py`.
 2.  **Create a New File**: Create a new Python file in this directory (e.g., `my_new_task.py`).
-3.  **Implement the Strategy**: Create a class that implements the `Phase1Strategy` protocol defined in `base.py`.
+3.  **Implement the Strategy**: Create a class that implements the `TaskStrategy` protocol defined in `base.py`.
 
 ```python
-from codur.graph.nodes.planning.hints.base import Phase1Strategy
+from codur.graph.nodes.planning.strategies.base import TaskStrategy
 from codur.graph.nodes.types import PlanNodeResult
 # ... other imports
 
@@ -26,16 +29,16 @@ class MyNewTaskStrategy:
         verbose: bool = False
     ) -> PlanNodeResult | None:
         # Implementation logic here
-        # Return PlanNodeResult to resolve Phase 1
-        # Return None to pass to Phase 2
+        # Return PlanNodeResult to resolve in Phase 0
+        # Return None to pass to next phase
         return None
 
-    def build_phase2_prompt(
+    def build_planning_prompt(
         self,
         classification: ClassificationResult,
         config: CodurConfig,
     ) -> str:
-        # Return a context-aware Phase 2 planning prompt for this task type
+        # Return a context-aware planning prompt for this task type
         return "..."
 ```
 
@@ -43,12 +46,14 @@ class MyNewTaskStrategy:
 
 ## Directory Structure
 
-- `base.py`: Defines the `Phase1Strategy` interface.
-- `__init__.py`: Dispatcher logic to get the right strategy for a `TaskType`.
+- `base.py`: Defines the `TaskStrategy` interface.
+- `__init__.py`: Registry and `get_strategy_for_task()` dispatcher.
 - `[task_type].py`: Task-specific implementations.
+- `prompt_utils.py`: Shared prompt building utilities.
 
 ## Design Principles
 
 - **Speed**: Strategies should be fast and avoid LLM calls if possible.
 - **Discovery**: Use strategies to gather context (e.g., `list_files`) if information is missing.
-- **Confidence**: Only resolve tasks in Phase 1 if the classification confidence is high (typically >= 0.8).
+- **Conservative**: Phase 0 does discovery only; Phase 2 makes routing decisions.
+- **Domain Ownership**: Each strategy is the single source of truth for its task type.

@@ -17,7 +17,7 @@ from codur.graph.nodes import (
     should_delegate,
 )
 from codur.graph.nodes.planning import (
-    textual_pre_plan_node,
+    pattern_plan_node,
     llm_pre_plan_node,
     llm_plan_node,
 )
@@ -26,11 +26,11 @@ from codur.llm import create_llm, create_llm_profile
 
 
 def should_continue_to_llm_pre_plan(state: AgentState) -> str:
-    """Route from textual-pre-plan to llm-pre-plan."""
+    """Route from pattern_plan to llm_pre_plan."""
     next_action = state.get("next_action")
     if next_action == "continue_to_llm_pre_plan":
         return "llm_pre_plan"
-    # If resolved in textual-pre-plan, route based on the decision
+    # If resolved in pattern_plan, route based on the decision
     return _route_based_on_decision(state)
 
 
@@ -79,9 +79,9 @@ def create_agent_graph(config: CodurConfig):
     workflow = StateGraph(AgentState)
 
     # Add nodes - Three-phase planning architecture
-    # Phase 0: Pattern-based (textual + classification)
-    workflow.add_node("textual_pre_plan", lambda state: textual_pre_plan_node(state, config))
-    # Phase 1: LLM-based classification (experimental, config-gated)
+    # Phase 0: Pattern-based classification and discovery
+    workflow.add_node("pattern_plan", lambda state: pattern_plan_node(state, config))
+    # Phase 1: LLM-based classification (config-gated, enabled by default)
     workflow.add_node("llm_pre_plan", lambda state: llm_pre_plan_node(state, config))
     # Phase 2: Full LLM planning
     workflow.add_node("llm_plan", lambda state: llm_plan_node(state, llm, config))
@@ -92,11 +92,11 @@ def create_agent_graph(config: CodurConfig):
     workflow.add_node("review", lambda state: review_node(state, llm, config))
 
     # Set entry point to first planning phase
-    workflow.set_entry_point("textual_pre_plan")
+    workflow.set_entry_point("pattern_plan")
 
-    # Phase transitions: pattern-plan → llm-pre-plan (optional) → llm-plan
+    # Phase transitions: pattern_plan → llm_pre_plan (optional) → llm_plan
     workflow.add_conditional_edges(
-        "textual_pre_plan",
+        "pattern_plan",
         should_continue_to_llm_pre_plan,
         {
             "llm_pre_plan": "llm_pre_plan",

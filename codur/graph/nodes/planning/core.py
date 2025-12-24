@@ -23,7 +23,7 @@ from .validators import looks_like_change_request, mentions_file_path, has_mutat
 from .json_parser import JSONResponseParser
 from .classifier import quick_classify
 from .types import ClassificationResult
-from .hints import get_strategy_for_task
+from .strategies import get_strategy_for_task
 from .tool_analysis import (
     tool_results_include_read_file,
     select_file_from_tool_results,
@@ -565,9 +565,9 @@ class PlanningOrchestrator:
         that guides the LLM through multi-step reasoning (Chain-of-Thought) for
         file-based coding tasks.
         """
-        # Use context-aware prompt based on Phase 1 classification to guide multi-step planning
+        # Use context-aware prompt based on classification to guide multi-step planning
         strategy = get_strategy_for_task(classification.task_type)
-        planning_prompt = strategy.build_phase2_prompt(classification, self.config)
+        planning_prompt = strategy.build_planning_prompt(classification, self.config)
         system_message = SystemMessage(content=planning_prompt)
         prompt_messages = [system_message] + list(messages)
 

@@ -1,6 +1,11 @@
-"""Hints package for Phase 1 planning strategies."""
+"""Task strategies package for planning.
 
-from .base import Phase1Strategy
+Each strategy owns the domain knowledge for one TaskType:
+- Discovery behavior (Phase 0)
+- Prompt building for LLM planning (Phase 2)
+"""
+
+from .base import TaskStrategy, Phase1Strategy  # Phase1Strategy for backward compat
 from .greeting import GreetingStrategy
 from .file_operation import FileOperationStrategy
 from .code_fix import CodeFixStrategy
@@ -12,7 +17,7 @@ from .unknown import UnknownStrategy
 
 from codur.graph.nodes.planning.types import TaskType
 
-_STRATEGIES = {
+_STRATEGIES: dict[TaskType, TaskStrategy] = {
     TaskType.GREETING: GreetingStrategy(),
     TaskType.FILE_OPERATION: FileOperationStrategy(),
     TaskType.CODE_FIX: CodeFixStrategy(),
@@ -23,6 +28,7 @@ _STRATEGIES = {
     TaskType.UNKNOWN: UnknownStrategy(),
 }
 
-def get_strategy_for_task(task_type: TaskType) -> Phase1Strategy:
+
+def get_strategy_for_task(task_type: TaskType) -> TaskStrategy:
     """Get the appropriate strategy for a given task type."""
     return _STRATEGIES.get(task_type, UnknownStrategy())

@@ -66,7 +66,7 @@ Codur uses **LangGraph** to orchestrate an agentic workflow. The system follows 
 | `state.py` | AgentState TypedDict definition |
 | `nodes/routing.py` | `should_delegate()` and `should_continue()` routing functions |
 | `nodes/planning/core.py` | PlanningOrchestrator - Phase 2 LLM planning |
-| `nodes/planning/hints/` | Phase 1 strategy package - task-specific "pre-hints" |
+| `nodes/planning/strategies/` | TaskStrategy package - task-specific strategies |
 | `nodes/planning/tool_analysis.py` | Helpers for analyzing tool outputs (discovery) |
 | `nodes/execution.py` | AgentExecutor, delegate_node, execute_node, review_node |
 | `nodes/tools.py` | Tool execution node |
@@ -79,12 +79,12 @@ Codur uses **LangGraph** to orchestrate an agentic workflow. The system follows 
 ## Graph Flow
 
 ### Entry Point
-The graph starts at the **textual_pre_plan** node (Phase 0, pattern-based). See `main_graph.py:95`.
+The graph starts at the **pattern_plan** node (Phase 0, pattern-based). See `main_graph.py:95`.
 
 ### Nodes
 
 **Planning Phase (Phases 0-2):**
-1. **pattern_plan** (aka textual_pre_plan) → Pattern-based detection (Phase 0, NO LLM)
+1. **pattern_plan** → Pattern-based detection (Phase 0, NO LLM)
    - Instant resolution for trivial cases (greetings, basic file ops)
    - Pattern classification with task-specific strategies
 2. **llm_pre_plan** → Fast LLM classification (Phase 1, **ENABLED BY DEFAULT**)
@@ -103,12 +103,12 @@ The graph starts at the **textual_pre_plan** node (Phase 0, pattern-based). See 
 ### Edges
 
 ```python
-# Phase 0 → Phase 1 (textual_pre_plan → llm_pre_plan)
-textual_pre_plan → llm_pre_plan      # if next_action == "continue_to_llm_pre_plan"
-textual_pre_plan → delegate           # if next_action == "delegate" and selected_agent != "agent:codur-coding"
-textual_pre_plan → coding             # if next_action == "delegate" and selected_agent == "agent:codur-coding"
-textual_pre_plan → tool               # if next_action == "tool" (fast-path resolved)
-textual_pre_plan → END                # if next_action == "end" (fast-path resolved)
+# Phase 0 → Phase 1 (pattern_plan → llm_pre_plan)
+pattern_plan → llm_pre_plan      # if next_action == "continue_to_llm_pre_plan"
+pattern_plan → delegate           # if next_action == "delegate" and selected_agent != "agent:codur-coding"
+pattern_plan → coding             # if next_action == "delegate" and selected_agent == "agent:codur-coding"
+pattern_plan → tool               # if next_action == "tool" (fast-path resolved)
+pattern_plan → END                # if next_action == "end" (fast-path resolved)
 
 # Phase 1 → Phase 2 (llm_pre_plan → llm_plan)
 llm_pre_plan → llm_plan               # if next_action == "continue_to_llm_plan"
@@ -139,7 +139,7 @@ review → END                          # if next_action == "end" (done)
 ### Recursion Limit
 
 The graph is compiled with `recursion_limit=350` to support:
-- Initial planning phase: ~6 nodes (textual_pre_plan → llm_pre_plan → llm_plan → delegate/tool/coding → execute/review)
+- Initial planning phase: ~6 nodes (pattern_plan → llm_pre_plan → llm_plan → delegate/tool/coding → execute/review)
 - Up to 10 max review iterations with retry loop
 - 5 tool iterations per agent execution
 - Safety margin for complex tasks with multiple retries
@@ -193,7 +193,7 @@ To prevent context explosion during retry loops, `_prune_messages()` in `executi
 **No LLM calls** - Pure pattern matching combining:
 1. **Instant resolution** via `run_non_llm_tools()` for trivial cases (greetings, basic file ops)
 2. **Classification** via `quick_classify()` for task type detection (pattern-based, no LLM)
-3. **Strategy execution** from `hints/` package based on TaskType
+3. **Strategy execution** from `strategies/` package based on TaskType
    - Resolve simple tasks immediately (greetings, file operations, web search)
    - Trigger discovery tools (e.g., `list_files`, `read_file`)
    - **Conservative**: Does NOT delegate code tasks (passes to Phase 2)
@@ -332,7 +332,7 @@ When `list_files` returns 1-5 Python files, the tool node adds `python_ast_depen
 
 **Retry Behavior:**
 - On `next_action: "continue"`: Routes back to `llm_plan` node (Phase 2)
-  - Skips Phases 0-1 (textual_pre_plan, llm_pre_plan) since task is already classified
+  - Skips Phases 0-1 (pattern_plan, llm_pre_plan) since task is already classified
   - Provides error context to planner for targeted fix
   - Continues until max_iterations reached or verification passes
 - On `next_action: "end"`: Routes to graph END

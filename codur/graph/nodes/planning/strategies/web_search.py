@@ -1,12 +1,12 @@
-"""Web search strategy for Phase 1."""
+"""Web search strategy."""
 
 from rich.console import Console
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from codur.graph.nodes.types import PlanNodeResult
-from codur.graph.nodes.planning.types import ClassificationResult
+from codur.graph.nodes.planning.types import ClassificationResult, PatternConfig, ScoreContribution
 from codur.config import CodurConfig
-from codur.graph.nodes.planning.hints.prompt_utils import (
+from codur.graph.nodes.planning.strategies.prompt_utils import (
     build_base_prompt,
     format_focus_prompt,
     build_example_line,
@@ -15,7 +15,72 @@ from codur.graph.nodes.planning.hints.prompt_utils import (
 
 console = Console()
 
+# Domain-specific patterns for web search tasks
+_WEB_SEARCH_PATTERNS = PatternConfig(
+    primary_keywords=frozenset({
+        "weather", "search", "latest", "news", "today", "current", "how is", "what are",
+        "who is", "when did", "stock", "price", "market", "google", "find"
+    }),
+    boosting_keywords=frozenset({
+        "weather", "news", "price", "stock", "market", "bitcoin", "forecast"
+    }),
+    # Code artifact keywords that indicate code generation, not web search
+    # Note: These are specific code artifacts, not verbs like "create" or "write"
+    negative_keywords=frozenset({
+        "code", "script", "function", "class", "module", "api", "cli", "library",
+        "program", "dashboard", "ui", "interface", "frontend", "backend"
+    }),
+    file_extensions=frozenset(),  # Web search doesn't involve local files
+    phrases=frozenset({
+        "how is", "what are", "who is", "when did"
+    }),
+)
+
+
 class WebSearchStrategy:
+    def get_patterns(self) -> PatternConfig:
+        """Return patterns for web search classification."""
+        return _WEB_SEARCH_PATTERNS
+
+    def compute_score(
+        self,
+        text_lower: str,
+        words: set[str],
+        detected_files: list[str],
+        has_code_file: bool,
+    ) -> ScoreContribution:
+        """Compute web search classification score."""
+        result = ScoreContribution(score=0.0)
+        patterns = self.get_patterns()
+
+        # Check for web search keywords
+        for keyword in patterns.primary_keywords:
+            if keyword in text_lower:
+                result.add(0.12, f"web keyword: {keyword}")
+                if not detected_files and not has_code_file:
+                    result.add(0.08, "no local code context")
+
+        # Strong web keywords get extra boost
+        for keyword in patterns.boosting_keywords:
+            if keyword in text_lower:
+                result.add(0.18, f"strong web keyword: {keyword}")
+
+        # Web intent without code context
+        has_web = any(kw in text_lower for kw in patterns.primary_keywords)
+        has_code_context = has_code_file or any(
+            kw in text_lower for kw in patterns.negative_keywords
+        )
+        if has_web and not detected_files and not has_code_context:
+            result.add(0.25, "web intent without code context")
+
+        # Broad questions without code context
+        broad_question_words = {"who", "when", "where", "why", "what"}
+        has_broad_question = bool(words & broad_question_words)
+        if has_broad_question and not detected_files and not has_code_context:
+            result.add(0.2, "broad question without code context")
+
+        return result
+
     def execute(
         self,
         classification: ClassificationResult,
@@ -46,7 +111,7 @@ class WebSearchStrategy:
             },
         }
 
-    def build_phase2_prompt(
+    def build_planning_prompt(
         self,
         classification: ClassificationResult,
         config: CodurConfig,

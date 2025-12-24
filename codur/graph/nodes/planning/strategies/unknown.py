@@ -1,11 +1,11 @@
-"""Unknown task strategy for Phase 1."""
+"""Unknown/fallback task strategy."""
 
 from langchain_core.messages import BaseMessage
 
 from codur.graph.nodes.types import PlanNodeResult
-from codur.graph.nodes.planning.types import ClassificationResult
+from codur.graph.nodes.planning.types import ClassificationResult, PatternConfig, ScoreContribution
 from codur.config import CodurConfig
-from codur.graph.nodes.planning.hints.prompt_utils import (
+from codur.graph.nodes.planning.strategies.prompt_utils import (
     build_base_prompt,
     format_focus_prompt,
     build_example_line,
@@ -13,7 +13,25 @@ from codur.graph.nodes.planning.hints.prompt_utils import (
     normalize_agent_name,
 )
 
+# Unknown strategy has empty patterns (it's the fallback)
+_UNKNOWN_PATTERNS = PatternConfig()
+
+
 class UnknownStrategy:
+    def get_patterns(self) -> PatternConfig:
+        """Return empty patterns - unknown is the fallback when nothing matches."""
+        return _UNKNOWN_PATTERNS
+
+    def compute_score(
+        self,
+        text_lower: str,
+        words: set[str],
+        detected_files: list[str],
+        has_code_file: bool,
+    ) -> ScoreContribution:
+        """Unknown always returns zero - it's the fallback when nothing matches."""
+        return ScoreContribution(score=0.0)
+
     def execute(
         self,
         classification: ClassificationResult,
@@ -26,7 +44,7 @@ class UnknownStrategy:
         """Unknown tasks always pass to Phase 2."""
         return None
 
-    def build_phase2_prompt(
+    def build_planning_prompt(
         self,
         classification: ClassificationResult,
         config: CodurConfig,
