@@ -3,7 +3,12 @@
 import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from codur.tools.python_ast import python_ast_dependencies, python_ast_dependencies_multifile
+from codur.tools.python_ast import (
+    python_ast_dependencies,
+    python_ast_dependencies_multifile,
+    python_ast_graph,
+    python_ast_outline,
+)
 
 class TestPythonAstDependencies:
     """Test the dependency extraction logic."""
@@ -140,3 +145,71 @@ class TestPythonAstDependenciesMultifile:
             assert str(p1) in deps
             assert str(p2) in deps
             assert "a -> b" in deps[str(p1)]
+
+
+class TestPythonAstGraphOutline:
+    def test_ast_graph_truncates(self):
+        code = """
+def a():
+    return 1
+
+def b():
+    return a()
+"""
+        with TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "test.py"
+            p.write_text(code)
+            result = python_ast_graph(str(p), allow_outside_root=True, max_nodes=5)
+            assert result["truncated"] is True
+            assert result["node_count"] == 5
+            assert result["edge_count"] <= result["node_count"] - 1
+
+    def test_ast_outline_docstrings_and_decorators(self):
+        code = '''
+def deco(fn):
+    return fn
+
+@deco
+def foo(x):
+    """Doc foo."""
+    def inner():
+        """Inner doc."""
+        return x
+    return x
+
+class Bar:
+    """Bar doc."""
+    @deco
+    async def baz(self):
+        """Baz doc."""
+        return 1
+'''
+        with TemporaryDirectory() as tmpdir:
+            p = Path(tmpdir) / "test.py"
+            p.write_text(code)
+            outline = python_ast_outline(
+                str(p),
+                allow_outside_root=True,
+                include_docstrings=True,
+                include_decorators=True,
+                max_results=20,
+            )
+            defs = {entry["qualname"]: entry for entry in outline["definitions"]}
+            assert "foo" in defs
+            assert defs["foo"]["docstring"] == "Doc foo."
+            assert "deco" in defs["foo"]["decorators"]
+            assert "foo.inner" in defs
+            assert defs["foo.inner"]["type"] == "function"
+            assert "Bar" in defs
+            assert defs["Bar"]["type"] == "class"
+            assert "Bar.baz" in defs
+            assert defs["Bar.baz"]["type"] == "async_function"
+            assert "deco" in defs["Bar.baz"]["decorators"]
+
+            truncated = python_ast_outline(
+                str(p),
+                allow_outside_root=True,
+                max_results=1,
+            )
+            assert truncated["truncated"] is True
+            assert truncated["count"] == 1

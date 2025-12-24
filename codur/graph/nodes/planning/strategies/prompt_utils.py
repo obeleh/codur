@@ -47,6 +47,12 @@ def format_examples(examples: list[str]) -> str:
     return "\n".join(examples)
 
 
+def format_tool_suggestions(tools: list[str]) -> str:
+    if not tools:
+        return ""
+    return f"Suggested tools: {', '.join(tools)}"
+
+
 def normalize_agent_name(value: object, fallback: str) -> str:
     if isinstance(value, str):
         return value or fallback

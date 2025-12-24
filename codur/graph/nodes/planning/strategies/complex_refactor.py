@@ -13,6 +13,7 @@ from codur.graph.nodes.planning.strategies.prompt_utils import (
     build_example_line,
     format_examples,
     normalize_agent_name,
+    format_tool_suggestions,
 )
 
 console = Console()
@@ -104,6 +105,16 @@ class ComplexRefactorStrategy:
         classification: ClassificationResult,
         config: CodurConfig,
     ) -> str:
+        suggested_tools = format_tool_suggestions([
+            "file_tree",
+            "list_dirs",
+            "python_dependency_graph",
+            "python_ast_dependencies_multifile",
+            "code_quality",
+            "lint_python_tree",
+            "search_files",
+            "grep_files",
+        ])
         default_agent = normalize_agent_name(
             config.agents.preferences.routing.get("multifile"),
             normalize_agent_name(
@@ -138,6 +149,7 @@ class ComplexRefactorStrategy:
             "**Task Focus: Complex Refactor**\n"
             "- This likely spans multiple files; consider list_files if no hints are present.\n"
             "- Prefer multi-file capable agents when routing.\n"
+            f"- {suggested_tools}\n"
             "- Return ONLY a valid JSON object.\n"
             "Examples (context-aware):\n"
             f"{format_examples(examples)}"

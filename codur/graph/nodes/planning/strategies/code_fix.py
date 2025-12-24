@@ -12,6 +12,7 @@ from codur.graph.nodes.planning.strategies.prompt_utils import (
     select_example_file,
     build_example_line,
     format_examples,
+    format_tool_suggestions,
 )
 
 # Domain-specific patterns for code fix tasks
@@ -106,6 +107,16 @@ class CodeFixStrategy:
         classification: ClassificationResult,
         config: CodurConfig,
     ) -> str:
+        suggested_tools = format_tool_suggestions([
+            "search_files",
+            "grep_files",
+            "python_ast_dependencies_multifile",
+            "lint_python_files",
+            "lint_python_tree",
+            "validate_python_syntax",
+            "code_quality",
+            "python_dependency_graph",
+        ])
         example_path = select_example_file(classification.detected_files)
         example_tool_calls = [{"tool": "read_file", "args": {"path": example_path}}]
         if example_path.endswith(".py"):
@@ -139,6 +150,7 @@ class CodeFixStrategy:
             "- If a file path is known, call read_file first (python files auto-trigger AST deps).\n"
             "- If no file path is known, call list_files to discover candidates, then read a likely .py file.\n"
             "- Prefer agent:codur-coding for coding challenges with docstrings/requirements.\n"
+            f"- {suggested_tools}\n"
             "- Return ONLY a valid JSON object.\n"
             "Examples (context-aware):\n"
             f"{format_examples(examples)}"

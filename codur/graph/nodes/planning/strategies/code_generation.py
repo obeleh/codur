@@ -13,6 +13,7 @@ from codur.graph.nodes.planning.strategies.prompt_utils import (
     build_example_line,
     format_examples,
     normalize_agent_name,
+    format_tool_suggestions,
 )
 
 # Domain-specific patterns for code generation tasks
@@ -96,6 +97,17 @@ class CodeGenerationStrategy:
         classification: ClassificationResult,
         config: CodurConfig,
     ) -> str:
+        suggested_tools = format_tool_suggestions([
+            "write_file",
+            "append_file",
+            "inject_function",
+            "inject_lines",
+            "replace_lines",
+            "python_ast_outline",
+            "read_json",
+            "read_yaml",
+            "read_ini",
+        ])
         example_path = select_example_file(classification.detected_files)
         example_tool_calls = [{"tool": "read_file", "args": {"path": example_path}}]
         if example_path.endswith(".py"):
@@ -133,6 +145,7 @@ class CodeGenerationStrategy:
             "- If a file path is known, call read_file first (python files auto-trigger AST deps).\n"
             "- If no file path is known, delegate to a generation-capable agent.\n"
             "- Prefer agent:codur-coding for coding challenges with docstrings/requirements.\n"
+            f"- {suggested_tools}\n"
             "- Return ONLY a valid JSON object.\n"
             "Examples (context-aware):\n"
             f"{format_examples(examples)}"

@@ -2,7 +2,7 @@ import pytest
 import pygit2
 from pathlib import Path
 from codur.tools.git import (
-    git_status, git_stage_files, git_commit, git_log, git_diff
+    git_status, git_stage_files, git_stage_all, git_commit, git_log, git_diff
 )
 from dataclasses import dataclass, field
 
@@ -13,6 +13,14 @@ class MockToolsConfig:
 @dataclass
 class MockConfig:
     tools: MockToolsConfig = field(default_factory=MockToolsConfig)
+
+@dataclass
+class MockToolsConfigNoWrite:
+    allow_git_write: bool = False
+
+@dataclass
+class MockConfigNoWrite:
+    tools: MockToolsConfigNoWrite = field(default_factory=MockToolsConfigNoWrite)
 
 @pytest.fixture
 def mock_config():
@@ -84,3 +92,17 @@ def test_git_diff(git_repo):
     diff = git_diff(root=git_repo, mode="unstaged")
     assert "Initial content" in diff
     assert "Modified content" in diff
+
+
+def test_git_stage_all(git_repo, mock_config):
+    (git_repo / "new.txt").write_text("New file", encoding="utf-8")
+    result = git_stage_all(root=git_repo, config=mock_config)
+    assert result["staged"] is True
+    status = git_status(root=git_repo)
+    assert "new.txt" in status["staged"]
+
+
+def test_git_stage_all_requires_write(git_repo):
+    (git_repo / "new.txt").write_text("New file", encoding="utf-8")
+    with pytest.raises(ValueError, match="Git write tools are disabled"):
+        git_stage_all(root=git_repo, config=MockConfigNoWrite())

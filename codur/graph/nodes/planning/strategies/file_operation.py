@@ -12,6 +12,7 @@ from codur.graph.nodes.planning.strategies.prompt_utils import (
     select_example_files,
     build_example_line,
     format_examples,
+    format_tool_suggestions,
 )
 
 console = Console()
@@ -155,6 +156,12 @@ class FileOperationStrategy:
         classification: ClassificationResult,
         config: CodurConfig,
     ) -> str:
+        suggested_tools = format_tool_suggestions([
+            "list_dirs",
+            "file_tree",
+            "copy_file_to_dir",
+            "move_file_to_dir",
+        ])
         source_path, destination_path = select_example_files(classification.detected_files)
         examples = [
             build_example_line(
@@ -187,6 +194,7 @@ class FileOperationStrategy:
             "**Task Focus: File Operation**\n"
             "- Use action: \"tool\" with the correct file operation tool.\n"
             "- Do not respond or delegate.\n"
+            f"- {suggested_tools}\n"
             "- Return ONLY a valid JSON object.\n"
             "Examples (context-aware):\n"
             f"{format_examples(examples)}"

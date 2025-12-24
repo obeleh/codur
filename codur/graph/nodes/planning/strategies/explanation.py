@@ -12,6 +12,7 @@ from codur.graph.nodes.planning.strategies.prompt_utils import (
     select_example_file,
     build_example_line,
     format_examples,
+    format_tool_suggestions,
 )
 
 # Domain-specific patterns for explanation tasks
@@ -110,6 +111,16 @@ class ExplanationStrategy:
         classification: ClassificationResult,
         config: CodurConfig,
     ) -> str:
+        suggested_tools = format_tool_suggestions([
+            "python_ast_outline",
+            "python_ast_graph",
+            "python_dependency_graph",
+            "python_ast_dependencies_multifile",
+            "search_files",
+            "grep_files",
+            "file_tree",
+            "list_dirs",
+        ])
         example_path = select_example_file(classification.detected_files)
         example_tool_calls = [{"tool": "read_file", "args": {"path": example_path}}]
         if example_path.endswith(".py"):
@@ -143,6 +154,7 @@ class ExplanationStrategy:
             "- If a file path is known, call read_file first (python files auto-trigger AST deps).\n"
             "- If no file path is known, call list_files to discover candidates.\n"
             "- After tool results, respond with a concise explanation.\n"
+            f"- {suggested_tools}\n"
             "- Return ONLY a valid JSON object.\n"
             "Examples (context-aware):\n"
             f"{format_examples(examples)}"

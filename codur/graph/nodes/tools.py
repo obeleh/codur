@@ -60,6 +60,7 @@ from codur.tools import (
     python_ast_dependencies,
     python_ast_dependencies_multifile,
     python_dependency_graph,
+    code_quality,
     agent_call,
     system_cpu_stats,
     system_memory_stats,
@@ -184,6 +185,12 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
             **args,
         ),
         "python_dependency_graph": lambda args: python_dependency_graph(
+            root=root,
+            allow_outside_root=allow_outside_root,
+            state=tool_state,
+            **args,
+        ),
+        "code_quality": lambda args: code_quality(
             root=root,
             allow_outside_root=allow_outside_root,
             state=tool_state,

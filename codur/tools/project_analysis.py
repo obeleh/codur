@@ -6,7 +6,11 @@ from __future__ import annotations
 
 import ast
 import os
+import sys
+from contextlib import contextmanager
+from collections import Counter
 from pathlib import Path
+from typing import Iterator
 
 from codur.constants import DEFAULT_MAX_RESULTS
 from codur.graph.state import AgentState
@@ -87,6 +91,8 @@ def _resolve_internal_module(name: str, internal_modules: set[str]) -> str | Non
 
 
 def _base_package(current_module: str, is_package: bool, level: int) -> str:
+    if level == 0:
+        return ""
     if is_package:
         package = current_module
     else:
@@ -440,8 +446,10 @@ def deep_python_dependency_graph(
         all_nodes = [n for n in all_nodes if not _is_excluded_module(n["id"], exclude_modules)]
 
     # Filter if too many
+    truncated_nodes = False
     if max_nodes and len(all_nodes) > max_nodes:
         all_nodes = all_nodes[:max_nodes]
+        truncated_nodes = True
     
     node_ids = {n["id"] for n in all_nodes}
     
@@ -454,22 +462,610 @@ def deep_python_dependency_graph(
         all_edges.append({"source": s, "target": t, "type": ty})
     
     filtered_edges = [e for e in all_edges if e["source"] in node_ids]
+    truncated_edges = False
     if max_edges and len(filtered_edges) > max_edges:
         filtered_edges = filtered_edges[:max_edges]
+        truncated_edges = True
+
+    external_targets = sorted({e["target"] for e in filtered_edges if e["target"] not in node_ids})
+
+    dot_lines = ["digraph dependencies {"]
+    if include_styling:
+        dot_lines.append("  rankdir=LR;")
+    node_shapes = {
+        "module": "box",
+        "class": "ellipse",
+        "function": "oval",
+        "method": "oval",
+    }
+    for node in all_nodes:
+        if include_styling:
+            shape = node_shapes.get(node["type"], "box")
+            dot_lines.append(f'  "{node["id"]}" [shape={shape}];')
+        else:
+            dot_lines.append(f'  "{node["id"]}";')
+    for name in external_targets:
+        style = " [shape=ellipse, style=dashed]" if include_styling else ""
+        dot_lines.append(f'  "{name}"{style};')
+    for edge in filtered_edges:
+        attrs = []
+        if include_styling and edge.get("type"):
+            attrs.append(f'label="{edge["type"]}"')
+        if include_styling and edge.get("type") == "import_external":
+            attrs.append("style=dashed")
+        attr_str = f" [{', '.join(attrs)}]" if attrs else ""
+        dot_lines.append(f'  "{edge["source"]}" -> "{edge["target"]}"{attr_str};')
+    dot_lines.append("}")
+
+    return {
+        "root": str(root_path),
+        "files": len(file_paths),
+        "node_count": len(node_ids),
+        "edge_count": len(filtered_edges),
+        "truncated": {"nodes": truncated_nodes, "edges": truncated_edges},
+        "nodes": all_nodes,
+        "external_nodes": external_targets,
+        "edges": filtered_edges,
+        "dot": "\n".join(dot_lines),
+        "errors": parse_errors[:DEFAULT_MAX_RESULTS],
+    }
+
+
+def python_unused_code(
+    root: str | Path | None = None,
+    paths: list[str] | None = None,
+    exclude_modules: list[str] | None = None,
+    exclude_folders: list[str] | None = None,
+    min_confidence: int = 60,
+    sort_by_size: bool = False,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> dict:
+    """
+    Identify unused code using vulture.
+    """
+    root_path = resolve_root(root)
+    file_paths: list[Path] = []
+
+    if paths:
+        for raw in paths:
+            target = resolve_path(raw, root_path, allow_outside_root=allow_outside_root)
+            if target.is_dir():
+                file_paths.extend(_iter_python_files(target, exclude_folders=exclude_folders))
+            elif target.is_file() and target.suffix == ".py":
+                file_paths.append(target)
+    else:
+        file_paths = _iter_python_files(root_path, exclude_folders=exclude_folders)
+
+    module_map: dict[str, Path] = {}
+    for file_path in sorted(set(file_paths)):
+        module_name = _module_name_for_path(file_path, root_path)
+        if exclude_modules and _is_excluded_module(module_name, exclude_modules):
+            continue
+        module_map[module_name] = file_path
+
+    try:
+        from vulture import Vulture
+    except Exception as exc:
+        return {
+            "root": str(root_path),
+            "files": len(file_paths),
+            "min_confidence": min_confidence,
+            "unused_items": [],
+            "errors": [
+                {"message": f"Failed to import vulture: {exc}"},
+            ],
+        }
+
+    vulture = Vulture()
+    vulture.scavenge([str(path) for path in module_map.values()])
+    unused_items = []
+    for item in vulture.get_unused_code(min_confidence=min_confidence, sort_by_size=sort_by_size):
+        file_path = Path(item.filename)
+        module_name = _module_name_for_path(file_path, root_path)
+        if exclude_modules and _is_excluded_module(module_name, exclude_modules):
+            continue
+        unused_items.append({
+            "name": item.name,
+            "type": item.typ,
+            "file": str(file_path),
+            "line": item.first_lineno,
+            "message": item.message,
+            "confidence": item.confidence,
+            "module": module_name,
+            "size": item.size,
+        })
+
+    return {
+        "root": str(root_path),
+        "files": len(file_paths),
+        "min_confidence": min_confidence,
+        "unused_items": unused_items,
+        "errors": [],
+    }
+
+
+@contextmanager
+def _temporary_argv(args: list[str]) -> Iterator[None]:
+    original = sys.argv[:]
+    sys.argv = args
+    try:
+        yield
+    finally:
+        sys.argv = original
+
+
+def _serialize_summary(summary: dict) -> dict:
+    serialized = {}
+    for key, value in summary.items():
+        if hasattr(value, "isoformat"):
+            serialized[key] = value.isoformat()
+        else:
+            serialized[key] = value
+    return serialized
+
+
+def _serialize_message(message, root_path: Path, absolute_paths: bool) -> dict:
+    loc = message.location
+    path_obj = None
+    absolute_path = None
+    if loc and loc.path:
+        absolute_path = str(loc.path)
+        if absolute_paths:
+            path_obj = loc.path
+        else:
+            try:
+                path_obj = loc.relative_path(root_path)
+            except ValueError:
+                path_obj = loc.path
+    return {
+        "source": message.source,
+        "code": message.code,
+        "message": message.message,
+        "path": str(path_obj) if path_obj else None,
+        "absolute_path": absolute_path,
+        "module": loc.module if loc else None,
+        "function": loc.function if loc else None,
+        "line": loc.line if loc else None,
+        "column": loc.character if loc else None,
+        "line_end": loc.line_end if loc else None,
+        "column_end": loc.character_end if loc else None,
+        "doc_url": getattr(message, "doc_url", None),
+        "fixable": getattr(message, "is_fixable", False),
+    }
+
+
+def _build_prospector_args(
+    target_paths: list[str],
+    *,
+    tools: list[str] | None,
+    with_tools: list[str] | None,
+    without_tools: list[str] | None,
+    profile: str | None,
+    profile_path: list[str] | None,
+    strictness: str | None,
+    uses: list[str] | None,
+    autodetect: bool,
+    blending: bool,
+    doc_warnings: bool | None,
+    test_warnings: bool | None,
+    member_warnings: bool | None,
+    no_style_warnings: bool | None,
+    full_pep8: bool | None,
+    max_line_length: int | None,
+    absolute_paths: bool,
+    no_external_config: bool,
+    pylint_config_file: str | None,
+    show_profile: bool,
+    ignore_paths: list[str] | None,
+    ignore_patterns: list[str] | None,
+) -> list[str]:
+    args = ["prospector"]
+    if not autodetect:
+        args.append("--no-autodetect")
+    if not blending:
+        args.append("--no-blending")
+    if doc_warnings:
+        args.append("--doc-warnings")
+    if test_warnings:
+        args.append("--test-warnings")
+    if member_warnings:
+        args.append("--member-warnings")
+    if no_style_warnings:
+        args.append("--no-style-warnings")
+    if full_pep8:
+        args.append("--full-pep8")
+    if max_line_length:
+        args.extend(["--max-line-length", str(max_line_length)])
+    if absolute_paths:
+        args.append("--absolute-paths")
+    if no_external_config:
+        args.append("--no-external-config")
+    if pylint_config_file:
+        args.extend(["--pylint-config-file", pylint_config_file])
+    if show_profile:
+        args.append("--show-profile")
+    if strictness:
+        args.extend(["--strictness", strictness])
+    if profile:
+        args.extend(["--profile", profile])
+    if profile_path:
+        for path in profile_path:
+            args.extend(["--profile-path", path])
+    if uses:
+        for use in uses:
+            args.extend(["--uses", use])
+    if tools:
+        for tool in tools:
+            args.extend(["--tool", tool])
+    if with_tools:
+        for tool in with_tools:
+            args.extend(["--with-tool", tool])
+    if without_tools:
+        for tool in without_tools:
+            args.extend(["--without-tool", tool])
+    if ignore_paths:
+        for path in ignore_paths:
+            args.extend(["--ignore-paths", path])
+    if ignore_patterns:
+        for pattern in ignore_patterns:
+            args.extend(["--ignore-patterns", pattern])
+    args.extend(target_paths)
+    return args
+
+
+def code_quality(
+    root: str | Path | None = None,
+    paths: list[str] | None = None,
+    tools: list[str] | None = None,
+    with_tools: list[str] | None = None,
+    without_tools: list[str] | None = None,
+    profile: str | None = None,
+    profile_path: list[str] | None = None,
+    strictness: str | None = None,
+    uses: list[str] | None = None,
+    autodetect: bool = True,
+    blending: bool = True,
+    doc_warnings: bool | None = None,
+    test_warnings: bool | None = None,
+    member_warnings: bool | None = None,
+    no_style_warnings: bool | None = None,
+    full_pep8: bool | None = None,
+    max_line_length: int | None = None,
+    absolute_paths: bool = False,
+    no_external_config: bool = False,
+    pylint_config_file: str | None = None,
+    show_profile: bool = False,
+    exclude_folders: list[str] | None = None,
+    exclude_patterns: list[str] | None = None,
+    max_messages: int | None = DEFAULT_MAX_RESULTS,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> dict:
+    """Run Prospector and return structured code-quality results."""
+    root_path = resolve_root(root)
+
+    try:
+        from prospector.config import ProspectorConfig
+        from prospector.run import Prospector
+    except Exception as exc:
+        return {
+            "root": str(root_path),
+            "files": 0,
+            "summary": {},
+            "message_count": 0,
+            "messages": [],
+            "truncated": False,
+            "errors": [{"message": f"Failed to import prospector: {exc}"}],
+        }
+
+    target_paths: list[Path] = []
+    if paths:
+        for raw in paths:
+            target = resolve_path(raw, root_path, allow_outside_root=allow_outside_root)
+            target_paths.append(target)
+    else:
+        target_paths = [root_path]
+
+    ignore_paths = sorted(set(EXCLUDE_DIRS) | set(exclude_folders or []))
+    ignore_patterns = exclude_patterns[:] if exclude_patterns else []
+
+    runs: list[dict] = []
+    messages_out: list[dict] = []
+    errors: list[dict] = []
+    total_files = 0
+    truncated = False
+
+    def run_for_paths(run_paths: list[Path]) -> None:
+        args = _build_prospector_args(
+            [str(path) for path in run_paths],
+            tools=tools,
+            with_tools=with_tools,
+            without_tools=without_tools,
+            profile=profile,
+            profile_path=profile_path,
+            strictness=strictness,
+            uses=uses,
+            autodetect=autodetect,
+            blending=blending,
+            doc_warnings=doc_warnings,
+            test_warnings=test_warnings,
+            member_warnings=member_warnings,
+            no_style_warnings=no_style_warnings,
+            full_pep8=full_pep8,
+            max_line_length=max_line_length,
+            absolute_paths=absolute_paths,
+            no_external_config=no_external_config,
+            pylint_config_file=pylint_config_file,
+            show_profile=show_profile,
+            ignore_paths=ignore_paths,
+            ignore_patterns=ignore_patterns,
+        )
+        try:
+            with _temporary_argv(args):
+                config = ProspectorConfig(workdir=root_path)
+                prospector = Prospector(config)
+                prospector.execute()
+        except SystemExit as exc:
+            errors.append({"message": f"Prospector exited with code {exc.code}"})
+            return
+        except Exception as exc:
+            errors.append({"message": f"Prospector failed: {exc}"})
+            return
+
+        summary = prospector.get_summary() or {}
+        runs.append({
+            "paths": [str(path) for path in run_paths],
+            "summary": _serialize_summary(summary),
+        })
+
+        for message in prospector.get_messages():
+            messages_out.append(_serialize_message(message, root_path, absolute_paths))
+
+    for path in target_paths:
+        if path.is_dir():
+            total_files += len(_iter_python_files(path, exclude_folders=exclude_folders))
+        else:
+            total_files += 1
+
+    if len(target_paths) > 1 and any(path.is_dir() for path in target_paths):
+        for path in target_paths:
+            run_for_paths([path])
+    else:
+        run_for_paths(target_paths)
+
+    counts_by_source: Counter[str] = Counter()
+    counts_by_code: Counter[str] = Counter()
+    for item in messages_out:
+        counts_by_source[item["source"]] += 1
+        counts_by_code[f"{item['source']}:{item['code']}"] += 1
+
+    total_message_count = len(messages_out)
+    if max_messages is not None and max_messages > 0 and len(messages_out) > max_messages:
+        messages_out = messages_out[:max_messages]
+        truncated = True
+
+    summary = runs[-1]["summary"] if runs else {}
+    return {
+        "root": str(root_path),
+        "files": total_files,
+        "summary": summary,
+        "runs": runs,
+        "message_count": total_message_count,
+        "messages_returned": len(messages_out),
+        "messages": messages_out,
+        "by_source": dict(counts_by_source.most_common()),
+        "by_code": dict(counts_by_code.most_common()),
+        "truncated": truncated,
+        "errors": errors[:DEFAULT_MAX_RESULTS],
+    }
 
 
 if __name__ == "__main__":
-    # print the project structure of this project
     project_root = Path(__file__).resolve().parents[2]
     print(f"Analyzing project structure at: {project_root}")
+    exclude_folders = ["challenges", "tests"]
 
     print("\n=== High-Level Module Dependency Graph ===")
-    graph_data = python_dependency_graph(root=project_root)
-    print(f"Files: {graph_data['files']}, Nodes: {graph_data['node_count']}, Edges: {graph_data['edge_count']}")
-    
+    graph_data = python_dependency_graph(
+        root=project_root,
+        include_external=True,
+        include_styling=True,
+        exclude_folders=exclude_folders,
+        max_nodes=0,
+        max_edges=0,
+    )
+    print(f"Files: {graph_data['files']}")
+    print(f"Modules: {graph_data['node_count']} (external: {len(graph_data['external_nodes'])})")
+    print(f"Edges: {graph_data['edge_count']}")
+    if graph_data["truncated"]["nodes"] or graph_data["truncated"]["edges"]:
+        print(f"Truncated: nodes={graph_data['truncated']['nodes']}, edges={graph_data['truncated']['edges']}")
+
+    out_counts: Counter[str] = Counter()
+    in_counts: Counter[str] = Counter()
+    for edge in graph_data["edges"]:
+        out_counts[edge["from"]] += 1
+        in_counts[edge["to"]] += 1
+
+    print("\nTop outgoing dependencies:")
+    for name, count in out_counts.most_common(10):
+        print(f"  {name}: {count}")
+    if not out_counts:
+        print("  (none)")
+
+    print("\nTop incoming dependencies:")
+    for name, count in in_counts.most_common(10):
+        print(f"  {name}: {count}")
+    if not in_counts:
+        print("  (none)")
+
+    print("\nModules:")
+    for name in graph_data["nodes"]:
+        print(f"  {name}")
+
+    print("\nExternal modules:")
+    if graph_data["external_nodes"]:
+        for name in graph_data["external_nodes"]:
+            print(f"  {name}")
+    else:
+        print("  (none)")
+
+    print("\nEdges:")
+    for edge in graph_data["edges"]:
+        print(f"  {edge['from']} -> {edge['to']}")
+
+    if graph_data["errors"]:
+        print("\nParse errors:")
+        for err in graph_data["errors"]:
+            print(f"  {err['file']}:{err['line']}:{err['column']} {err['message']}")
+
+    print("\nDOT:")
+    print(graph_data["dot"])
+
     print("\n=== Deep Dependency Graph (Classes & Functions) ===")
-    deep_data = deep_python_dependency_graph(root=project_root, include_external=True)
-    print(f"Nodes: {deep_data['node_count']}, Edges: {deep_data['edge_count']}")
-    print(f"Errors: {len(deep_data['errors'])}")
-    
-    print(deep_data['dot'])
+    deep_data = deep_python_dependency_graph(
+        root=project_root,
+        include_external=True,
+        include_styling=True,
+        exclude_folders=exclude_folders,
+        max_nodes=0,
+        max_edges=0,
+    )
+    print(f"Files: {deep_data['files']}")
+    print(f"Nodes: {deep_data['node_count']} (external targets: {len(deep_data['external_nodes'])})")
+    print(f"Edges: {deep_data['edge_count']}")
+    if deep_data["truncated"]["nodes"] or deep_data["truncated"]["edges"]:
+        print(f"Truncated: nodes={deep_data['truncated']['nodes']}, edges={deep_data['truncated']['edges']}")
+
+    type_counts: Counter[str] = Counter()
+    for node in deep_data["nodes"]:
+        type_counts[node["type"]] += 1
+    print("\nNode types:")
+    for node_type, count in type_counts.most_common():
+        print(f"  {node_type}: {count}")
+    if not type_counts:
+        print("  (none)")
+
+    print("\nNodes:")
+    for node in deep_data["nodes"]:
+        parent = node.get("parent")
+        if parent:
+            print(f"  {node['type']}: {node['id']} (parent={parent})")
+        else:
+            print(f"  {node['type']}: {node['id']}")
+
+    print("\nEdges:")
+    for edge in deep_data["edges"]:
+        edge_type = edge.get("type")
+        if edge_type:
+            print(f"  {edge['source']} -> {edge['target']} [{edge_type}]")
+        else:
+            print(f"  {edge['source']} -> {edge['target']}")
+
+    print("\nExternal targets:")
+    if deep_data["external_nodes"]:
+        for name in deep_data["external_nodes"]:
+            print(f"  {name}")
+    else:
+        print("  (none)")
+
+    if deep_data["errors"]:
+        print("\nParse errors:")
+        for err in deep_data["errors"]:
+            line = err.get("line", 0)
+            message = err.get("message", "")
+            print(f"  {err['file']}:{line} {message}")
+
+    print("\nDOT:")
+    print(deep_data["dot"])
+
+    print("\n=== Unused Code (Vulture) ===")
+    unused_data = python_unused_code(
+        root=project_root,
+        exclude_folders=exclude_folders,
+    )
+    print(f"Files: {unused_data['files']}")
+    print(f"Min confidence: {unused_data['min_confidence']}")
+    print(f"Unused items: {len(unused_data['unused_items'])}")
+
+    unused_type_counts: Counter[str] = Counter()
+    for item in unused_data["unused_items"]:
+        unused_type_counts[item["type"]] += 1
+
+    print("\nUnused items by type:")
+    if unused_type_counts:
+        for item_type, count in unused_type_counts.most_common():
+            print(f"  {item_type}: {count}")
+    else:
+        print("  (none)")
+
+    print("\nUnused items:")
+    if unused_data["unused_items"]:
+        for item in unused_data["unused_items"]:
+            message = item.get("message") or ""
+            if message:
+                message = f" - {message}"
+            print(
+                f"  {item['type']}: {item['module']}:{item['line']} "
+                f"{item['name']} ({item['confidence']}%){message}"
+            )
+    else:
+        print("  (none)")
+
+    if unused_data["errors"]:
+        print("\nParse errors:")
+        for err in unused_data["errors"]:
+            line = err.get("line", 0)
+            message = err.get("message", "")
+            print(f"  {err['file']}:{line} {message}")
+
+    print("\nNotes:")
+    print("  Uses vulture; dynamic imports, getattr/registry lookups, and runtime usage may be missed.")
+
+    print("\n=== Code Quality (Prospector) ===")
+    quality_data = code_quality(
+        root=project_root,
+        exclude_folders=exclude_folders,
+        max_messages=0,
+    )
+    print(f"Files: {quality_data['files']}")
+    print(f"Messages: {quality_data['message_count']}")
+    if quality_data["summary"]:
+        summary = quality_data["summary"]
+        tools = summary.get("tools", [])
+        libraries = summary.get("libraries", [])
+        strictness = summary.get("strictness", None)
+        profiles = summary.get("profiles", "")
+        if tools:
+            print(f"Tools: {', '.join(tools)}")
+        if libraries:
+            print(f"Libraries: {', '.join(libraries)}")
+        if strictness:
+            print(f"Strictness: {strictness}")
+        if profiles:
+            print(f"Profiles: {profiles}")
+
+    print("\nMessages by source:")
+    if quality_data["by_source"]:
+        for source, count in quality_data["by_source"].items():
+            print(f"  {source}: {count}")
+    else:
+        print("  (none)")
+
+    print("\nMessages:")
+    if quality_data["messages"]:
+        for message in quality_data["messages"]:
+            path = message["path"] or message["absolute_path"] or "(unknown)"
+            line = message["line"] or 0
+            column = message["column"] or 0
+            print(
+                f"  {message['source']}:{message['code']} "
+                f"{path}:{line}:{column} {message['message']}"
+            )
+    else:
+        print("  (none)")
+
+    if quality_data["errors"]:
+        print("\nErrors:")
+        for err in quality_data["errors"]:
+            print(f"  {err.get('message', '')}")

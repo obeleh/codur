@@ -73,6 +73,7 @@ from codur.tools.python_ast import (
 )
 from codur.tools.project_analysis import (
     python_dependency_graph,
+    code_quality,
 )
 from codur.tools.validation import (
     validate_python_syntax,
@@ -149,6 +150,7 @@ __all__ = [
     "python_ast_dependencies",
     "python_ast_dependencies_multifile",
     "python_dependency_graph",
+    "code_quality",
     "validate_python_syntax",
     "find_function_lines",
     "find_class_lines",

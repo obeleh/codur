@@ -5,7 +5,8 @@ import pytest
 from codur.tools.filesystem import (
     read_file, write_file, append_file, delete_file,
     copy_file, move_file, list_files, search_files,
-    replace_in_file, line_count, inject_lines, replace_lines
+    replace_in_file, line_count, inject_lines, replace_lines,
+    list_dirs, file_tree, grep_files, copy_file_to_dir
 )
 
 @pytest.fixture
@@ -149,3 +150,54 @@ def test_line_count_empty_file(temp_fs):
 def test_read_file_rejects_outside_root(temp_fs):
     with pytest.raises(ValueError, match="Path escapes workspace root"):
         read_file("../outside.txt", root=temp_fs)
+
+
+def test_list_dirs_excludes_special_and_limits(temp_fs):
+    (temp_fs / ".git").mkdir()
+    (temp_fs / "dirA").mkdir()
+    (temp_fs / "dirA" / "child").mkdir()
+    dirs = list_dirs(root=temp_fs)
+    assert ".git" not in dirs
+    assert "dirA" in dirs
+    assert os.path.join("dirA", "child") in dirs
+    limited = list_dirs(root=temp_fs, max_results=1)
+    assert len(limited) == 1
+
+
+def test_file_tree_file_path_returns_absolute(temp_fs):
+    target = temp_fs / "file1.txt"
+    results = file_tree(path="file1.txt", root=temp_fs)
+    assert len(results) == 1
+    assert Path(results[0]).is_absolute()
+    assert results[0].endswith(str(target))
+
+
+def test_file_tree_max_depth(temp_fs):
+    (temp_fs / "deep" / "nested").mkdir(parents=True)
+    (temp_fs / "deep" / "nested" / "file.txt").write_text("hi", encoding="utf-8")
+    results = file_tree(root=temp_fs, max_depth=0)
+    assert "deep/" in results
+    assert "deep/nested/" not in results
+
+
+def test_grep_files_case_sensitive_and_binary(temp_fs):
+    (temp_fs / "caps.txt").write_text("Hello World", encoding="utf-8")
+    (temp_fs / "lower.txt").write_text("hello world", encoding="utf-8")
+    (temp_fs / "binary.bin").write_bytes(b"\x00hello")
+    insensitive = grep_files("hello", root=temp_fs)
+    files = {entry["file"] for entry in insensitive}
+    assert "caps.txt" in files
+    assert "lower.txt" in files
+    assert "binary.bin" not in files
+    sensitive = grep_files("hello", root=temp_fs, case_sensitive=True)
+    files = {entry["file"] for entry in sensitive}
+    assert "lower.txt" in files
+    assert "caps.txt" not in files
+
+
+def test_copy_file_to_dir_create_dirs_false_raises(temp_fs):
+    with pytest.raises(OSError):
+        copy_file_to_dir("file1.txt", "missing", root=temp_fs, create_dirs=False)
+    result = copy_file_to_dir("file1.txt", "created", root=temp_fs, create_dirs=True)
+    assert "created" in result
+    assert (temp_fs / "created" / "file1.txt").exists()

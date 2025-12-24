@@ -11,6 +11,7 @@ from codur.graph.nodes.planning.strategies.prompt_utils import (
     format_focus_prompt,
     build_example_line,
     format_examples,
+    format_tool_suggestions,
 )
 
 console = Console()
@@ -116,6 +117,11 @@ class WebSearchStrategy:
         classification: ClassificationResult,
         config: CodurConfig,
     ) -> str:
+        suggested_tools = format_tool_suggestions([
+            "duckduckgo_search",
+            "fetch_webpage",
+            "location_lookup",
+        ])
         examples = [
             build_example_line(
                 "What is the current price of Bitcoin?",
@@ -147,6 +153,7 @@ class WebSearchStrategy:
             "**Task Focus: Web Search**\n"
             "- Use duckduckgo_search (or fetch_webpage if a URL is provided).\n"
             "- Do not respond without running the tool first.\n"
+            f"- {suggested_tools}\n"
             "- Return ONLY a valid JSON object.\n"
             "Examples (context-aware):\n"
             f"{format_examples(examples)}"
