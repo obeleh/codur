@@ -1,0 +1,13 @@
+Implement the `format_table` function in `main.py` to create a working Markdown table formatter.
+
+Your implementation must:
+1. Parse the raw input string (rows separated by newlines, cells by pipes).
+2. Determine alignment from the separator row (2nd row):
+   - `|:---|` : Left align (default)
+   - `|---:|` : Right align
+   - `|:---:|`: Center align
+3. Calculate the required width for each column based on the longest cell content in that column (header or body).
+4. Reformat the table with correct padding (1 space on each side of content) and alignment.
+5. Ensure the separator row uses dashes to match the column width and preserves the colons for alignment.
+
+Run `python main.py` to test your solution.
