@@ -40,3 +40,4 @@ htmlcov/
 # LangGraph
 checkpoints/
 *.db
+.env
