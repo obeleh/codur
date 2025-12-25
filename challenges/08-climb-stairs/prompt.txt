@@ -1,0 +1,3 @@
+Fix the bug in @main.py. The count_ways_to_climb function has an incorrect base case for the recursion.
+The function should count the number of distinct ways to climb exactly n steps using the allowed step sizes.
+Run @main.py to verify the output matches expected.txt.
