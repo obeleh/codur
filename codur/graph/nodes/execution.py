@@ -1,5 +1,6 @@
 """Delegation, execution, and review nodes."""
 
+import os
 import re
 import subprocess
 import tempfile
@@ -533,6 +534,10 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
     if verbose:
         console.print(f"[dim]Running verification: python main.py[/dim]")
 
+    # Check for fail-early mode to use shorter timeout
+    fail_early = os.getenv("EARLY_FAILURE_HELPERS_FOR_TESTS") == "1"
+    execution_timeout = 10 if fail_early else 60
+
     # Check for expected.txt to enable streaming verification
     expected_file = cwd / "expected.txt"
     use_streaming = expected_file.exists()
@@ -574,7 +579,7 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
 
                 # Wait for process to finish
                 try:
-                    process.wait(timeout=5)
+                    process.wait(timeout=execution_timeout)
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
@@ -611,7 +616,7 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
                 }
 
         except subprocess.TimeoutExpired:
-            return {"success": False, "message": "Execution timed out after 10 seconds"}
+            return {"success": False, "message": f"Execution timed out after {execution_timeout} seconds"}
         except Exception as e:
             return {"success": False, "message": f"Verification error: {str(e)}"}
     else:
@@ -621,7 +626,7 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
                 ["python", "main.py"],
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=execution_timeout,
                 cwd=str(cwd)
             )
 
@@ -647,7 +652,7 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
                 }
 
         except subprocess.TimeoutExpired:
-            return {"success": False, "message": "Execution timed out after 10 seconds"}
+            return {"success": False, "message": f"Execution timed out after {execution_timeout} seconds"}
         except Exception as e:
             return {"success": False, "message": f"Verification error: {str(e)}"}
 
