@@ -1,1 +1,6 @@
-fix my app
+Fix the bugs in @main.py. The edit_distance function has issues with the memoization and the edit operation calculation.
+
+The function should correctly compute the Levenshtein distance (minimum edit distance) between two strings.
+Read the docstring carefully to understand the algorithm.
+
+Run @main.py to verify the output matches expected.txt.

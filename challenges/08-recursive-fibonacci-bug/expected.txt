@@ -1,12 +1,11 @@
-Fibonacci sequence:
-fib(0) = 0
-fib(1) = 1
-fib(2) = 1
-fib(3) = 2
-fib(4) = 3
-fib(5) = 5
-fib(6) = 8
-fib(7) = 13
-fib(8) = 21
-fib(9) = 34
-fib(10) = 55
+Edit distance results:
+edit_distance("", "") = 0
+edit_distance("a", "") = 1
+edit_distance("", "b") = 1
+edit_distance("cat", "cat") = 0
+edit_distance("cat", "dog") = 3
+edit_distance("kitten", "sitting") = 3
+edit_distance("saturday", "sunday") = 3
+edit_distance("abc", "def") = 3
+edit_distance("", "hello") = 5
+edit_distance("abc", "abc") = 0
