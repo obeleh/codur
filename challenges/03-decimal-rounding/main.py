@@ -24,7 +24,7 @@ def format_money(amount: Decimal) -> str:
     return f"{amount.quantize(Decimal('0.01'))}"
 
 
-def _run_tests() -> None:
+def main() -> None:
     cases = [
         (
             [("hammer", 19.75), ("wrench", 14.50), ("pliers", 10.25)],
@@ -60,10 +60,6 @@ def _run_tests() -> None:
         raise SystemExit(1)
 
     print("ALL TESTS PASSED!")
-
-
-def main() -> None:
-    _run_tests()
 
 
 if __name__ == "__main__":

@@ -1,2 +1,1 @@
 Fix the bug in @main.py. The decimal module is used incorrectly and rounding is wrong.
-Run @main.py to verify the output matches expected.txt.
