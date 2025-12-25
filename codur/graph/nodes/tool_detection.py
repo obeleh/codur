@@ -36,14 +36,40 @@ class ToolDetector:
         self._patterns.append(pattern)
         self._patterns.sort(key=lambda item: item.priority, reverse=True)
 
-    def detect(self, message: str) -> Optional[ToolCallList]:
+    def detect(self, message: str) -> ToolCallList:
         msg = message.strip()
         msg_lower = msg.lower()
+        all_tools = []
         for pattern in self._patterns:
             result = pattern.detector(msg, msg_lower)
             if result:
-                return result
-        return None
+                all_tools.extend(result)
+
+        extended = detect_followup_tools(all_tools)
+        return extended
+
+
+def detect_followup_tools(all_tools: ToolCallList) -> ToolCallList:
+    # When reading python files, also use python_ast_dependencies or python_ast_dependencies_multifile
+    python_paths = []
+    for tool in all_tools:
+        if tool.get("tool") == "read_file":
+            path = tool.get("args", {}).get("path", "")
+            if isinstance(path, str) and path.endswith(".py"):
+                python_paths.append(path)
+
+    if python_paths:
+        if len(python_paths) == 1:
+            all_tools.append({
+                "tool": "python_ast_dependencies",
+                "args": {"path": python_paths[0]}
+            })
+        else:
+            all_tools.append({
+                "tool": "python_ast_dependencies_multifile",
+                "args": {"paths": python_paths}
+            })
+    return all_tools
 
 
 def create_default_tool_detector() -> ToolDetector:

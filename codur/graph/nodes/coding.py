@@ -10,7 +10,6 @@ from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import ExecuteNodeResult
 from codur.graph.nodes.utils import normalize_messages, resolve_llm_for_model
-from codur.llm import create_llm_profile
 from codur.utils.llm_calls import invoke_llm
 from codur.tools.code_modification import (
     replace_function,
@@ -129,6 +128,8 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
 
     # Build context-aware prompt
     prompt = _build_coding_prompt(state.get("messages", []), iterations)
+    if verbose:
+        console.print(f"[dim]Constructed prompt:\n{prompt}[/dim]")
 
     # Use built-in system prompt
     messages = [
