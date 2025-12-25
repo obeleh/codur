@@ -6,7 +6,7 @@ def test_detect_json_tool_calls():
     
     # Test case 1: JSON inside markdown code block
     message1 = """
-    I will read the file now.
+    Here are the tool calls:
     ```json
     [
         {
@@ -18,9 +18,12 @@ def test_detect_json_tool_calls():
     """
     result1 = detector.detect(message1)
     assert result1 is not None
-    assert len(result1) == 1
+    # Should have read_file + python_ast_dependencies for .py file
+    assert len(result1) == 2
     assert result1[0]["tool"] == "read_file"
     assert result1[0]["args"]["path"] == "test.py"
+    assert result1[1]["tool"] == "python_ast_dependencies"
+    assert result1[1]["args"]["path"] == "test.py"
 
     # Test case 2: Raw JSON array
     message2 = """
@@ -52,10 +55,10 @@ def test_detect_json_tool_calls():
     { "tool": "broken" ... }
     ```
     """
-    # Should fall back to other patterns or return None
-    # In this case likely None unless it matches textual patterns
+    # Should fall back to other patterns or return empty list
+    # In this case no patterns match
     result4 = detector.detect(message4)
-    assert result4 is None
+    assert result4 == []
 
 
 def test_detect_json_tool_calls_multiple_tools():
@@ -71,9 +74,13 @@ def test_detect_json_tool_calls_multiple_tools():
     """
     result = detector.detect(message)
     assert result is not None
-    assert len(result) == 2
+    # Should have read_file + list_files + python_ast_dependencies for .py file
+    assert len(result) == 3
     assert result[0]["tool"] == "read_file"
+    assert result[0]["args"]["path"] == "a.py"
     assert result[1]["tool"] == "list_files"
+    assert result[2]["tool"] == "python_ast_dependencies"
+    assert result[2]["args"]["path"] == "a.py"
 
 
 def test_detect_json_tool_calls_skips_invalid_block():
@@ -89,7 +96,12 @@ def test_detect_json_tool_calls_skips_invalid_block():
     """
     result = detector.detect(message)
     assert result is not None
+    # Should have read_file + python_ast_dependencies for .py file
+    assert len(result) == 2
     assert result[0]["tool"] == "read_file"
+    assert result[0]["args"]["path"] == "ok.py"
+    assert result[1]["tool"] == "python_ast_dependencies"
+    assert result[1]["args"]["path"] == "ok.py"
 
 
 def test_detect_json_tool_calls_uppercase_fence_ignored():
@@ -101,7 +113,8 @@ def test_detect_json_tool_calls_uppercase_fence_ignored():
     ```
     """
     result = detector.detect(message)
-    assert result is None
+    # Uppercase JSON fence is ignored, so no tools should be detected
+    assert result == []
 
 
 def test_detect_json_tool_calls_wrapped_object_ignored():
@@ -113,4 +126,5 @@ def test_detect_json_tool_calls_wrapped_object_ignored():
     ```
     """
     result = detector.detect(message)
-    assert result is None
+    # Wrapped in tool_calls object instead of direct array, so no tools should be detected
+    assert result == []

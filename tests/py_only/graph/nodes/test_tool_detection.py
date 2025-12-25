@@ -4,7 +4,11 @@ from codur.graph.nodes.tool_detection import create_default_tool_detector
 def test_change_intent_reads_file() -> None:
     detector = create_default_tool_detector()
     result = detector.detect("Fix bug in @app.py")
-    assert result == [{"tool": "read_file", "args": {"path": "app.py"}}]
+    # Should detect read_file + python_ast_dependencies for .py file
+    assert result == [
+        {"tool": "read_file", "args": {"path": "app.py"}},
+        {"tool": "python_ast_dependencies", "args": {"path": "app.py"}}
+    ]
 
 
 def test_move_file_to_dir_trailing_slash() -> None:
@@ -30,13 +34,15 @@ def test_lint_python_tree() -> None:
 def test_read_file_requires_path_like_token() -> None:
     detector = create_default_tool_detector()
     result = detector.detect("read the file")
-    assert result is None
+    # Should return empty list when no valid paths are found
+    assert result == []
 
 
 def test_change_intent_ignores_non_path_after_in() -> None:
     detector = create_default_tool_detector()
     result = detector.detect("fix the bug in the code")
-    assert result is None
+    # Should return empty list when "in" is followed by non-path tokens
+    assert result == []
 
 
 def test_write_file_rejects_task_description() -> None:

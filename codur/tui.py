@@ -13,6 +13,8 @@ import threading
 import os
 import re
 from datetime import datetime
+from pathspec import PathSpec
+from pathspec.patterns import GitWildMatchPattern
 warnings.filterwarnings(
     "ignore",
     message="Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater.",
@@ -193,11 +195,53 @@ class CodurTUI(App):
     async def _build_file_index(self) -> None:
         self._file_index = await asyncio.to_thread(self._scan_files)
 
+    def _load_gitignore(self, root: str) -> PathSpec | None:
+        """Load and parse .gitignore patterns from the repository root."""
+        gitignore_path = os.path.join(root, ".gitignore")
+        if not os.path.exists(gitignore_path):
+            return None
+
+        try:
+            with open(gitignore_path, "r", encoding="utf-8") as f:
+                patterns = f.read().splitlines()
+            # Filter out empty lines and comments
+            patterns = [p for p in patterns if p.strip() and not p.strip().startswith("#")]
+            return PathSpec.from_lines(GitWildMatchPattern, patterns)
+        except (IOError, OSError):
+            return None
+
+    def _is_ignored(self, path: str, spec: PathSpec | None, is_dir: bool = False) -> bool:
+        """Check if a path is ignored by gitignore patterns or hardcoded excludes."""
+        # Check hardcoded exclude directories
+        if is_dir and os.path.basename(path) in EXCLUDE_DIRS:
+            return True
+
+        # Check gitignore patterns
+        if spec:
+            # For directories, check both with and without trailing slash
+            if is_dir:
+                return spec.match_file(path) or spec.match_file(path + "/")
+            return spec.match_file(path)
+
+        return False
+
     def _scan_files(self) -> list[str]:
         root = os.getcwd()
         results: list[str] = []
+
+        # Load .gitignore patterns
+        gitignore_spec = self._load_gitignore(root)
+
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
+            # Filter directories to exclude both hardcoded and gitignored ones
+            dirnames[:] = [
+                d for d in dirnames
+                if not self._is_ignored(
+                    os.path.relpath(os.path.join(dirpath, d), root),
+                    gitignore_spec,
+                    is_dir=True
+                )
+            ]
 
             # Add directories
             for dirname in dirnames:
@@ -205,10 +249,13 @@ class CodurTUI(App):
                 rel_path = os.path.relpath(full_path, root)
                 results.append(rel_path + "/")  # Append / to indicate directory
 
-            # Add files
+            # Add files (excluding ignored ones)
             for filename in filenames:
                 full_path = os.path.join(dirpath, filename)
-                results.append(os.path.relpath(full_path, root))
+                rel_path = os.path.relpath(full_path, root)
+                if not self._is_ignored(rel_path, gitignore_spec, is_dir=False):
+                    results.append(rel_path)
+
         return results
 
     def _annotate_file_mentions(self, task: str) -> str:
