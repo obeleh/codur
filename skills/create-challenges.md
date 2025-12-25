@@ -75,15 +75,21 @@ ALL TESTS PASSED!
 
 ## Challenge Levels
 
-**Level 1: Bug Fixes** (Challenge 01)
-- Tools: read_file, replace_in_file
-- Example: Fix off-by-one error
-- Agent: Read file → analyze → fix → verify
+**Level 1: Bug Fixes** (Challenges 01, 05, 06)
+- Tools: read_file, replace_in_file, python_ast_dependencies
+- Examples:
+  - Challenge 01: Fix off-by-one error (single file)
+  - Challenge 05: Fix off-by-one error in multi-file project (main.py + utils.py)
+  - Challenge 06: Fix off-by-one error when entry point is not main.py (app.py + utils.py)
+- Agent: Read file(s) → analyze dependencies → fix → verify
 
-**Level 2: Implementation + Testing** (Challenge 02)
+**Level 2: Implementation** (Challenges 02, 04, 07)
 - Tools: read_file, write_file, bash (pytest)
-- Example: Implement password validator with tests
-- Agent: Read spec → write tests → implement → run pytest → iterate if needed
+- Examples:
+  - Challenge 02: Implement password validator with tests
+  - Challenge 04: Implement title case with complex exception rules
+  - Challenge 07: Implement markdown table formatter with alignment
+- Agent: Read spec → implement logic → run tests → iterate if needed
 
 **Level 3: Module Creation** (Challenge 03+)
 - Tools: write_file (multiple), bash (pytest, mypy)
@@ -152,23 +158,39 @@ pytest tests/test_challenges.py -v
 
 ---
 
-## Challenge Ideas
+## Existing Challenges
 
-**Implementation + Testing:**
+**Implemented (7 total):**
+1. Fix off-by-one error (single file)
+2. Implement password validator with pytest tests
+3. Module creation (TBD - needs verification)
+4. Title case with exception rules (complex implementation)
+5. Fix off-by-one in multi-file project (main.py + utils.py)
+6. Fix off-by-one when entry point is not main.py (app.py + utils.py)
+7. Markdown table formatter with alignment
+
+**Future Challenge Ideas:**
+
+*Bug Fixes:*
+- Fix recursive function with incorrect base case
+- Fix memory leak in cache implementation
+- Fix race condition in concurrent code
+
+*Implementation + Testing:*
 - Implement sorting algorithm + write tests
 - Implement JSON parser + validation tests
 - Implement cache data structure + performance tests
 
-**Module Creation:**
+*Module Creation:*
 - Create configuration loader with validation
 - Create logging framework with handlers
 - Create API client with retry logic
 
-**Refactoring:**
+*Refactoring:*
 - Refactor to async/await
 - Add type hints to untyped code
 - Optimize slow queries
 
 ---
 
-**Last Updated:** 2025-12-21 | **Status:** Ready to use
+**Last Updated:** 2025-12-25 | **Status:** Ready to use
