@@ -7,12 +7,16 @@ import os
 from pathlib import Path
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from rich.console import Console
 
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import PlanNodeResult
 from codur.tools.filesystem import EXCLUDE_DIRS
 from codur.constants import GREETING_MAX_WORDS
 from codur.graph.nodes.tool_detection import create_default_tool_detector
+
+
+console = Console()
 
 
 def _trivial_response(text: str) -> Optional[str]:
@@ -100,9 +104,13 @@ def run_non_llm_tools(messages: list[BaseMessage], state: AgentState) -> Optiona
             last_human_msg = msg.content
             break
 
+    verbose = state.get("verbose", False)
+
     if last_human_msg:
         trivial_response = _trivial_response(last_human_msg)
         if trivial_response:
+            if verbose:
+                console.log("[dim]Non-LLM tool node: Detected trivial response.[/dim]")
             return {
                 "next_action": "end",
                 "final_response": trivial_response,
@@ -113,14 +121,21 @@ def run_non_llm_tools(messages: list[BaseMessage], state: AgentState) -> Optiona
         if _looks_like_explain_request(last_human_msg):
             matched_path = _find_workspace_match(last_human_msg)
             if matched_path:
+                if verbose:
+                    console.log(f"[dim]Non-LLM tool node: Detected explain request for file {matched_path}.[/dim]")
                 return {
                     "next_action": "tool",
-                    "tool_calls": [{"tool": "read_file", "args": {"path": matched_path}}],
+                    "tool_calls": [
+                        {"tool": "read_file", "args": {"path": matched_path}},
+                        {"tool": "agent_call", "args": {"challenge": f"Please explain the contents of the file {matched_path}.", "agent": "agent:codur-explaining"}},
+                    ],
                     "iterations": state.get("iterations", 0) + 1,
                 }
 
         file_op_result = _TOOL_DETECTOR.detect(last_human_msg)
         if file_op_result:
+            if verbose:
+                console.log(f"[dim]Non-LLM tool node: Detected file operation tools: {file_op_result}.[/dim]")
             return {
                 "next_action": "tool",
                 "tool_calls": file_op_result,

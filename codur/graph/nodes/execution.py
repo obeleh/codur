@@ -6,6 +6,7 @@ import tempfile
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -35,12 +36,15 @@ _TOOL_DETECTOR = create_default_tool_detector()
 
 
 class AgentExecutor:
-    def __init__(self, state: AgentState, config: CodurConfig) -> None:
+    def __init__(self, state: AgentState, config: CodurConfig, agent_name: Optional[str]=None) -> None:
         self.state = state
         self.config = config
         self.default_agent = config.agents.preferences.default_agent or "agent:ollama"
-        self.agent_name = state["agent_outcome"].get("agent", self.default_agent)
-        self.agent_name, self.profile_override = _resolve_agent_profile(config, self.agent_name)
+        if agent_name:
+            self.agent_name = agent_name
+        else:
+            self.agent_name = state["agent_outcome"].get("agent", self.default_agent)
+            self.agent_name, self.profile_override = _resolve_agent_profile(config, self.agent_name)
         self.resolved_agent = _resolve_agent_reference(self.agent_name)
 
     def execute(self) -> ExecuteNodeResult:

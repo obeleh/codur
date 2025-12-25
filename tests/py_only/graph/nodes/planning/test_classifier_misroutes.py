@@ -200,6 +200,12 @@ Run `python main.py` to test your solution.""",
             0.6,
             id="implement-markdown-table-formatter",
         ),
+        pytest.param(
+            "Explain main.py",
+            TaskType.EXPLANATION,
+            0.7,
+            id="rename-explain-main.py",
+        ),
     ],
 )
 def test_quick_classify_misroutes(prompt: str, expected_type: TaskType, min_confidence: float) -> None:

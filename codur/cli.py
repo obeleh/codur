@@ -296,23 +296,72 @@ def configure(
 
 
 @app.command()
-def list_agents():
+def list_agents(
+    config: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to config file",
+    ),
+):
     """List available agents and their capabilities."""
-    console.print("[bold cyan]Available Agents:[/bold cyan]\n")
+    from codur.agents import AgentRegistry
+    # Ensure agents are registered
+    import codur.graph.nodes.execution  # noqa: F401
 
-    agents = [
-        ("ollama", "Local LLM for code generation (FREE)", "Simple code generation, explanations"),
-        ("groq", "Groq hosted LLM", "Fast code generation and reasoning"),
-        ("claude_code", "Claude Code CLI integration", "Multi-file changes, complex reasoning, tool usage"),
-        ("codex", "OpenAI Codex for refactoring", "Code refactoring, bug fixes, optimization"),
-        ("sheets", "Google Sheets integration", "Read/write spreadsheet data"),
-        ("linkedin", "LinkedIn job scraper", "Job search and scraping"),
-    ]
+    cfg = load_config(config)
 
-    for name, desc, capabilities in agents:
-        console.print(f"[green]●[/green] [bold]{name}[/bold]")
-        console.print(f"  {desc}")
-        console.print(f"  [dim]Capabilities: {capabilities}[/dim]\n")
+    console.print("[bold cyan]Agent Information[/bold cyan]\n")
+
+    # 1. Registered Agent Classes (Implementations)
+    console.print("[bold yellow]Registered Agent Classes (Implementations):[/bold yellow]")
+    agent_names = AgentRegistry.list_agents()
+    if agent_names:
+        for name in sorted(agent_names):
+            agent_class = AgentRegistry.get(name)
+            if agent_class:
+                description = agent_class.get_description()
+                console.print(f"[green]●[/green] [bold]{name}[/bold]")
+                console.print(f"  {description}\n")
+    else:
+        console.print("  No class-based agents registered.\n")
+
+    # 2. Configured Agent Profiles
+    console.print("[bold yellow]Configured Agent Profiles (from codur.yaml):[/bold yellow]")
+    configured_agents = cfg.agents.configs
+    if configured_agents:
+        for name, agent_cfg in sorted(configured_agents.items()):
+            agent_type = getattr(agent_cfg, "type", "unknown")
+            if agent_type == "llm":
+                model = agent_cfg.config.get("model", "unknown")
+                console.print(f"[green]●[/green] [bold]{name}[/bold] (LLM)")
+                console.print(f"  Model: {model}")
+                if "system_prompt" in agent_cfg.config:
+                    prompt = agent_cfg.config['system_prompt']
+                    if len(prompt) > 100:
+                        prompt = prompt[:97] + "..."
+                    console.print(f"  [dim]Prompt: {prompt}[/dim]")
+                console.print()
+            elif agent_type == "mcp":
+                mcp_server = agent_cfg.config.get("mcp_server", "unknown")
+                console.print(f"[green]●[/green] [bold]{name}[/bold] (MCP)")
+                console.print(f"  MCP Server: {mcp_server}\n")
+            elif agent_type == "tool":
+                impl_name = name
+                if name not in agent_names and getattr(agent_cfg, "name", None) in agent_names:
+                    impl_name = agent_cfg.name
+                
+                console.print(f"[green]●[/green] [bold]{name}[/bold] (Tool)")
+                if impl_name in agent_names:
+                    console.print(f"  Implementation: {impl_name}")
+                model = agent_cfg.config.get("model")
+                if model:
+                    console.print(f"  Model: {model}")
+                console.print()
+            else:
+                console.print(f"[green]●[/green] [bold]{name}[/bold] ({agent_type})\n")
+    else:
+        console.print("  No agents configured in codur.yaml.\n")
 
 
 @app.command()

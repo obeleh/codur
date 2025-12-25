@@ -252,6 +252,15 @@ class OllamaAgent(BaseAgent):
         """
         return "ollama"
 
+    @classmethod
+    def get_description(cls) -> str:
+        """Return a description of the agent's capabilities.
+
+        Returns:
+            str: Agent description
+        """
+        return "Local LLM for code generation (FREE). Best for simple code generation and explanations."
+
 
 # Register the agent
 AgentRegistry.register("ollama", OllamaAgent)

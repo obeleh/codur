@@ -75,3 +75,13 @@ class BaseAgent(ABC):
             str: The agent name
         """
         pass
+
+    @classmethod
+    @abstractmethod
+    def get_description(cls) -> str:
+        """Return a description of the agent's capabilities.
+
+        Returns:
+            str: Agent description
+        """
+        pass

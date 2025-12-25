@@ -178,6 +178,11 @@ def quick_classify(messages: list[BaseMessage], config: CodurConfig) -> Classifi
         TaskType.WEB_SEARCH: 1,
         TaskType.GREETING: 0,
     }
+    if config.verbose:
+        print("Quick Classifier Scores and Reasons:")
+        for task, score in scores.items():
+            reason_text = "; ".join(reasons.get(task) or []) or "No reasons"
+            print(f"  {task.value}: {score:.2f} ({reason_text})")
     best_task = max(scores.items(), key=lambda item: (item[1], priority.get(item[0], 0)))[0]
     best_score = scores[best_task]
 

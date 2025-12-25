@@ -32,6 +32,10 @@ class DummyCLIAgent(BaseCLIAgent):
     def name(self) -> str:
         return "dummy"
 
+    @classmethod
+    def get_description(cls) -> str:
+        return "A dummy agent for testing."
+
 
 def test_execute_cli_success(monkeypatch: pytest.MonkeyPatch) -> None:
     agent = DummyCLIAgent()

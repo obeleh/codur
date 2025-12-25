@@ -176,6 +176,15 @@ class CodexAgent(BaseCLIAgent):
         """
         return "codex"
 
+    @classmethod
+    def get_description(cls) -> str:
+        """Return a description of the agent's capabilities.
+
+        Returns:
+            str: Agent description
+        """
+        return "OpenAI Codex for complex code tasks. Best for code refactoring, bug fixes, and optimization."
+
 
 # Register the agent
 AgentRegistry.register("codex", CodexAgent)

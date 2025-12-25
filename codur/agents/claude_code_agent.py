@@ -237,6 +237,15 @@ class ClaudeCodeAgent(BaseCLIAgent):
         """
         return "claude_code"
 
+    @classmethod
+    def get_description(cls) -> str:
+        """Return a description of the agent's capabilities.
+
+        Returns:
+            str: Agent description
+        """
+        return "Claude Code CLI integration. Best for multi-file changes, complex reasoning, and tool usage."
+
 
 # Register the agent
 AgentRegistry.register("claude_code", ClaudeCodeAgent)
