@@ -1,0 +1,9 @@
+test_main.py::test_palindrome_simple PASSED
+test_main.py::test_palindrome_mixed_case PASSED
+test_main.py::test_palindrome_with_spaces_and_punct PASSED
+test_main.py::test_not_palindrome PASSED
+test_main.py::test_empty_string PASSED
+test_main.py::test_single_character PASSED
+
+====== 6 passed in 0.01s ======
+ALL TESTS PASSED!

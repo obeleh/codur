@@ -1,0 +1,2 @@
+Implement the is_palindrome function in @main.py based on the docstring.
+Write unit tests in @test_main.py. Run pytest to validate all requirements.
