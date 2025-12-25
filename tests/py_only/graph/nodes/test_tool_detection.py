@@ -37,3 +37,24 @@ def test_change_intent_ignores_non_path_after_in() -> None:
     detector = create_default_tool_detector()
     result = detector.detect("fix the bug in the code")
     assert result is None
+
+
+def test_write_file_rejects_task_description() -> None:
+    """Test that 'Write unit tests' task description is not interpreted as file write."""
+    detector = create_default_tool_detector()
+    result = detector.detect(
+        "Implement the is_palindrome function in @main.py based on the docstring. "
+        "Write unit tests in @test_main.py. Run pytest to validate all requirements."
+    )
+    # Should not detect a write_file to "validate" - the path "validate" is not valid
+    assert result is None or not any(
+        tool.get("tool") == "write_file" and tool.get("args", {}).get("path") == "validate"
+        for tool in result
+    )
+
+
+def test_write_file_accepts_valid_file_path() -> None:
+    """Test that write_file still works with valid file paths."""
+    detector = create_default_tool_detector()
+    result = detector.detect('write "hello world" to test.txt')
+    assert result == [{"tool": "write_file", "args": {"path": "test.txt", "content": "hello world"}}]

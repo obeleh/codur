@@ -130,6 +130,11 @@ def create_default_tool_detector() -> ToolDetector:
             return None
         content = _extract_quoted(match.group(1)) or match.group(1).strip()
         path = match.group(2).strip()
+        # Validate that the path looks like a file (contains extension, path separator, or is @-prefixed)
+        if not (
+            "." in path or "/" in path or "\\" in path or path.startswith("@")
+        ):
+            return None
         return [{"tool": "write_file", "args": {"path": path, "content": content}}]
 
     def append_file(msg: str, msg_lower: str) -> Optional[ToolCallList]:
@@ -138,6 +143,11 @@ def create_default_tool_detector() -> ToolDetector:
             return None
         content = _extract_quoted(match.group(1)) or match.group(1).strip()
         path = match.group(2).strip()
+        # Validate that the path looks like a file (contains extension, path separator, or is @-prefixed)
+        if not (
+            "." in path or "/" in path or "\\" in path or path.startswith("@")
+        ):
+            return None
         return [{"tool": "append_file", "args": {"path": path, "content": content}}]
 
     def line_count(msg: str, msg_lower: str) -> Optional[ToolCallList]:
