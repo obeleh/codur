@@ -1,1 +1,1 @@
-Fix the bug in @main.py. The decimal module is used incorrectly and rounding is wrong.
+Fix the bug in @main.py The decimal module is used incorrectly and rounding is wrong.
