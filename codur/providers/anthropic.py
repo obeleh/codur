@@ -49,10 +49,7 @@ class AnthropicProvider(BaseLLMProvider):
         Returns:
             str: Environment variable name for Anthropic API key
         """
-        provider_cfg = config.providers.get("anthropic")
-        if provider_cfg and provider_cfg.api_key_env:
-            return provider_cfg.api_key_env
-        return "ANTHROPIC_API_KEY"
+        return BaseLLMProvider._resolve_api_key_env(config, "anthropic", "ANTHROPIC_API_KEY")
 
     @staticmethod
     def provider_name() -> str:

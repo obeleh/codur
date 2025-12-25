@@ -4,9 +4,9 @@ Ollama agent wrapper with async support
 
 import sys
 import asyncio
-import logging
 from pathlib import Path
 from typing import Optional, AsyncGenerator
+from rich.console import Console
 
 # Add the mcp-servers directory to path to import ollama_client
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "mcp-servers" / "ollama"))
@@ -16,7 +16,7 @@ from codur.config import CodurConfig
 from codur.agents.base import BaseAgent
 from codur.agents import AgentRegistry
 
-logger = logging.getLogger(__name__)
+console = Console()
 
 
 class OllamaAgent(BaseAgent):
@@ -33,13 +33,10 @@ class OllamaAgent(BaseAgent):
         Args:
             config: Codur configuration
         """
-        self.config = config
+        super().__init__(config, override_config)
 
         # Get Ollama-specific config
-        ollama_config = config.agents.configs.get("ollama", {})
-        agent_config = ollama_config.config if hasattr(ollama_config, "config") else {}
-        if override_config:
-            agent_config = {**agent_config, **override_config}
+        agent_config = self._get_agent_config("ollama")
 
         # Determine base URL
         ollama_mcp = config.mcp_servers.get("ollama", {})
@@ -55,7 +52,7 @@ class OllamaAgent(BaseAgent):
         self.agent_config = agent_config
         model = agent_config.get("model", "ministral-3:14b")
 
-        logger.info(f"Initializing Ollama agent with model={model}, base_url={base_url}")
+        console.print(f"Initializing Ollama agent with model={model}, base_url={base_url}")
 
         self.client = OllamaClient(
             base_url=base_url,
@@ -81,7 +78,7 @@ class OllamaAgent(BaseAgent):
             Exception: If Ollama execution fails
         """
         try:
-            logger.info(f"Executing task with Ollama: {task[:100]}...")
+            self._log_execution_start(task)
 
             prompt = task
             system_prompt = self.agent_config.get("system_prompt")
@@ -89,12 +86,11 @@ class OllamaAgent(BaseAgent):
                 prompt = f"{system_prompt}\n\nTask: {task}"
             result = self.client.generate(prompt, stream=stream)
 
-            logger.info(f"Ollama generated {len(result)} characters")
+            self._log_execution_complete(result)
             return result
 
         except Exception as e:
-            logger.error(f"Ollama execution failed: {str(e)}", exc_info=True)
-            raise Exception(f"Ollama agent failed: {str(e)}") from e
+            self._handle_execution_error(e)
 
     async def aexecute(self, task: str) -> str:
         """
@@ -110,7 +106,7 @@ class OllamaAgent(BaseAgent):
             Exception: If Ollama execution fails
         """
         try:
-            logger.info(f"[Async] Executing task with Ollama: {task[:100]}...")
+            self._log_execution_start(task, is_async=True)
 
             # Run synchronous client in thread pool
             loop = asyncio.get_event_loop()
@@ -119,12 +115,11 @@ class OllamaAgent(BaseAgent):
                 lambda: self.client.generate(task, stream=False)
             )
 
-            logger.info(f"[Async] Ollama generated {len(result)} characters")
+            self._log_execution_complete(result, is_async=True)
             return result
 
         except Exception as e:
-            logger.error(f"[Async] Ollama execution failed: {str(e)}", exc_info=True)
-            raise Exception(f"Ollama agent failed: {str(e)}") from e
+            self._handle_execution_error(e)
 
     async def astream(self, task: str) -> AsyncGenerator[str, None]:
         """
@@ -140,7 +135,7 @@ class OllamaAgent(BaseAgent):
             Exception: If Ollama execution fails
         """
         try:
-            logger.info(f"[Async Stream] Executing task with Ollama: {task[:100]}...")
+            console.print(f"[Async Stream] Executing task with Ollama: {task[:100]}...")
 
             # Run synchronous streaming in thread pool
             loop = asyncio.get_event_loop()
@@ -156,8 +151,7 @@ class OllamaAgent(BaseAgent):
                 await asyncio.sleep(0)
 
         except Exception as e:
-            logger.error(f"[Async Stream] Ollama streaming failed: {str(e)}", exc_info=True)
-            raise Exception(f"Ollama streaming failed: {str(e)}") from e
+            self._handle_execution_error(e, "streaming")
 
     def chat(self, messages: list[dict]) -> str:
         """
@@ -173,16 +167,15 @@ class OllamaAgent(BaseAgent):
             Exception: If chat fails
         """
         try:
-            logger.info(f"Chat with Ollama: {len(messages)} messages")
+            console.print(f"Chat with Ollama: {len(messages)} messages")
 
             result = self.client.chat(messages, stream=False)
 
-            logger.info(f"Ollama chat response: {len(result)} characters")
+            console.print(f"Ollama chat response: {len(result)} characters")
             return result
 
         except Exception as e:
-            logger.error(f"Ollama chat failed: {str(e)}", exc_info=True)
-            raise Exception(f"Ollama chat failed: {str(e)}") from e
+            self._handle_execution_error(e, "chat")
 
     async def achat(self, messages: list[dict]) -> str:
         """
@@ -198,7 +191,7 @@ class OllamaAgent(BaseAgent):
             Exception: If chat fails
         """
         try:
-            logger.info(f"[Async] Chat with Ollama: {len(messages)} messages")
+            console.print(f"[Async] Chat with Ollama: {len(messages)} messages")
 
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
@@ -206,12 +199,11 @@ class OllamaAgent(BaseAgent):
                 lambda: self.client.chat(messages, stream=False)
             )
 
-            logger.info(f"[Async] Ollama chat response: {len(result)} characters")
+            console.print(f"[Async] Ollama chat response: {len(result)} characters")
             return result
 
         except Exception as e:
-            logger.error(f"[Async] Ollama chat failed: {str(e)}", exc_info=True)
-            raise Exception(f"Ollama chat failed: {str(e)}") from e
+            self._handle_execution_error(e, "chat")
 
     def list_models(self) -> list[dict]:
         """
@@ -226,8 +218,7 @@ class OllamaAgent(BaseAgent):
         try:
             return self.client.list_models()
         except Exception as e:
-            logger.error(f"Failed to list Ollama models: {str(e)}")
-            raise Exception(f"Failed to list models: {str(e)}") from e
+            self._handle_execution_error(e, "list_models")
 
     def switch_model(self, model: str):
         """
@@ -236,7 +227,7 @@ class OllamaAgent(BaseAgent):
         Args:
             model: Model name to switch to
         """
-        logger.info(f"Switching Ollama model from {self.model} to {model}")
+        console.print(f"Switching Ollama model from {self.model} to {model}")
         self.client.switch_model(model)
         self.model = model
 

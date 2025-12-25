@@ -61,10 +61,7 @@ class GroqProvider(BaseLLMProvider):
         Returns:
             str: Environment variable name for Groq API key
         """
-        provider_cfg = config.providers.get("groq")
-        if provider_cfg and provider_cfg.api_key_env:
-            return provider_cfg.api_key_env
-        return "GROQ_API_KEY"
+        return BaseLLMProvider._resolve_api_key_env(config, "groq", "GROQ_API_KEY")
 
     @staticmethod
     def provider_name() -> str:

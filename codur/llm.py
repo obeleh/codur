@@ -18,6 +18,35 @@ import codur.providers.groq  # noqa: F401
 import codur.providers.openai  # noqa: F401
 
 
+# Task-specific temperature defaults
+# These provide reasonable defaults for different task types
+TASK_TEMPERATURES = {
+    "planning": 0.2,          # Deterministic - we want consistent planning decisions
+    "explaining": 0.7,        # Balanced - clear explanations with some creativity
+    "coding": None,           # Use config default - varied approach for different coding tasks
+    "execution": None,        # Use config default - depends on the execution type
+    "tool_detection": 0.1,    # Very deterministic - clear tool identification
+}
+
+
+def get_temperature_for_task(task_type: str, config: CodurConfig) -> float:
+    """Get the appropriate temperature for a task type.
+
+    Returns task-specific temperature if configured, otherwise falls back to config default.
+
+    Args:
+        task_type: Type of task (e.g., "planning", "explaining", "coding")
+        config: Codur configuration
+
+    Returns:
+        float: Temperature value for the task
+    """
+    task_temperature = TASK_TEMPERATURES.get(task_type)
+    if task_temperature is not None:
+        return task_temperature
+    return config.llm.default_temperature
+
+
 def _resolve_api_key(config: CodurConfig, provider: str, api_key_env: str | None = None) -> str | None:
     """Resolve API key from environment using provider registry.
 

@@ -14,6 +14,7 @@ from codur.graph.nodes.types import PlanNodeResult
 from codur.tools.filesystem import EXCLUDE_DIRS
 from codur.constants import GREETING_MAX_WORDS
 from codur.graph.nodes.tool_detection import create_default_tool_detector
+from codur.graph.nodes.path_utils import find_workspace_match
 
 
 console = Console()
@@ -40,53 +41,6 @@ def _looks_like_explain_request(text: str) -> bool:
     lowered = text.lower()
     triggers = ("what does", "explain", "describe", "summarize", "summary of")
     return any(trigger in lowered for trigger in triggers)
-
-
-def _find_workspace_match(raw_text: str) -> Optional[str]:
-    text = raw_text.strip()
-    if not text:
-        return None
-    candidates = []
-    for token in text.replace('"', " ").replace("'", " ").split():
-        if token.startswith("@") or ".py" in token or "/" in token or "\\" in token:
-            cleaned = token.strip(".,:;()[]{}")
-            if cleaned.startswith("@"):
-                cleaned = cleaned[1:]
-            if cleaned:
-                candidates.append(cleaned)
-    cwd = Path.cwd()
-    for candidate in candidates:
-        path = Path(candidate)
-        if not path.is_absolute():
-            path = cwd / path
-
-        try:
-            if path.is_absolute() and not path.resolve().is_relative_to(cwd.resolve()):
-                continue
-        except (ValueError, OSError):
-            continue
-
-        if path.exists():
-            try:
-                return str(path.relative_to(cwd) if path.is_relative_to(cwd) else path)
-            except ValueError:
-                continue
-
-        if path.name == candidate and not ("/" in candidate or "\\" in candidate):
-            matches = []
-            for root, dirnames, filenames in os.walk(cwd):
-                dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
-                if candidate in filenames:
-                    matches.append(Path(root) / candidate)
-                if len(matches) > 1:
-                    break
-            if len(matches) == 1:
-                match = matches[0]
-                try:
-                    return str(match.relative_to(cwd))
-                except ValueError:
-                    continue
-    return None
 
 
 _TOOL_DETECTOR = create_default_tool_detector()
@@ -119,7 +73,7 @@ def run_non_llm_tools(messages: list[BaseMessage], state: AgentState) -> Optiona
 
     if last_human_msg and not tool_results_present:
         if _looks_like_explain_request(last_human_msg):
-            matched_path = _find_workspace_match(last_human_msg)
+            matched_path = find_workspace_match(last_human_msg)
             if matched_path:
                 if verbose:
                     console.log(f"[dim]Non-LLM tool node: Detected explain request for file {matched_path}.[/dim]")

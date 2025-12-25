@@ -8,7 +8,7 @@ from rich.console import Console
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import ExecuteNodeResult
-from codur.graph.nodes.utils import _normalize_messages
+from codur.graph.nodes.utils import normalize_messages, resolve_llm_for_model
 from codur.llm import create_llm_profile
 from codur.utils.llm_calls import invoke_llm
 
@@ -52,7 +52,7 @@ def explaining_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult
 
     # Resolve LLM (uses default LLM)
     # Use standard temperature for explanation (balanced creativity/accuracy)
-    llm = _resolve_llm_for_model(
+    llm = resolve_llm_for_model(
         config,
         None,
         temperature=0.7,
@@ -99,25 +99,9 @@ def explaining_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult
     }
 
 
-def _resolve_llm_for_model(config: CodurConfig, model: str | None, temperature: float | None = None, json_mode: bool = False):
-    """Resolve LLM instance from model identifier."""
-    matching_profile = None
-    if model:
-        for profile_name, profile in config.llm.profiles.items():
-            if profile.model == model:
-                matching_profile = profile_name
-                break
-    
-    profile_to_use = matching_profile if matching_profile else config.llm.default_profile
-    if not profile_to_use:
-         raise ValueError("No default LLM profile configured.")
-         
-    return create_llm_profile(config, profile_to_use, temperature=temperature, json_mode=json_mode)
-
-
 def _build_explaining_prompt(raw_messages) -> str:
     """Build context-aware prompt from graph state messages."""
-    messages = _normalize_messages(raw_messages)
+    messages = normalize_messages(raw_messages)
 
     challenge = None
     context_parts = []

@@ -15,6 +15,7 @@ from pathlib import Path
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from codur.config import CodurConfig
+from codur.graph.nodes.path_utils import extract_file_paths
 
 from codur.graph.nodes.planning.types import (
     TaskType,
@@ -49,30 +50,6 @@ _STRATEGIES = {
     TaskType.WEB_SEARCH: WebSearchStrategy(),
     TaskType.UNKNOWN: UnknownStrategy(),
 }
-
-
-def extract_file_paths(text: str) -> list[str]:
-    """Extract file paths from text."""
-    paths = []
-
-    # @file.py syntax
-    at_matches = re.findall(r"@([^\s,]+)", text)
-    paths.extend(at_matches)
-
-    # Explicit file extensions
-    ext_matches = re.findall(r"([^\s,\"']+\.(?:json|yaml|html|css|yml|txt|py|js|ts|md))", text)
-    paths.extend(ext_matches)
-
-    # Quoted paths
-    quoted = re.findall(r"[\"']([^\"']+)[\"']", text)
-    for q in quoted:
-        if "/" in q or "." in q:
-            paths.append(q)
-
-    # Clean paths: strip leading '@' and duplicates
-    cleaned_paths = {p.lstrip('@') for p in paths}
-
-    return list(cleaned_paths)
 
 
 def _build_candidates(

@@ -3,14 +3,14 @@ Codex agent wrapper with async support
 """
 
 import subprocess
-import logging
 from typing import Optional
+from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.agents.cli_agent_base import BaseCLIAgent
 from codur.agents import AgentRegistry
 
-logger = logging.getLogger(__name__)
+console = Console()
 
 
 class CodexAgent(BaseCLIAgent):
@@ -30,17 +30,13 @@ class CodexAgent(BaseCLIAgent):
         super().__init__(config, override_config)
 
         # Get Codex-specific config
-        codex_config = config.agents.configs.get("codex", {})
-        agent_config = codex_config.config if hasattr(codex_config, "config") else {}
-        if override_config:
-            agent_config = {**agent_config, **override_config}
+        agent_config = self._get_agent_config("codex")
 
         self.command = agent_config.get("command", "codex")
         self.model = agent_config.get("model", "gpt-5-codex")
         self.reasoning_effort = agent_config.get("reasoning_effort", "medium")
-        self.default_timeout = config.agent_execution.default_cli_timeout
 
-        logger.info(f"Initializing Codex agent with model={self.model}, reasoning={self.reasoning_effort}")
+        console.print(f"Initializing Codex agent with model={self.model}, reasoning={self.reasoning_effort}")
 
     def _build_command(self, task: str, sandbox: str = "workspace-write") -> list[str]:
         return [
@@ -74,10 +70,10 @@ class CodexAgent(BaseCLIAgent):
         Raises:
             Exception: If Codex execution fails
         """
-        logger.info(f"Executing task with Codex: {task[:100]}...")
+        self._log_execution_start(task)
         cmd = self._build_command(task, sandbox=sandbox)
         output = self._execute_cli(cmd, timeout=timeout, suppress_stderr=True)
-        logger.info(f"Codex generated {len(output)} characters")
+        self._log_execution_complete(output)
         return output
 
     async def aexecute(
@@ -100,10 +96,10 @@ class CodexAgent(BaseCLIAgent):
         Raises:
             Exception: If Codex execution fails
         """
-        logger.info(f"[Async] Executing task with Codex: {task[:100]}...")
+        self._log_execution_start(task, is_async=True)
         cmd = self._build_command(task, sandbox=sandbox)
         output = await self._aexecute_cli(cmd, timeout=timeout, suppress_stderr=True)
-        logger.info(f"[Async] Codex generated {len(output)} characters")
+        self._log_execution_complete(output, is_async=True)
         return output
 
     async def astream(self, task: str, sandbox: str = "workspace-write"):
@@ -134,7 +130,7 @@ class CodexAgent(BaseCLIAgent):
             Exception: If resume fails
         """
         try:
-            logger.info("Resuming last Codex session")
+            console.print("Resuming last Codex session")
 
             cmd = [self.command, "exec", "--skip-git-repo-check", "resume", "--last"]
 
@@ -161,8 +157,7 @@ class CodexAgent(BaseCLIAgent):
             return result.stdout.strip()
 
         except Exception as e:
-            logger.error(f"Codex resume failed: {str(e)}", exc_info=True)
-            raise Exception(f"Failed to resume Codex: {str(e)}") from e
+            self._handle_execution_error(e, "resume")
 
     def __repr__(self) -> str:
         return f"CodexAgent(model={self.model}, reasoning={self.reasoning_effort})"

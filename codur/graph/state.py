@@ -26,6 +26,8 @@ class AgentState(TypedDict):
         verbose: Whether to print verbose output
         llm_calls: Count of LLM invocations so far
         max_llm_calls: Maximum allowed LLM invocations
+        error_hashes: Hashes of errors seen for deduplication
+        local_repair_attempted: Whether a local repair was attempted
     """
     messages: Annotated[Sequence[BaseMessage], operator.add]
     next_action: str
@@ -38,6 +40,8 @@ class AgentState(TypedDict):
     config: CodurConfig
     llm_calls: int
     max_llm_calls: int | None
+    error_hashes: list
+    local_repair_attempted: bool
 
 
 class AgentStateData(dict):

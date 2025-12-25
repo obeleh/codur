@@ -9,7 +9,7 @@ from rich.console import Console
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import ExecuteNodeResult
-from codur.graph.nodes.utils import _normalize_messages
+from codur.graph.nodes.utils import normalize_messages, resolve_llm_for_model
 from codur.llm import create_llm_profile
 from codur.utils.llm_calls import invoke_llm
 from codur.tools.code_modification import (
@@ -120,7 +120,7 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
     # Resolve LLM (uses default LLM - system prompt is self-contained)
     # Use generation temperature for coding tasks
     # Enable JSON mode for structured output
-    llm = _resolve_llm_for_model(
+    llm = resolve_llm_for_model(
         config,
         None,
         temperature=config.llm.generation_temperature,
@@ -154,7 +154,7 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
         if "json_validate_failed" in error_msg or ("400" in error_msg and "JSON" in error_msg):
             fallback_model = config.agents.preferences.fallback_model
             console.log(f"[yellow]Primary LLM failed JSON validation. Falling back to {fallback_model}...[/yellow]")
-            fallback_llm = _resolve_llm_for_model(
+            fallback_llm = resolve_llm_for_model(
                 config, 
                 model=fallback_model,
                 temperature=config.llm.generation_temperature,
@@ -245,25 +245,9 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
     }
 
 
-def _resolve_llm_for_model(config: CodurConfig, model: str | None, temperature: float | None = None, json_mode: bool = False):
-    """Resolve LLM instance from model identifier."""
-    matching_profile = None
-    if model:
-        for profile_name, profile in config.llm.profiles.items():
-            if profile.model == model:
-                matching_profile = profile_name
-                break
-    
-    profile_to_use = matching_profile if matching_profile else config.llm.default_profile
-    if not profile_to_use:
-         raise ValueError("No default LLM profile configured.")
-         
-    return create_llm_profile(config, profile_to_use, temperature=temperature, json_mode=json_mode)
-
-
 def _build_coding_prompt(raw_messages, iterations: int = 0) -> str:
     """Build context-aware prompt from graph state messages."""
-    messages = _normalize_messages(raw_messages)
+    messages = normalize_messages(raw_messages)
 
     challenge = None
     verification_errors = []

@@ -4,6 +4,7 @@ from typing import Any, Optional
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 
 from codur.config import CodurConfig
+from codur.llm import create_llm_profile
 
 
 def _resolve_agent_reference(raw_agent: str) -> str:
@@ -31,7 +32,7 @@ def _resolve_agent_profile(config: CodurConfig, agent_name: str) -> tuple[str, O
     return agent_name, None
 
 
-def _normalize_messages(messages: Any) -> list[BaseMessage]:
+def normalize_messages(messages: Any) -> list[BaseMessage]:
     """Coerce message-like inputs into LangChain BaseMessage objects.
 
     Args:
@@ -57,3 +58,79 @@ def _normalize_messages(messages: Any) -> list[BaseMessage]:
             continue
         normalized.append(HumanMessage(content=str(message)))
     return normalized
+
+
+# Backward compatibility alias
+_normalize_messages = normalize_messages
+
+
+def get_first_human_message(messages: list[BaseMessage]) -> Optional[str]:
+    """Extract content from first HumanMessage in a list.
+
+    Args:
+        messages: List of BaseMessage objects
+
+    Returns:
+        Optional[str]: Content of first HumanMessage, or None if not found
+    """
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            return msg.content
+    return None
+
+
+def get_last_human_message(messages: list[BaseMessage]) -> Optional[str]:
+    """Extract content from last HumanMessage in a list.
+
+    Args:
+        messages: List of BaseMessage objects
+
+    Returns:
+        Optional[str]: Content of last HumanMessage, or None if not found
+    """
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            return msg.content
+    return None
+
+
+def extract_messages_by_type(messages: list[BaseMessage], message_type: type) -> list[BaseMessage]:
+    """Extract all messages of a specific type.
+
+    Args:
+        messages: List of BaseMessage objects
+        message_type: Type of message to filter for (e.g., HumanMessage, AIMessage)
+
+    Returns:
+        List of messages matching the type
+    """
+    return [msg for msg in messages if isinstance(msg, message_type)]
+
+
+def resolve_llm_for_model(config: CodurConfig, model: str | None, temperature: float | None = None, json_mode: bool = False):
+    """Resolve LLM instance from model identifier.
+
+    Args:
+        config: Codur configuration
+        model: Model name to look up, or None to use default
+        temperature: Optional temperature override
+        json_mode: Whether to enable JSON mode
+
+    Returns:
+        Configured LLM instance
+
+    Raises:
+        ValueError: If no default LLM profile is configured
+    """
+    matching_profile = None
+    if model:
+        for profile_name, profile in config.llm.profiles.items():
+            if profile.model == model:
+                matching_profile = profile_name
+                break
+
+    profile_to_use = matching_profile if matching_profile else config.llm.default_profile
+    if not profile_to_use:
+        raise ValueError("No default LLM profile configured.")
+
+    return create_llm_profile(config, profile_to_use, temperature=temperature, json_mode=json_mode)

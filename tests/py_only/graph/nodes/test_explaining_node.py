@@ -21,7 +21,7 @@ class TestExplainingNode:
         assert "Previous response: I see." in prompt
 
     @patch("codur.graph.nodes.explaining.invoke_llm")
-    @patch("codur.graph.nodes.explaining._resolve_llm_for_model")
+    @patch("codur.graph.nodes.explaining.resolve_llm_for_model")
     def test_explaining_node_execution(self, mock_resolve, mock_invoke):
         """Test that the node executes and returns a result."""
         # Setup mocks

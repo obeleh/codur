@@ -8,14 +8,14 @@ Allows Codur to delegate tasks to Claude Code CLI for:
 - Tool usage (bash, read, write, etc.)
 """
 
-import logging
 from typing import Optional
+from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.agents.cli_agent_base import BaseCLIAgent
 from codur.agents import AgentRegistry
 
-logger = logging.getLogger(__name__)
+console = Console()
 
 
 class ClaudeCodeAgent(BaseCLIAgent):
@@ -40,10 +40,7 @@ class ClaudeCodeAgent(BaseCLIAgent):
         super().__init__(config, override_config)
 
         # Get Claude Code-specific config
-        claude_config = config.agents.configs.get("claude_code", {})
-        agent_config = claude_config.config if hasattr(claude_config, "config") else {}
-        if override_config:
-            agent_config = {**agent_config, **override_config}
+        agent_config = self._get_agent_config("claude_code")
 
         self.command = agent_config.get("command", "claude")
         self.model = agent_config.get("model", "sonnet")  # sonnet, opus, haiku
@@ -51,9 +48,8 @@ class ClaudeCodeAgent(BaseCLIAgent):
             "max_tokens",
             config.agent_execution.claude_code_max_tokens,
         )
-        self.default_timeout = config.agent_execution.default_cli_timeout
 
-        logger.info(f"Initializing Claude Code agent with model={self.model}")
+        console.print(f"Initializing Claude Code agent with model={self.model}")
 
     def _build_command(self, prompt: str, files: Optional[list[str]] = None) -> list[str]:
         cmd = [
@@ -94,11 +90,11 @@ class ClaudeCodeAgent(BaseCLIAgent):
         Raises:
             Exception: If execution fails
         """
-        logger.info(f"Executing task with Claude Code: {task[:100]}...")
+        self._log_execution_start(task)
         prompt = self._build_prompt(task, context)
         cmd = self._build_command(prompt)
         output = self._execute_cli(cmd, timeout=timeout, capture_stderr=True)
-        logger.info(f"Claude Code generated {len(output)} characters")
+        self._log_execution_complete(output)
         return output
 
     async def aexecute(
@@ -121,11 +117,11 @@ class ClaudeCodeAgent(BaseCLIAgent):
         Raises:
             Exception: If execution fails
         """
-        logger.info(f"[Async] Executing task with Claude Code: {task[:100]}...")
+        self._log_execution_start(task, is_async=True)
         prompt = self._build_prompt(task, context)
         cmd = self._build_command(prompt)
         output = await self._aexecute_cli(cmd, timeout=timeout, capture_stderr=True)
-        logger.info(f"[Async] Claude Code generated {len(output)} characters")
+        self._log_execution_complete(output, is_async=True)
         return output
 
     def execute_with_files(
@@ -149,7 +145,7 @@ class ClaudeCodeAgent(BaseCLIAgent):
             Exception: If execution fails
         """
         try:
-            logger.info(f"Executing with {len(files)} files: {task[:100]}...")
+            console.print(f"Executing with {len(files)} files: {task[:100]}...")
 
             prompt = self._build_prompt(task, context)
 
@@ -163,8 +159,7 @@ class ClaudeCodeAgent(BaseCLIAgent):
             return self._execute_cli(cmd, timeout=600, capture_stderr=True)
 
         except Exception as e:
-            logger.error(f"Claude Code file execution failed: {str(e)}", exc_info=True)
-            raise Exception(f"Failed to execute with files: {str(e)}") from e
+            self._handle_execution_error(e, "file execution")
 
     def _build_prompt(self, task: str, context: Optional[str] = None) -> str:
         """
@@ -206,7 +201,7 @@ class ClaudeCodeAgent(BaseCLIAgent):
             Exception: If chat fails
         """
         try:
-            logger.info(f"Chat with Claude Code: {len(messages)} messages")
+            console.print(f"Chat with Claude Code: {len(messages)} messages")
 
             # For now, just use the last user message
             # TODO: Implement proper multi-turn chat with history
@@ -222,8 +217,7 @@ class ClaudeCodeAgent(BaseCLIAgent):
             return self.execute(last_user_msg)
 
         except Exception as e:
-            logger.error(f"Claude Code chat failed: {str(e)}", exc_info=True)
-            raise Exception(f"Chat failed: {str(e)}") from e
+            self._handle_execution_error(e, "chat")
 
     def __repr__(self) -> str:
         return f"ClaudeCodeAgent(model={self.model}, command={self.command})"

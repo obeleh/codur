@@ -63,6 +63,26 @@ class BaseLLMProvider(ABC):
         """
         pass
 
+    @staticmethod
+    def _resolve_api_key_env(config: CodurConfig, provider_name: str, default_env: str) -> str:
+        """Resolve API key environment variable name for a provider.
+
+        This helper method extracts the API key environment variable name from
+        configuration, falling back to a default if not specified.
+
+        Args:
+            config: Codur configuration object
+            provider_name: Provider name to look up (e.g., "groq", "openai")
+            default_env: Default environment variable name to use if not in config
+
+        Returns:
+            str: Environment variable name for the provider's API key
+        """
+        provider_cfg = config.providers.get(provider_name)
+        if provider_cfg and provider_cfg.api_key_env:
+            return provider_cfg.api_key_env
+        return default_env
+
 
 class ProviderRegistry:
     """Registry for LLM providers.

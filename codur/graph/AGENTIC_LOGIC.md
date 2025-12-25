@@ -284,11 +284,49 @@ while tool_iteration < max_tool_iterations:  # default 5
 
 **Purpose:** Run the codur-coding agent with a structured coding prompt (JSON mode).
 
-**Dynamic Path Handling:**
-The coding node does **not** hardcode `main.py`. It determines the target path by:
-1. Checking current `tool_calls` in the LLM response.
-2. Checking `tool_calls` in the `AgentState` (populated by Phase 1 hints or Phase 2 planner).
-3. Failing gracefully if no path can be determined.
+**Path Resolution Strategy:**
+The coding node attempts to determine the target file path through the following order:
+1. **From LLM tool_calls**: First, it looks for an explicit `path` argument in any tool call from the LLM response
+2. **From planner hints**: Then checks `state.tool_calls` (populated by Phase 2 planner analysis)
+3. **Fallback inference**: Returns `None` if unable to determine
+
+**Validation & Error Handling:**
+The LLM response must be valid JSON in one of these formats:
+
+**Format A (Preferred):** `tool_calls` array with explicit paths
+```json
+{
+  "thought": "...",
+  "tool_calls": [
+    {
+      "tool": "replace_function",
+      "args": {
+        "path": "app.py",
+        "function_name": "my_func",
+        "new_code": "..."
+      }
+    }
+  ]
+}
+```
+
+**Format B (Fallback):** Direct `code` field (only works if path can be inferred)
+```json
+{
+  "thought": "...",
+  "code": "def main():\n    ..."
+}
+```
+
+**Known Limitations:**
+- ⚠️ **No automatic file detection**: The LLM is not told which file to modify. It must include `path` in tool calls or the prompt must make the target file explicit.
+- ⚠️ **Multi-file challenges**: If the task involves multiple files (e.g., `app.py` + `utils.py`), the Phase 2 planner should read the relevant files and include that context in the prompt so the LLM knows which file to target.
+- ⚠️ **Format B (code field) limitation**: The fallback `code` field only works if a default path can be determined from context. If no path is found, the node returns error: "Could not determine target file path for code replacement."
+- ⚠️ **No main.py assumption**: Unlike earlier phases, the coding node does NOT default to `main.py`. It requires explicit path information.
+
+**Retry Behavior:**
+- On first validation error (missing `tool_calls` + no `code` field): Node retries once with error feedback
+- On second failure: Returns error and stops
 
 ---
 
@@ -532,9 +570,19 @@ The coding node runs the LLM in JSON mode and expects a valid JSON object with t
 - `replace_file_content(path, new_code)`
 - `inject_function(path, new_code, function_name?)`
 
-**Fallback/Defaults:**
-- If `tool_calls` is missing but `code` exists, the node treats it as a full file replacement of `main.py`.
-- If a tool call omits `path`, it defaults to `main.py`.
+**Fallback Behavior:**
+- If `tool_calls` is missing but `code` field exists in JSON, the node treats it as a full file replacement. Path resolution:
+  1. Checks for path in LLM response's `tool_calls`
+  2. Checks for path in `state.tool_calls` (from planner analysis)
+  3. If no path found, returns error: "Could not determine target file path for code replacement."
+- If a tool call omits `path`, the system tries the same path resolution above. If still no path, returns error.
+- ⚠️ **No `main.py` default** - The coding node does NOT assume `main.py`. Explicit path information is required.
+
+**Important for Multi-File Tasks:**
+When routing to `agent:codur-coding` for multi-file challenges (e.g., `app.py` + `utils.py`), the Phase 2 planner must:
+1. Read the relevant files to understand what needs fixing
+2. Include file contents or clear instructions about WHICH file to modify in the prompt
+3. Ideally, populate `state.tool_calls` with a hint about the target file path
 
 Use this profile when routing tasks that are primarily coding challenges and include supplemental context that should be considered during solution.
 
@@ -608,6 +656,43 @@ Challenges write to `codur_debug.log` in the challenge directory.
 3. **Tool not executed** → Check pattern in `tool_detection.py`
 4. **Verification always fails** → Check `expected.txt` format and encoding
 
+### Coding Node Troubleshooting
+
+**Error: `No 'tool_calls' found in JSON response`**
+- LLM returned invalid JSON or JSON without required `tool_calls` field
+- **Causes:**
+  - LLM didn't understand the JSON format requirement
+  - Prompt didn't make it clear which file to modify (multi-file confusion)
+  - LLM returned reasoning without structured tool calls
+- **Solutions:**
+  1. **For multi-file challenges** (e.g., `app.py` + `utils.py`):
+     - Ensure Phase 2 planner reads all relevant files and includes their content in the prompt
+     - Add explicit instruction like "Fix the bug in app.py's `calculate` function"
+     - Populate `state.tool_calls` with file path hints during planning
+  2. **Check LLM response** in verbose mode to see what was actually returned
+  3. **Ensure prompt context** - The LLM needs to know WHICH files exist and which one to modify
+  4. **Increase model temperature** if LLM is being too conservative (currently uses `generation_temperature` from config)
+
+**Error: `Could not determine target file path for code replacement`**
+- LLM provided a `code` field but no path could be inferred
+- **Causes:**
+  - Code field without explicit path, and planner didn't provide hints
+  - Multi-file scenario where target file is ambiguous
+- **Solutions:**
+  1. Ensure Phase 2 planner provides `tool_calls` hints with target file path
+  2. For single-file challenges, verify that planner identified the correct file
+  3. Check that `state.tool_calls` is populated with path information from planning phase
+
+**Error: Validation failed after retry**
+- Both the first attempt and retry failed
+- **Causes:**
+  - LLM kept returning invalid JSON structure
+  - Model temperature too low for creative problem-solving
+- **Solutions:**
+  1. Check that system prompt was not modified or corrupted
+  2. Consider using a different LLM profile with higher generation temperature
+  3. Add explicit examples to system prompt if model keeps misunderstanding format
+
 ---
 
 ## Extending the System
@@ -637,6 +722,15 @@ Edit `main_graph.py`:
 ---
 
 ## Changelog
+
+### 2025-12-25
+- **Documentation: Coding Node accuracy improvements**
+  - Fixed misleading "Fallback/Defaults" section - documented actual behavior vs promised behavior
+  - Clarified that coding node does NOT default to `main.py` - requires explicit path information
+  - Added detailed path resolution strategy explaining 3-step lookup process
+  - Documented known limitations with multi-file challenges and need for planner context
+  - Added comprehensive "Coding Node Troubleshooting" section with solutions for common errors
+  - Clarified that LLM must be told which file to modify (multi-file confusion is common)
 
 ### 2025-12-24
 - **Phase 1 LLM classification ENABLED BY DEFAULT**: Smart classification instead of pattern-only

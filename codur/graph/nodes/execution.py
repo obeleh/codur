@@ -20,7 +20,22 @@ from codur.graph.nodes.types import DelegateNodeResult, ExecuteNodeResult, Revie
 from codur.graph.nodes.utils import (
     _resolve_agent_profile,
     _resolve_agent_reference,
-    _normalize_messages,
+)
+from codur.graph.state_operations import (
+    is_verbose,
+    get_messages,
+    prune_messages,
+    get_iterations,
+    get_agent_outcome,
+    get_outcome_status,
+    get_outcome_result,
+    get_outcome_agent,
+    get_tool_calls,
+    get_llm_calls,
+    increment_llm_calls,
+    get_error_hashes,
+    was_local_repair_attempted,
+    get_selected_agent,
 )
 from codur.graph.nodes.tool_detection import create_default_tool_detector
 from codur.tools import read_file, write_file
@@ -48,17 +63,17 @@ class AgentExecutor:
         self.resolved_agent = _resolve_agent_reference(self.agent_name)
 
     def execute(self) -> ExecuteNodeResult:
-        if self.state.get("verbose"):
+        if is_verbose(self.state):
             console.print(f"[bold green]Executing with {self.agent_name}...[/bold green]")
             console.print(f"[dim]Resolved agent: {self.resolved_agent}[/dim]")
 
-        messages = _normalize_messages(self.state.get("messages"))
+        messages = get_messages(self.state)
         last_message = messages[-1] if messages else None
 
         if not last_message:
             return {"agent_outcome": {"agent": self.agent_name, "result": "No task provided", "status": "error"}}
 
-        if self.state.get("verbose"):
+        if is_verbose(self.state):
             task_preview = str(last_message.content if hasattr(last_message, "content") else last_message)[:200]
             console.print(f"[dim]Task: {task_preview}...[/dim]")
 
@@ -70,7 +85,7 @@ class AgentExecutor:
             else:
                 result = self._execute_agent(task)
 
-            if self.state.get("verbose"):
+            if is_verbose(self.state):
                 console.print("[green]✓ Execution completed successfully[/green]")
 
             return {
@@ -79,13 +94,13 @@ class AgentExecutor:
                     "result": result,
                     "status": "success",
                 },
-                "llm_calls": self.state.get("llm_calls", 0),
+                "llm_calls": get_llm_calls(self.state),
             }
         except Exception as exc:
             if isinstance(exc, LLMCallLimitExceeded):
                 raise
             console.print(f"[red]✗ Error executing {self.agent_name}: {str(exc)}[/red]")
-            if self.state.get("verbose"):
+            if is_verbose(self.state):
                 console.print(f"[red]{traceback.format_exc()}[/red]")
             return {
                 "agent_outcome": {
@@ -93,12 +108,12 @@ class AgentExecutor:
                     "result": str(exc),
                     "status": "error",
                 },
-                "llm_calls": self.state.get("llm_calls", 0),
+                "llm_calls": get_llm_calls(self.state),
             }
 
     def _execute_llm_profile(self, task: str) -> str:
         profile_name = self.agent_name.split(":", 1)[1]
-        if self.state.get("verbose"):
+        if is_verbose(self.state):
             console.print(f"[dim]Using LLM profile: {profile_name}[/dim]")
         llm = create_llm_profile(self.config, profile_name, temperature=self.config.llm.generation_temperature)
         response = invoke_llm(
@@ -109,7 +124,7 @@ class AgentExecutor:
             config=self.config,
         )
         result = response.content
-        if self.state.get("verbose"):
+        if is_verbose(self.state):
             console.print(f"[dim]LLM response length: {len(result)} chars[/dim]")
             console.print(f"[dim]LLM response preview: {result[:300]}...[/dim]")
         return result
@@ -137,14 +152,14 @@ class AgentExecutor:
             config=self.config,
         )
         result = response.content
-        if self.state.get("verbose"):
+        if is_verbose(self.state):
             console.print(f"[dim]LLM response length: {len(result)} chars[/dim]")
             console.print(f"[dim]LLM response preview: {result[:300]}...[/dim]")
         return result
 
     def _execute_registered_agent(self, task: str) -> str:
         agent_class = AgentRegistry.get(self.resolved_agent)
-        if self.state.get("verbose"):
+        if is_verbose(self.state):
             console.print(f"[dim]Using agent class: {agent_class.__name__ if agent_class else 'None'}[/dim]")
         if not agent_class:
             available = ", ".join(AgentRegistry.list_agents())
@@ -178,7 +193,7 @@ class AgentExecutor:
                 full_prompt = self._build_prompt_with_tool_results(task, messages)
                 result = agent.execute(full_prompt)
 
-            if self.state.get("verbose"):
+            if is_verbose(self.state):
                 console.print(f"[dim]Agent iteration {tool_iteration}: result length {len(result)} chars[/dim]")
 
             # Check for tool calls in the response
@@ -186,12 +201,12 @@ class AgentExecutor:
 
             if not tool_calls:
                 # No tool calls detected, return final result
-                if self.state.get("verbose"):
+                if is_verbose(self.state):
                     console.print(f"[dim]Agent finished after {tool_iteration} iterations[/dim]")
                 return result
 
             # Execute tools and collect results
-            if self.state.get("verbose"):
+            if is_verbose(self.state):
                 console.print(f"[yellow]Detected {len(tool_calls)} tool call(s), executing...[/yellow]")
 
             tool_results = self._execute_tool_calls(tool_calls)
@@ -200,7 +215,7 @@ class AgentExecutor:
 
             tool_iteration += 1
 
-        if self.state.get("verbose"):
+        if is_verbose(self.state):
             console.print(f"[yellow]Max tool iterations ({max_tool_iterations}) reached[/yellow]")
         return result
 
@@ -254,12 +269,12 @@ def delegate_node(state: AgentState, config: CodurConfig) -> DelegateNodeResult:
     Returns:
         Dictionary with agent_outcome containing agent name and status
     """
-    if state.get("verbose"):
+    if is_verbose(state):
         console.print("[bold cyan]Delegating task...[/bold cyan]")
 
     # Use the agent selected by the plan_node, fallback to configured default
     default_agent = config.agents.preferences.default_agent or "agent:ollama"
-    selected_agent = state.get("selected_agent", default_agent)
+    selected_agent = get_selected_agent(state, default_agent)
 
     return {
         "agent_outcome": {
@@ -300,24 +315,24 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     Returns:
         Dictionary with final_response and next_action ("end" or "continue")
     """
-    if state.get("verbose"):
+    if is_verbose(state):
         console.print("[bold magenta]Reviewing result...[/bold magenta]")
 
-    outcome = state.get("agent_outcome", {})
-    result = outcome.get("result", "")
-    iterations = state.get("iterations", 0)
+    outcome = get_agent_outcome(state)
+    result = get_outcome_result(state)
+    iterations = get_iterations(state)
     max_iterations = config.runtime.max_iterations
 
     # If we just ran tools to gather context (e.g., read_file), route to coding agent.
     # BUT: If agent_call was also executed, skip this routing - the result is the implementation.
     if outcome.get("agent") == "tools":
-        tool_calls = state.get("tool_calls", []) or []
+        tool_calls = get_tool_calls(state)
         has_read_file = any(call.get("tool") == "read_file" for call in tool_calls)
         has_agent_call = any(call.get("tool") == "agent_call" for call in tool_calls)
 
         # Only route to coding agent if we read files but didn't call an agent yet
         if has_read_file and not has_agent_call:
-            if state.get("verbose"):
+            if is_verbose(state):
                 console.print("[dim]Tool read_file completed - delegating to codur-coding[/dim]")
             return {
                 "final_response": result,
@@ -325,7 +340,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 "selected_agent": "agent:codur-coding",
             }
 
-    if state.get("verbose"):
+    if is_verbose(state):
         console.print(f"[dim]Result status: {outcome.get('status', 'unknown')}[/dim]")
         console.print(f"[dim]Result length: {len(result)} chars[/dim]")
         console.print(f"[dim]Iteration: {iterations}/{max_iterations}[/dim]")
@@ -333,13 +348,13 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     # Check if this was a tool result (file read, etc) - skip verification for those
     # BUT: If agent_call was executed, it's an implementation result, not just a tool result
     agent_name = outcome.get("agent", "")
-    tool_calls = state.get("tool_calls", []) or []
+    tool_calls = get_tool_calls(state)
     has_agent_call = any(call.get("tool") == "agent_call" for call in tool_calls)
 
     is_tool_result = (agent_name == "tools" and not has_agent_call) or (isinstance(result, str) and result.startswith("Error") and len(result) < 200)
 
     # Check if this was a bug fix / debug task by looking at original message
-    messages = state.get("messages", [])
+    messages = get_messages(state)
     original_task = None
     for msg in messages:
         if isinstance(msg, HumanMessage):
@@ -356,7 +371,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         verification_result = _verify_fix(state, config)
 
         if verification_result["success"]:
-            if state.get("verbose"):
+            if is_verbose(state):
                 console.print(f"[green]✓ Verification passed![/green]")
                 console.print(f"[dim]{verification_result['message']}[/dim]")
             return {
@@ -367,11 +382,11 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             # Check for repeated errors (agent is stuck)
             error_msg = verification_result.get("message", "")
             current_error_hash = hash(error_msg)
-            error_history = state.get("error_hashes", [])
+            error_history = get_error_hashes(state)
 
             # If same error appears 2+ times in recent history, agent is stuck
             if error_history and current_error_hash in error_history[-3:]:
-                if state.get("verbose"):
+                if is_verbose(state):
                     console.print(f"[red]✗ Repeated error detected - agent is stuck, stopping[/red]")
                 return {
                     "final_response": result,
@@ -381,11 +396,10 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             # Track this error for future checks
             error_history.append(current_error_hash)
 
-            local_repair_attempted = state.get("local_repair_attempted", False)
-            if not local_repair_attempted:
+            if not was_local_repair_attempted(state):
                 repair_result = _attempt_local_repair(state)
                 if repair_result["success"]:
-                    if state.get("verbose"):
+                    if is_verbose(state):
                         console.print(f"[green]✓ Local repair succeeded[/green]")
                         console.print(f"[dim]{repair_result['message']}[/dim]")
                     return {
@@ -393,12 +407,12 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                         "next_action": "end",
                         "local_repair_attempted": True,
                     }
-                if state.get("verbose"):
+                if is_verbose(state):
                     console.print(f"[yellow]⚠ Local repair failed[/yellow]")
                     console.print(f"[dim]{repair_result['message']}[/dim]")
 
             # Verification failed - loop back with error message
-            if state.get("verbose"):
+            if is_verbose(state):
                 console.print(f"[yellow]⚠ Verification failed - will retry[/yellow]")
                 console.print(f"[dim]{verification_result['message'][:200]}[/dim]")
 
@@ -443,8 +457,8 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             error_message = SystemMessage(content="\n".join(error_parts))
 
             # Prune old messages to prevent context explosion
-            current_messages = state.get("messages", [])
-            pruned_messages = _prune_messages(current_messages + [error_message])
+            current_messages = get_messages(state)
+            pruned_messages = prune_messages(current_messages + [error_message])
 
             return {
                 "final_response": result,
@@ -456,7 +470,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
 
     # For tool results (file reads, etc), continue back to planning with the result as context
     if is_tool_result:
-        if state.get("verbose"):
+        if is_verbose(state):
             console.print(f"[dim]Tool result: continuing to planning phase with context[/dim]")
         return {
             "final_response": None,
@@ -467,7 +481,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     # - Not a fix task
     # - Exceeded max iterations
     # - Verification passed (handled above)
-    if state.get("verbose"):
+    if is_verbose(state):
         if iterations >= max_iterations - 1:
             console.print(f"[yellow]⚠ Max iterations reached - accepting result[/yellow]")
         else:
@@ -492,56 +506,6 @@ def _truncate_output(text: str, max_lines: int = 50) -> str:
     return text
 
 
-def _prune_messages(messages: list, max_to_keep: int = 10) -> list:
-    """Prune old messages to prevent context explosion while preserving learning context.
-
-    Keeps:
-    - Original HumanMessage(s) - typically the first message
-    - Recent AIMessage(s) - agent's recent attempts (so it learns from them)
-    - Recent SystemMessage(s) - recent error/verification messages for context
-
-    This helps agents learn from their mistakes by seeing their own attempts and the feedback.
-    """
-    if len(messages) <= max_to_keep:
-        return messages
-
-    # Find the first human message (original task)
-    first_human_idx = None
-    for i, msg in enumerate(messages):
-        if isinstance(msg, HumanMessage):
-            first_human_idx = i
-            break
-
-    if first_human_idx is None:
-        # No human message, just keep last N
-        return messages[-max_to_keep:]
-
-    # Keep original task
-    pruned = messages[:first_human_idx + 1]
-
-    # Keep recent agent attempts and error messages together (last 8 attempts)
-    # This way agent sees: "I tried X, got error Y, I tried Z, got error W"
-    recent_count = 0
-    max_recent = 8
-    for i, msg in enumerate(reversed(messages[first_human_idx + 1:])):
-        # Keep both AIMessage (agent attempts) and SystemMessage (errors) from recent history
-        if isinstance(msg, (AIMessage, SystemMessage)):
-            if isinstance(msg, SystemMessage) and "Verification failed" not in msg.content:
-                continue  # Skip non-error system messages
-            pruned.append(msg)
-            recent_count += 1
-            if recent_count >= max_recent:
-                break
-
-    # Reverse to maintain chronological order
-    if len(pruned) > first_human_idx + 1:
-        recent = pruned[first_human_idx + 1:]
-        recent.reverse()
-        pruned = pruned[:first_human_idx + 1] + recent
-
-    return pruned
-
-
 def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
     """Verify if a fix actually works by running tests.
 
@@ -555,7 +519,7 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
     Returns:
         Dict with "success" (bool), "message" (str), and other diagnostic info
     """
-    verbose = state.get("verbose", False)
+    verbose = is_verbose(state)
 
     # Look for main.py in current directory
     cwd = Path.cwd()

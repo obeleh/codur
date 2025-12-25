@@ -11,7 +11,7 @@ from rich.console import Console
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import PlanNodeResult
-from codur.graph.nodes.utils import _normalize_messages
+from codur.graph.nodes.utils import normalize_messages
 from codur.graph.nodes.non_llm_tools import run_non_llm_tools
 from codur.llm import create_llm_profile
 from codur.utils.retry import LLMRetryStrategy
@@ -50,7 +50,7 @@ def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
 
     If resolved, routes directly. If uncertain, passes to llm-pre-plan.
     """
-    messages = _normalize_messages(state.get("messages"))
+    messages = normalize_messages(state.get("messages"))
     iterations = state.get("iterations", 0)
 
     if state.get("verbose"):
@@ -131,7 +131,7 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
             "classification": state.get("classification"),
         }
 
-    messages = _normalize_messages(state.get("messages"))
+    messages = normalize_messages(state.get("messages"))
     iterations = state.get("iterations", 0)
 
     if state.get("verbose"):
@@ -277,7 +277,7 @@ class PlanningOrchestrator:
             result["llm_calls"] = state.get("llm_calls", 0)
             return result
 
-        messages = _normalize_messages(state.get("messages"))
+        messages = normalize_messages(state.get("messages"))
         iterations = state.get("iterations", 0)
 
         tool_results_present = any(
@@ -509,6 +509,105 @@ class PlanningOrchestrator:
                         if forced_decision:
                             decision = forced_decision
 
+            # NEW VALIDATION: Ensure file context exists before delegating to codur-coding
+            if (decision
+                and decision.get("action") == "delegate"
+                and decision.get("agent") == "agent:codur-coding"):
+
+                # Check if file contents are available in messages
+                has_file_contents = self._tool_results_include_read_file(messages)
+
+                # For multi-file scenarios, check if we've read all discovered files
+                discovered_files = self._extract_files_from_tool_results(messages)
+                unread_py_files = []
+                if discovered_files:
+                    py_files = [f for f in discovered_files if f.endswith('.py')]
+                    # Check which files have NOT been read yet
+                    unread_py_files = [
+                        f for f in py_files
+                        if not any(f"read_file:" in msg.content and f in msg.content
+                                   for msg in messages
+                                   if isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:"))
+                    ]
+
+                if not has_file_contents:
+                    # No file context yet - need to read files first
+
+                    if discovered_files:
+                        # We have a list of files - read them
+                        py_files = [f for f in discovered_files if f.endswith('.py')]
+
+                        if py_files:
+                            # Read all Python files for multi-file scenarios
+                            files_to_read = py_files
+
+                            tool_calls = [
+                                {"tool": "read_file", "args": {"path": f}}
+                                for f in files_to_read
+                            ]
+
+                            # Add AST analysis if reading Python files
+                            for f in files_to_read:
+                                tool_calls.append({
+                                    "tool": "python_ast_dependencies",
+                                    "args": {"path": f}
+                                })
+
+                            if state.get("verbose"):
+                                console.print(
+                                    f"[yellow]Intercepted delegate to codur-coding without file context. "
+                                    f"Reading {files_to_read} first...[/yellow]"
+                                )
+
+                            # Convert decision to tool action
+                            decision = {
+                                "action": "tool",
+                                "agent": "agent:codur-coding",  # Keep agent hint for routing after read
+                                "reasoning": "Reading file context before coding",
+                                "tool_calls": tool_calls,
+                            }
+                    else:
+                        # No files discovered yet - list files first
+                        if state.get("verbose"):
+                            console.print(
+                                "[yellow]Intercepted delegate to codur-coding without file discovery. "
+                                "Listing files first...[/yellow]"
+                            )
+
+                        decision = {
+                            "action": "tool",
+                            "agent": "agent:codur-coding",  # Keep agent hint
+                            "reasoning": "Discovering files before reading for coding context",
+                            "tool_calls": [{"tool": "list_files", "args": {}}],
+                        }
+                elif unread_py_files:
+                    # Some files have been read but others haven't - read the remaining ones
+                    if state.get("verbose"):
+                        console.print(
+                            f"[yellow]Intercepted delegate to codur-coding with partial file context. "
+                            f"Reading remaining files: {unread_py_files}...[/yellow]"
+                        )
+
+                    tool_calls = [
+                        {"tool": "read_file", "args": {"path": f}}
+                        for f in unread_py_files
+                    ]
+
+                    # Add AST analysis for remaining files
+                    for f in unread_py_files:
+                        tool_calls.append({
+                            "tool": "python_ast_dependencies",
+                            "args": {"path": f}
+                        })
+
+                    # Convert decision to tool action
+                    decision = {
+                        "action": "tool",
+                        "agent": "agent:codur-coding",  # Keep agent hint
+                        "reasoning": "Reading remaining file context before coding",
+                        "tool_calls": tool_calls,
+                    }
+
             return _with_llm_calls(self.decision_handler.handle_decision(decision, iterations, llm_debug))
 
         except (json.JSONDecodeError, KeyError, ValueError) as exc:
@@ -552,6 +651,30 @@ class PlanningOrchestrator:
     @staticmethod
     def _select_file_from_tool_results(messages: list[BaseMessage]) -> str | None:
         return select_file_from_tool_results(messages)
+
+    @staticmethod
+    def _extract_files_from_tool_results(messages: list[BaseMessage]) -> list[str]:
+        """Extract file paths from list_files tool results in message history.
+
+        Parses SystemMessage entries containing "Tool results:" to find file listings
+        from list_files tool executions. Returns a list of discovered file paths.
+        """
+        files = []
+
+        for msg in messages:
+            if isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:"):
+                # Look for list_files results
+                if "list_files:" in msg.content:
+                    # Parse the file list from the tool result
+                    content = msg.content
+                    if "list_files:" in content:
+                        result_section = content.split("list_files:")[1].split("\n\n")[0]
+                        # Extract filenames (simple pattern matching)
+                        import re
+                        file_matches = re.findall(r'(\w+\.py)', result_section)
+                        files.extend(file_matches)
+
+        return list(set(files))  # Remove duplicates
 
     def _build_phase2_messages(
         self,
