@@ -5,13 +5,12 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
-from codur.graph.state_operations import add_message, add_llm_call, get_outcome
-
 def _handoff_to_executor(
     agent: str,
     state: AgentState,
     config: CodurConfig
 ) -> str:
+    from codur.graph.state_operations import add_llm_call, get_outcome
     from codur.graph.nodes.execution import AgentExecutor
     executor = AgentExecutor(state, config, agent_name=agent)
     result = executor.execute()
@@ -28,6 +27,7 @@ def agent_call(
     config: CodurConfig,
 ) -> str:
     from codur.graph.nodes.execution import AgentExecutor
+    from codur.graph.state_operations import add_message
 
     """Invoke an agent with a coding challenge and optional file context.
 
@@ -69,6 +69,7 @@ def retry_in_agent(
         system_message = f"Previous attempt failed due to: {reason}. Please try again."
     else:
         system_message = f"Something went wrong We're retrying in agent {agent}"
+    from codur.graph.state_operations import add_message
     add_message(state, SystemMessage(content=system_message))
     add_message(state, HumanMessage(content=task))
     return _handoff_to_executor(state=state, agent=agent, config=config)

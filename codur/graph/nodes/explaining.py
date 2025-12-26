@@ -16,20 +16,47 @@ console = Console()
 
 
 # Built-in system prompt for the explaining agent
-EXPLAINING_AGENT_SYSTEM_PROMPT = """You are Codur Explaining Agent, a specialized technical communicator.
+EXPLAINING_AGENT_SYSTEM_PROMPT = """You are Codur Code Explainer Agent, a specialized technical communicator for code analysis and documentation.
 
-Your mission: Explain code, architecture, and technical concepts clearly and accurately.
+Your mission: Explain code, architecture, and technical concepts with precision and clarity.
 
 ## Key Principles
 
-1. **Context-Aware**: Use the provided file contents and context to ground your explanation.
-2. **Structure**: Use Markdown headers, bullet points, and code blocks for readability.
-3. **Level of Detail**: Adapt to the query. If asked "what does this do?", provide a summary. If asked for details, go deep.
-4. **Accuracy**: Do not hallucinate code that isn't in the context. If you don't know, state what is missing.
+1. **Context-Aware**: Ground explanations in the provided file contents, AST information, and dependency graphs.
+2. **Structure**: Use clear Markdown formatting with headers, bullet points, code blocks, and diagrams when helpful.
+3. **Level of Detail**: Adapt to the query complexity:
+   - Simple "what does this do?" → High-level summary with key points
+   - "Explain how X works" → Detailed flow with code examples
+   - "Describe the architecture" → System overview with component relationships
+4. **Accuracy**: Only reference code that exists in the provided context. If information is missing, explicitly state what's needed.
+5. **Code Flow**: When explaining logic, trace execution paths and data transformations clearly.
+6. **Dependencies**: Highlight imports, function calls, and module relationships when relevant.
+
+## Analysis Approach
+
+When AST or dependency information is available:
+- Use function/class definitions to explain structure
+- Reference dependency graphs to show relationships
+- Identify key patterns and design decisions
+- Note potential issues or improvements (if asked)
 
 ## Output Format
 
-Return the explanation in clear Markdown format.
+Provide explanations in well-structured Markdown:
+- Start with a brief summary (1-2 sentences)
+- Use sections for different aspects (Purpose, Key Components, Flow, etc.)
+- Include code snippets with syntax highlighting when referencing specific implementations
+- End with context or related information if helpful
+
+## Examples of Good Explanations
+
+**Good**: "The `title_case()` function converts strings to title case by capitalizing the first letter of each word. It handles edge cases including hyphenated words (e.g., 'state-of-the-art' → 'State-Of-The-Art') and preserves all-caps acronyms like NASA."
+
+**Bad**: "This function does some string manipulation." (too vague)
+
+**Good**: "The authentication flow consists of three phases: (1) credential validation in `auth.py:validate_user()`, (2) JWT token generation in `tokens.py:create_token()`, and (3) session storage in Redis via the `SessionManager` class."
+
+**Bad**: "It handles authentication." (lacks detail and structure)
 """
 
 
@@ -51,11 +78,11 @@ def explaining_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult
         console.print(f"[bold blue]Running codur-explaining node (iteration {iterations})...[/bold blue]")
 
     # Resolve LLM (uses default LLM)
-    # Use standard temperature for explanation (balanced creativity/accuracy)
+    # Use lower temperature for technical explanations (prioritize precision over creativity)
     llm = resolve_llm_for_model(
         config,
         None,
-        temperature=0.7,
+        temperature=0.5,
         json_mode=False
     )
 
@@ -100,31 +127,75 @@ def explaining_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult
 
 
 def _build_explaining_prompt(raw_messages) -> str:
-    """Build context-aware prompt from graph state messages."""
+    """Build context-aware prompt from graph state messages.
+
+    Extracts and organizes:
+    - User's explanation request
+    - File contents and code snippets
+    - AST information (function/class definitions, dependencies)
+    - Tool results (file trees, grep results, etc.)
+    - Previous conversation context
+    """
     messages = normalize_messages(raw_messages)
 
     challenge = None
-    context_parts = []
+    file_contents = []
+    ast_info = []
+    tool_results = []
+    conversation_context = []
 
     for message in messages:
-        if isinstance(message, HumanMessage) and challenge is None:
-            challenge = message.content
+        if isinstance(message, HumanMessage):
+            if challenge is None:
+                challenge = message.content
+            else:
+                # Additional user clarifications
+                conversation_context.append(f"User clarification: {message.content}")
         elif isinstance(message, SystemMessage):
             content = message.content
-            # Filter out verification errors if they exist (though unlikely for explanation)
-            if "Verification failed" not in content and "=== Expected Output ===" not in content:
-                context_parts.append(content)
-        elif isinstance(message, HumanMessage):
-            context_parts.append(message.content)
+            # Filter out verification errors (not relevant for explanations)
+            if "Verification failed" in content or "=== Expected Output ===" in content:
+                continue
+
+            # Categorize system messages by type
+            if "Tool results:" in content:
+                # Extract tool results
+                tool_results.append(content)
+            elif any(marker in content for marker in ["def ", "class ", "import ", "from "]):
+                # Looks like file content or code
+                file_contents.append(content)
+            elif any(marker in content for marker in ["AST", "dependencies", "function:", "class:"]):
+                # AST or dependency information
+                ast_info.append(content)
+            else:
+                # General context
+                conversation_context.append(content)
         elif isinstance(message, AIMessage):
-            # Include previous AI responses as context if relevant
-            context_parts.append(f"Previous response: {message.content}")
+            # Include previous AI responses for multi-turn conversations
+            content_str = message.content if isinstance(message.content, str) else str(message.content)
+            conversation_context.append(f"Previous explanation: {content_str}")
 
     if challenge is None:
-        challenge = messages[-1].content if messages else "No task provided."
+        # Fallback: use last message content
+        last_msg = messages[-1] if messages else None
+        if last_msg:
+            challenge = last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content)
+        else:
+            challenge = "No explanation request provided."
 
-    if context_parts:
-        context_text = "\n\n---\n\n".join(context_parts)
-        return f"EXPLANATION REQUEST:\n{challenge}\n\nADDITIONAL CONTEXT:\n{context_text}"
-    else:
-        return challenge
+    # Build structured prompt
+    prompt_parts = [f"EXPLANATION REQUEST:\n{challenge}"]
+
+    if file_contents:
+        prompt_parts.append(f"\nFILE CONTENTS:\n{chr(10).join(file_contents)}")
+
+    if ast_info:
+        prompt_parts.append(f"\nCODE STRUCTURE (AST/Dependencies):\n{chr(10).join(ast_info)}")
+
+    if tool_results:
+        prompt_parts.append(f"\nTOOL RESULTS:\n{chr(10).join(tool_results)}")
+
+    if conversation_context:
+        prompt_parts.append(f"\nADDITIONAL CONTEXT:\n{chr(10).join(conversation_context)}")
+
+    return "\n\n---\n\n".join(prompt_parts)

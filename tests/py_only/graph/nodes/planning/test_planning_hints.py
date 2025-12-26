@@ -9,6 +9,7 @@ from codur.graph.nodes.planning.strategies.greeting import GreetingStrategy
 from codur.graph.nodes.planning.strategies.file_operation import FileOperationStrategy
 from codur.graph.nodes.planning.strategies.code_fix import CodeFixStrategy
 from codur.graph.nodes.planning.types import ClassificationResult, TaskType
+from codur.graph.nodes.planning.strategies import prompt_utils
 
 class TestPlanningStrategies:
     def test_web_search_strategy(self):
@@ -114,3 +115,12 @@ class TestPlanningStrategies:
         assert result["next_action"] == "tool"
         assert result["tool_calls"][0]["tool"] == "read_file"
         assert result["tool_calls"][0]["args"]["path"] == "main.py"
+
+    def test_format_tool_suggestions_filters_ripgrep(self, monkeypatch):
+        monkeypatch.setattr(prompt_utils, "_rg_available", lambda: False)
+        suggestion = prompt_utils.format_tool_suggestions(
+            ["search_files", "ripgrep_search", "grep_files"]
+        )
+        assert "search_files" in suggestion
+        assert "ripgrep_search" not in suggestion
+        assert "grep_files" in suggestion

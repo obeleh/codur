@@ -6,6 +6,7 @@ from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from codur.config import CodurConfig
 from codur.providers.base import BaseLLMProvider, ProviderRegistry
+from codur.providers.utils import lazy_import
 
 
 class GroqProvider(BaseLLMProvider):
@@ -34,12 +35,11 @@ class GroqProvider(BaseLLMProvider):
         Raises:
             RuntimeError: If langchain-groq is not installed
         """
-        try:
-            from langchain_groq import ChatGroq
-        except ImportError as exc:
-            raise RuntimeError(
-                "Groq support requires langchain-groq. Install with `pip install langchain-groq`."
-            ) from exc
+        langchain_groq = lazy_import(
+            "langchain_groq",
+            "Groq support requires langchain-groq. Install with `pip install langchain-groq`."
+        )
+        ChatGroq = langchain_groq.ChatGroq
 
         kwargs = {"model": model, "temperature": temperature}
         if api_key:

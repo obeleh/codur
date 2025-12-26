@@ -61,6 +61,38 @@ class BaseAgent(ABC):
         """
         pass
 
+    def chat(self, messages: list[dict], **kwargs: Any) -> str:
+        """Execute a chat completion synchronously.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            **kwargs: Additional agent-specific parameters
+
+        Returns:
+            str: The assistant's response
+
+        Raises:
+            NotImplementedError: If the agent does not support chat
+            Exception: If execution fails
+        """
+        raise NotImplementedError(f"{self.name} does not support chat")
+
+    async def achat(self, messages: list[dict], **kwargs: Any) -> str:
+        """Execute a chat completion asynchronously.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            **kwargs: Additional agent-specific parameters
+
+        Returns:
+            str: The assistant's response
+
+        Raises:
+            NotImplementedError: If the agent does not support chat
+            Exception: If execution fails
+        """
+        raise NotImplementedError(f"{self.name} does not support chat")
+
     @abstractmethod
     def __repr__(self) -> str:
         """Return a string representation of the agent.
@@ -93,6 +125,49 @@ class BaseAgent(ABC):
     # ========================================================================
     # Shared Helper Methods
     # ========================================================================
+
+    def _run_sync(self, task: str, func: Any, *args: Any, **kwargs: Any) -> str:
+        """Run a synchronous task with standard logging and error handling.
+
+        Args:
+            task: The task description (for logging)
+            func: The callable to execute
+            *args: Positional arguments for func
+            **kwargs: Keyword arguments for func
+
+        Returns:
+            The result of func
+        """
+        try:
+            self._log_execution_start(task)
+            result = func(*args, **kwargs)
+            self._log_execution_complete(result)
+            return result
+        except Exception as e:
+            self._handle_execution_error(e)
+            # handle_execution_error raises, but mypy doesn't know that always
+            return ""
+
+    async def _run_async(self, task: str, func: Any, *args: Any, **kwargs: Any) -> str:
+        """Run an asynchronous task with standard logging and error handling.
+
+        Args:
+            task: The task description (for logging)
+            func: The awaitable to execute
+            *args: Positional arguments for func
+            **kwargs: Keyword arguments for func
+
+        Returns:
+            The result of func
+        """
+        try:
+            self._log_execution_start(task, is_async=True)
+            result = await func(*args, **kwargs)
+            self._log_execution_complete(result, is_async=True)
+            return result
+        except Exception as e:
+            self._handle_execution_error(e)
+            return ""
 
     def _get_agent_config(self, agent_name: str) -> dict:
         """Extract and merge agent-specific configuration.

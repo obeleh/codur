@@ -9,6 +9,7 @@ import json
 from typing import Callable, Optional
 
 from codur.graph.nodes.path_utils import extract_path_from_message, looks_like_path
+from codur.graph.nodes.planning.injectors import inject_followup_tools
 
 
 ToolCallList = list[dict]
@@ -45,31 +46,9 @@ class ToolDetector:
             if result:
                 all_tools.extend(result)
 
-        extended = detect_followup_tools(all_tools)
+        # Inject language-specific followup tools via the injector system
+        extended = inject_followup_tools(all_tools)
         return extended
-
-
-def detect_followup_tools(all_tools: ToolCallList) -> ToolCallList:
-    # When reading python files, also use python_ast_dependencies or python_ast_dependencies_multifile
-    python_paths = []
-    for tool in all_tools:
-        if tool.get("tool") == "read_file":
-            path = tool.get("args", {}).get("path", "")
-            if isinstance(path, str) and path.endswith(".py"):
-                python_paths.append(path)
-
-    if python_paths:
-        if len(python_paths) == 1:
-            all_tools.append({
-                "tool": "python_ast_dependencies",
-                "args": {"path": python_paths[0]}
-            })
-        else:
-            all_tools.append({
-                "tool": "python_ast_dependencies_multifile",
-                "args": {"paths": python_paths}
-            })
-    return all_tools
 
 
 def create_default_tool_detector() -> ToolDetector:
@@ -177,8 +156,18 @@ def create_default_tool_detector() -> ToolDetector:
         query = _extract_quoted(match.group(1)) or match.group(1).strip()
         return [{"tool": "search_files", "args": {"query": query}}]
 
+    def ripgrep_search(msg: str, msg_lower: str) -> Optional[ToolCallList]:
+        match = re.search(r"\b(?:ripgrep|rg)\b\s+(?:for\s+)?(.+?)(?:\s+in\s+([^\s]+))?$", msg, re.IGNORECASE)
+        if not match:
+            return None
+        pattern = _extract_quoted(match.group(1)) or match.group(1).strip()
+        args: dict[str, str] = {"pattern": pattern}
+        if match.group(2):
+            args["root"] = match.group(2).strip()
+        return [{"tool": "ripgrep_search", "args": args}]
+
     def grep_files(msg: str, msg_lower: str) -> Optional[ToolCallList]:
-        match = re.search(r"(?:grep|search)\s+for\s+(.+?)\s+in\s+([^\s]+)", msg, re.IGNORECASE)
+        match = re.search(r"(?:\bgrep\b|\bsearch\b)\s+for\s+(.+?)\s+in\s+([^\s]+)", msg, re.IGNORECASE)
         if not match:
             return None
         pattern = _extract_quoted(match.group(1)) or match.group(1).strip()
@@ -300,6 +289,7 @@ def create_default_tool_detector() -> ToolDetector:
         ToolPattern("list_files", list_files, priority=60),
         ToolPattern("list_dirs", list_dirs, priority=60),
         ToolPattern("search_files", search_files, priority=50),
+        ToolPattern("ripgrep_search", ripgrep_search, priority=55),
         ToolPattern("grep_files", grep_files, priority=50),
         ToolPattern("replace_in_file", replace_in_file, priority=50),
         ToolPattern("read_struct", read_struct, priority=40),

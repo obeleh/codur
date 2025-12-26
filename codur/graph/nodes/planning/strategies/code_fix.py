@@ -14,6 +14,7 @@ from codur.graph.nodes.planning.strategies.prompt_utils import (
     format_examples,
     format_tool_suggestions,
 )
+from codur.graph.nodes.planning.injectors import get_injector_for_file
 
 # Domain-specific patterns for code fix tasks
 _CODE_FIX_PATTERNS = PatternConfig(
@@ -110,6 +111,7 @@ class CodeFixStrategy:
         suggested_tools = format_tool_suggestions([
             "search_files",
             "grep_files",
+            "ripgrep_search",
             "python_ast_dependencies_multifile",
             "lint_python_files",
             "lint_python_tree",
@@ -118,11 +120,12 @@ class CodeFixStrategy:
             "python_dependency_graph",
         ])
         example_path = select_example_file(classification.detected_files)
-        example_tool_calls = [{"tool": "read_file", "args": {"path": example_path}}]
-        if example_path.endswith(".py"):
-            example_tool_calls.append(
-                {"tool": "python_ast_dependencies", "args": {"path": example_path}}
-            )
+        # Use injector to get language-specific example tool calls
+        injector = get_injector_for_file(example_path)
+        if injector:
+            example_tool_calls = injector.get_example_tool_calls(example_path)
+        else:
+            example_tool_calls = [{"tool": "read_file", "args": {"path": example_path}}]
         examples = [
             build_example_line(
                 f"Fix the bug in {example_path}",
@@ -147,8 +150,8 @@ class CodeFixStrategy:
         ]
         focus = (
             "**Task Focus: Code Fix**\n"
-            "- If a file path is known, call read_file first (python files auto-trigger AST deps).\n"
-            "- If no file path is known, call list_files to discover candidates, then read a likely .py file.\n"
+            "- If a file path is known, call read_file first (language-specific tools auto-injected via Tool Injectors).\n"
+            "- If no file path is known, call list_files to discover candidates, then read a likely file.\n"
             "- Prefer agent:codur-coding for coding challenges with docstrings/requirements.\n"
             f"- {suggested_tools}\n"
             "- Return ONLY a valid JSON object.\n"

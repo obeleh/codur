@@ -6,6 +6,7 @@ from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from codur.config import CodurConfig
 from codur.providers.base import BaseLLMProvider, ProviderRegistry
+from codur.providers.utils import lazy_import
 
 
 class OpenAIProvider(BaseLLMProvider):
@@ -34,12 +35,11 @@ class OpenAIProvider(BaseLLMProvider):
         Raises:
             RuntimeError: If langchain-openai is not installed
         """
-        try:
-            from langchain_openai import ChatOpenAI
-        except ImportError as exc:
-            raise RuntimeError(
-                "OpenAI support requires langchain-openai. Install with `pip install langchain-openai`."
-            ) from exc
+        langchain_openai = lazy_import(
+            "langchain_openai",
+            "OpenAI support requires langchain-openai. Install with `pip install langchain-openai`."
+        )
+        ChatOpenAI = langchain_openai.ChatOpenAI
 
         kwargs = {"model": model, "temperature": temperature}
         if api_key:

@@ -23,6 +23,16 @@ from codur.graph.nodes.planning import (
     llm_plan_node,
 )
 from codur.config import CodurConfig
+from codur.constants import (
+    AGENT_CODING,
+    AGENT_EXPLAINING,
+    REF_AGENT_CODING,
+    REF_AGENT_EXPLAINING,
+    ACTION_DELEGATE,
+    ACTION_TOOL,
+    ACTION_CONTINUE,
+    ACTION_END,
+)
 from codur.llm import create_llm, create_llm_profile
 
 
@@ -47,14 +57,14 @@ def should_continue_to_llm_plan(state: AgentState) -> str:
 def _route_based_on_decision(state: AgentState) -> str:
     """Route based on the planning decision (delegate, tool, or end)."""
     next_action = state.get("next_action")
-    if next_action == "delegate":
+    if next_action == ACTION_DELEGATE:
         selected_agent = state.get("selected_agent")
-        if selected_agent in ("agent:codur-coding", "codur-coding"):
+        if selected_agent in (REF_AGENT_CODING, AGENT_CODING):
             return "coding"
-        if selected_agent in ("agent:codur-explaining", "codur-explaining"):
+        if selected_agent in (REF_AGENT_EXPLAINING, AGENT_EXPLAINING):
             return "explaining"
         return "delegate"
-    elif next_action == "tool":
+    elif next_action == ACTION_TOOL:
         return "tool"
     else:
         return "end"

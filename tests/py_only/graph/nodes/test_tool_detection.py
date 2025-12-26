@@ -64,3 +64,55 @@ def test_write_file_accepts_valid_file_path() -> None:
     detector = create_default_tool_detector()
     result = detector.detect('write "hello world" to test.txt')
     assert result == [{"tool": "write_file", "args": {"path": "test.txt", "content": "hello world"}}]
+
+
+def test_markdown_file_injection() -> None:
+    """Test that markdown files get markdown_outline injected."""
+    detector = create_default_tool_detector()
+    result = detector.detect("read README.md")
+    # Should detect read_file + markdown_outline for .md file
+    assert result == [
+        {"tool": "read_file", "args": {"path": "README.md"}},
+        {"tool": "markdown_outline", "args": {"path": "README.md"}}
+    ]
+
+
+def test_markdown_file_with_fix_intent() -> None:
+    """Test that fix intent with markdown file triggers injection."""
+    detector = create_default_tool_detector()
+    result = detector.detect("Fix the table in @CONTRIBUTING.md")
+    # Should detect read_file + markdown_outline for .md file
+    assert result == [
+        {"tool": "read_file", "args": {"path": "CONTRIBUTING.md"}},
+        {"tool": "markdown_outline", "args": {"path": "CONTRIBUTING.md"}}
+    ]
+
+
+def test_json_tool_calls_with_python_file() -> None:
+    """Test JSON tool calls format with Python file injection."""
+    detector = create_default_tool_detector()
+    result = detector.detect('''
+    ```json
+    [{"tool": "read_file", "args": {"path": "utils.py"}}]
+    ```
+    ''')
+    # Should parse JSON and inject Python AST
+    assert len(result) == 2
+    assert result[0] == {"tool": "read_file", "args": {"path": "utils.py"}}
+    assert result[1]["tool"] == "python_ast_dependencies"
+    assert result[1]["args"]["path"] == "utils.py"
+
+
+def test_json_tool_calls_with_markdown_file() -> None:
+    """Test JSON tool calls format with Markdown file injection."""
+    detector = create_default_tool_detector()
+    result = detector.detect('''
+    ```json
+    [{"tool": "read_file", "args": {"path": "CHANGELOG.md"}}]
+    ```
+    ''')
+    # Should parse JSON and inject Markdown outline
+    assert len(result) == 2
+    assert result[0] == {"tool": "read_file", "args": {"path": "CHANGELOG.md"}}
+    assert result[1]["tool"] == "markdown_outline"
+    assert result[1]["args"]["path"] == "CHANGELOG.md"

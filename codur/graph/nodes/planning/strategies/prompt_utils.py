@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 
 from codur.config import CodurConfig
 from codur.graph.nodes.planning.prompt_builder import PlanningPromptBuilder
@@ -50,7 +51,20 @@ def format_examples(examples: list[str]) -> str:
 def format_tool_suggestions(tools: list[str]) -> str:
     if not tools:
         return ""
-    return f"Suggested tools: {', '.join(tools)}"
+    filtered = _filter_unavailable_tools(tools)
+    if not filtered:
+        return ""
+    return f"Suggested tools: {', '.join(filtered)}"
+
+
+def _filter_unavailable_tools(tools: list[str]) -> list[str]:
+    if _rg_available():
+        return tools
+    return [tool for tool in tools if tool != "ripgrep_search"]
+
+
+def _rg_available() -> bool:
+    return shutil.which("rg") is not None
 
 
 def normalize_agent_name(value: object, fallback: str) -> str:

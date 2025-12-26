@@ -28,6 +28,7 @@ dependencies = [
     "ddgs>=9.10.0",
     "psutil>=7.2.0",
     "prospector>=1.17.3",
+    "ripgrepy>=2.2.0",
 ]
 
 [project.scripts]

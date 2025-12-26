@@ -15,11 +15,14 @@ from codur.tools.filesystem import (
     list_dirs,
     file_tree,
     search_files,
-    grep_files,
     replace_in_file,
     inject_lines,
     replace_lines,
     line_count,
+)
+from codur.tools.ripgrep import (
+    grep_files,
+    ripgrep_search,
 )
 from codur.tools.structured import (
     read_json,
@@ -64,6 +67,11 @@ from codur.tools.duckduckgo import (
 )
 from codur.tools.pandoc import (
     convert_document,
+)
+from codur.tools.markdown import (
+    markdown_outline,
+    markdown_extract_sections,
+    markdown_extract_tables,
 )
 from codur.tools.python_ast import (
     python_ast_graph,
@@ -113,6 +121,7 @@ __all__ = [
     "file_tree",
     "search_files",
     "grep_files",
+    "ripgrep_search",
     "replace_in_file",
     "inject_lines",
     "replace_lines",
@@ -145,6 +154,9 @@ __all__ = [
     "location_lookup",
     "duckduckgo_search",
     "convert_document",
+    "markdown_outline",
+    "markdown_extract_sections",
+    "markdown_extract_tables",
     "python_ast_graph",
     "python_ast_outline",
     "python_ast_dependencies",

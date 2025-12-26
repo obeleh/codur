@@ -270,6 +270,9 @@ codur --version
 ```bash
 # Launch the terminal UI (basic, threading-based)
 codur tui
+
+# Or run directly via module
+python -m codur.tui
 ```
 
 **Note:** The TUI is currently experimental with limited functionality:

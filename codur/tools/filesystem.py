@@ -24,15 +24,6 @@ def _iter_files(root: Path) -> Iterable[Path]:
             yield Path(dirpath) / filename
 
 
-def _is_text_file(path: Path) -> bool:
-    try:
-        with open(path, "rb") as handle:
-            sample = handle.read(2048)
-        return b"\x00" not in sample
-    except OSError:
-        return False
-
-
 def read_file(
     path: str,
     root: str | Path | None = None,
@@ -239,36 +230,6 @@ def search_files(
             results.append(name)
             if len(results) >= max_results:
                 break
-    return results
-
-
-def grep_files(
-    pattern: str,
-    root: str | Path | None = None,
-    max_results: int = DEFAULT_MAX_RESULTS,
-    case_sensitive: bool = False,
-    state: AgentState | None = None,
-) -> list[dict]:
-    root_path = resolve_root(root)
-    flags = 0 if case_sensitive else re.IGNORECASE
-    regex = re.compile(pattern, flags)
-    results: list[dict] = []
-    for file_path in _iter_files(root_path):
-        if not _is_text_file(file_path):
-            continue
-        try:
-            with open(file_path, "r", encoding="utf-8", errors="replace") as handle:
-                for line_no, line in enumerate(handle, start=1):
-                    if regex.search(line):
-                        results.append({
-                            "file": str(file_path.relative_to(root_path)),
-                            "line": line_no,
-                            "text": line.rstrip(),
-                        })
-                        if len(results) >= max_results:
-                            return results
-        except OSError:
-            continue
     return results
 
 

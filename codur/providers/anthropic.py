@@ -4,9 +4,9 @@ Anthropic (Claude) LLM provider implementation.
 
 from typing import Optional
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_anthropic import ChatAnthropic
 from codur.config import CodurConfig
 from codur.providers.base import BaseLLMProvider, ProviderRegistry
+from codur.providers.utils import lazy_import
 
 
 class AnthropicProvider(BaseLLMProvider):
@@ -32,6 +32,12 @@ class AnthropicProvider(BaseLLMProvider):
         Returns:
             BaseChatModel: Configured ChatAnthropic instance
         """
+        langchain_anthropic = lazy_import(
+            "langchain_anthropic",
+            "Anthropic support requires langchain-anthropic. Install with `pip install langchain-anthropic`."
+        )
+        ChatAnthropic = langchain_anthropic.ChatAnthropic
+
         kwargs = {"model": model, "temperature": temperature}
         if api_key:
             kwargs["api_key"] = api_key

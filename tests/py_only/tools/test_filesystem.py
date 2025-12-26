@@ -6,7 +6,7 @@ from codur.tools.filesystem import (
     read_file, write_file, append_file, delete_file,
     copy_file, move_file, list_files, search_files,
     replace_in_file, line_count, inject_lines, replace_lines,
-    list_dirs, file_tree, grep_files, copy_file_to_dir
+    list_dirs, file_tree, copy_file_to_dir
 )
 
 @pytest.fixture
@@ -178,21 +178,6 @@ def test_file_tree_max_depth(temp_fs):
     results = file_tree(root=temp_fs, max_depth=0)
     assert "deep/" in results
     assert "deep/nested/" not in results
-
-
-def test_grep_files_case_sensitive_and_binary(temp_fs):
-    (temp_fs / "caps.txt").write_text("Hello World", encoding="utf-8")
-    (temp_fs / "lower.txt").write_text("hello world", encoding="utf-8")
-    (temp_fs / "binary.bin").write_bytes(b"\x00hello")
-    insensitive = grep_files("hello", root=temp_fs)
-    files = {entry["file"] for entry in insensitive}
-    assert "caps.txt" in files
-    assert "lower.txt" in files
-    assert "binary.bin" not in files
-    sensitive = grep_files("hello", root=temp_fs, case_sensitive=True)
-    files = {entry["file"] for entry in sensitive}
-    assert "lower.txt" in files
-    assert "caps.txt" not in files
 
 
 def test_copy_file_to_dir_create_dirs_false_raises(temp_fs):

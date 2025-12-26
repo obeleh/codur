@@ -70,11 +70,11 @@ class CodexAgent(BaseCLIAgent):
         Raises:
             Exception: If Codex execution fails
         """
-        self._log_execution_start(task)
-        cmd = self._build_command(task, sandbox=sandbox)
-        output = self._execute_cli(cmd, timeout=timeout, suppress_stderr=True)
-        self._log_execution_complete(output)
-        return output
+        def _execute_impl() -> str:
+            cmd = self._build_command(task, sandbox=sandbox)
+            return self._execute_cli(cmd, timeout=timeout, suppress_stderr=True)
+
+        return self._run_sync(task, _execute_impl)
 
     async def aexecute(
         self,
@@ -96,11 +96,11 @@ class CodexAgent(BaseCLIAgent):
         Raises:
             Exception: If Codex execution fails
         """
-        self._log_execution_start(task, is_async=True)
-        cmd = self._build_command(task, sandbox=sandbox)
-        output = await self._aexecute_cli(cmd, timeout=timeout, suppress_stderr=True)
-        self._log_execution_complete(output, is_async=True)
-        return output
+        async def _execute_impl() -> str:
+            cmd = self._build_command(task, sandbox=sandbox)
+            return await self._aexecute_cli(cmd, timeout=timeout, suppress_stderr=True)
+
+        return await self._run_async(task, _execute_impl)
 
     async def astream(self, task: str, sandbox: str = "workspace-write"):
         """

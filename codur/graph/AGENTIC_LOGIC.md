@@ -338,7 +338,7 @@ The LLM response must be valid JSON in one of these formats:
 
 **Supported Tools:**
 - File operations: `read_file`, `write_file`, `append_file`, `delete_file`, `copy_file`, `move_file`
-- Search: `search_files`, `grep_files`, `list_files`, `list_dirs`, `file_tree`
+- Search: `search_files`, `grep_files`, `ripgrep_search`, `list_files`, `list_dirs`, `file_tree`
 - Structured data: `read_json`, `write_json`, `read_yaml`, `write_yaml`, `read_ini`, `write_ini`
 - Git: `git_status`, `git_diff`, `git_log`, `git_stage_files`, `git_commit`
 - MCP: `list_mcp_tools`, `call_mcp_tool`, `read_mcp_resource`

@@ -77,20 +77,14 @@ class OllamaAgent(BaseAgent):
         Raises:
             Exception: If Ollama execution fails
         """
-        try:
-            self._log_execution_start(task)
-
+        def _execute_impl() -> str:
             prompt = task
             system_prompt = self.agent_config.get("system_prompt")
             if system_prompt:
                 prompt = f"{system_prompt}\n\nTask: {task}"
-            result = self.client.generate(prompt, stream=stream)
+            return self.client.generate(prompt, stream=stream)
 
-            self._log_execution_complete(result)
-            return result
-
-        except Exception as e:
-            self._handle_execution_error(e)
+        return self._run_sync(task, _execute_impl)
 
     async def aexecute(self, task: str) -> str:
         """
@@ -105,21 +99,15 @@ class OllamaAgent(BaseAgent):
         Raises:
             Exception: If Ollama execution fails
         """
-        try:
-            self._log_execution_start(task, is_async=True)
-
+        async def _execute_impl() -> str:
             # Run synchronous client in thread pool
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
+            return await loop.run_in_executor(
                 None,
                 lambda: self.client.generate(task, stream=False)
             )
 
-            self._log_execution_complete(result, is_async=True)
-            return result
-
-        except Exception as e:
-            self._handle_execution_error(e)
+        return await self._run_async(task, _execute_impl)
 
     async def astream(self, task: str) -> AsyncGenerator[str, None]:
         """
@@ -166,16 +154,12 @@ class OllamaAgent(BaseAgent):
         Raises:
             Exception: If chat fails
         """
-        try:
-            console.print(f"Chat with Ollama: {len(messages)} messages")
+        task_desc = f"Chat with {len(messages)} messages"
+        
+        def _chat_impl() -> str:
+            return self.client.chat(messages, stream=False)
 
-            result = self.client.chat(messages, stream=False)
-
-            console.print(f"Ollama chat response: {len(result)} characters")
-            return result
-
-        except Exception as e:
-            self._handle_execution_error(e, "chat")
+        return self._run_sync(task_desc, _chat_impl)
 
     async def achat(self, messages: list[dict]) -> str:
         """
@@ -190,20 +174,16 @@ class OllamaAgent(BaseAgent):
         Raises:
             Exception: If chat fails
         """
-        try:
-            console.print(f"[Async] Chat with Ollama: {len(messages)} messages")
+        task_desc = f"Chat with {len(messages)} messages"
 
+        async def _chat_impl() -> str:
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
+            return await loop.run_in_executor(
                 None,
                 lambda: self.client.chat(messages, stream=False)
             )
 
-            console.print(f"[Async] Ollama chat response: {len(result)} characters")
-            return result
-
-        except Exception as e:
-            self._handle_execution_error(e, "chat")
+        return await self._run_async(task_desc, _chat_impl)
 
     def list_models(self) -> list[dict]:
         """

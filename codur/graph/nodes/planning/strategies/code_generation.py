@@ -15,6 +15,7 @@ from codur.graph.nodes.planning.strategies.prompt_utils import (
     normalize_agent_name,
     format_tool_suggestions,
 )
+from codur.graph.nodes.planning.injectors import get_injector_for_file
 
 # Domain-specific patterns for code generation tasks
 _CODE_GENERATION_PATTERNS = PatternConfig(
@@ -109,11 +110,12 @@ class CodeGenerationStrategy:
             "read_ini",
         ])
         example_path = select_example_file(classification.detected_files)
-        example_tool_calls = [{"tool": "read_file", "args": {"path": example_path}}]
-        if example_path.endswith(".py"):
-            example_tool_calls.append(
-                {"tool": "python_ast_dependencies", "args": {"path": example_path}}
-            )
+        # Use injector to get language-specific example tool calls
+        injector = get_injector_for_file(example_path)
+        if injector:
+            example_tool_calls = injector.get_example_tool_calls(example_path)
+        else:
+            example_tool_calls = [{"tool": "read_file", "args": {"path": example_path}}]
         default_agent = normalize_agent_name(
             config.agents.preferences.default_agent,
             "agent:codur-coding",
@@ -142,7 +144,7 @@ class CodeGenerationStrategy:
         ]
         focus = (
             "**Task Focus: Code Generation**\n"
-            "- If a file path is known, call read_file first (python files auto-trigger AST deps).\n"
+            "- If a file path is known, call read_file first (language-specific tools auto-injected via Tool Injectors).\n"
             "- If no file path is known, delegate to a generation-capable agent.\n"
             "- Prefer agent:codur-coding for coding challenges with docstrings/requirements.\n"
             f"- {suggested_tools}\n"

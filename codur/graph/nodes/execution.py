@@ -22,6 +22,11 @@ from codur.graph.nodes.utils import (
     _resolve_agent_profile,
     _resolve_agent_reference,
 )
+from codur.constants import (
+    REF_AGENT_CODING,
+    ACTION_CONTINUE,
+    ACTION_END,
+)
 from codur.graph.state_operations import (
     is_verbose,
     get_messages,
@@ -337,8 +342,8 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 console.print("[dim]Tool read_file completed - delegating to codur-coding[/dim]")
             return {
                 "final_response": result,
-                "next_action": "continue",
-                "selected_agent": "agent:codur-coding",
+                "next_action": ACTION_CONTINUE,
+                "selected_agent": REF_AGENT_CODING,
             }
 
     if is_verbose(state):
@@ -377,7 +382,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 console.print(f"[dim]{verification_result['message']}[/dim]")
             return {
                 "final_response": result,
-                "next_action": "end",
+                "next_action": ACTION_END,
             }
         else:
             # Check for repeated errors (agent is stuck)
@@ -391,7 +396,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                     console.print(f"[red]✗ Repeated error detected - agent is stuck, stopping[/red]")
                 return {
                     "final_response": result,
-                    "next_action": "end",
+                    "next_action": ACTION_END,
                 }
 
             # Track this error for future checks
@@ -405,7 +410,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                         console.print(f"[dim]{repair_result['message']}[/dim]")
                     return {
                         "final_response": repair_result["message"],
-                        "next_action": "end",
+                        "next_action": ACTION_END,
                         "local_repair_attempted": True,
                     }
                 if is_verbose(state):
@@ -463,7 +468,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
 
             return {
                 "final_response": result,
-                "next_action": "continue",
+                "next_action": ACTION_CONTINUE,
                 "messages": pruned_messages,
                 "local_repair_attempted": True,
                 "error_hashes": error_history,
@@ -475,7 +480,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             console.print(f"[dim]Tool result: continuing to planning phase with context[/dim]")
         return {
             "final_response": None,
-            "next_action": "continue",  # Go back to planning to use this context
+            "next_action": ACTION_CONTINUE,  # Go back to planning to use this context
         }
 
     # Accept result if:
@@ -490,7 +495,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
 
     return {
         "final_response": result,
-        "next_action": "end",
+        "next_action": ACTION_END,
     }
 
 

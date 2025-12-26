@@ -114,6 +114,7 @@ class ComplexRefactorStrategy:
             "lint_python_tree",
             "search_files",
             "grep_files",
+            "ripgrep_search",
         ])
         default_agent = normalize_agent_name(
             config.agents.preferences.routing.get("multifile"),

@@ -90,12 +90,12 @@ class ClaudeCodeAgent(BaseCLIAgent):
         Raises:
             Exception: If execution fails
         """
-        self._log_execution_start(task)
-        prompt = self._build_prompt(task, context)
-        cmd = self._build_command(prompt)
-        output = self._execute_cli(cmd, timeout=timeout, capture_stderr=True)
-        self._log_execution_complete(output)
-        return output
+        def _execute_impl() -> str:
+            prompt = self._build_prompt(task, context)
+            cmd = self._build_command(prompt)
+            return self._execute_cli(cmd, timeout=timeout, capture_stderr=True)
+
+        return self._run_sync(task, _execute_impl)
 
     async def aexecute(
         self,
@@ -117,12 +117,12 @@ class ClaudeCodeAgent(BaseCLIAgent):
         Raises:
             Exception: If execution fails
         """
-        self._log_execution_start(task, is_async=True)
-        prompt = self._build_prompt(task, context)
-        cmd = self._build_command(prompt)
-        output = await self._aexecute_cli(cmd, timeout=timeout, capture_stderr=True)
-        self._log_execution_complete(output, is_async=True)
-        return output
+        async def _execute_impl() -> str:
+            prompt = self._build_prompt(task, context)
+            cmd = self._build_command(prompt)
+            return await self._aexecute_cli(cmd, timeout=timeout, capture_stderr=True)
+
+        return await self._run_async(task, _execute_impl)
 
     def execute_with_files(
         self,
@@ -200,9 +200,9 @@ class ClaudeCodeAgent(BaseCLIAgent):
         Raises:
             Exception: If chat fails
         """
-        try:
-            console.print(f"Chat with Claude Code: {len(messages)} messages")
+        task_desc = f"Chat with {len(messages)} messages"
 
+        def _chat_impl() -> str:
             # For now, just use the last user message
             # TODO: Implement proper multi-turn chat with history
             last_user_msg = None
@@ -216,8 +216,7 @@ class ClaudeCodeAgent(BaseCLIAgent):
 
             return self.execute(last_user_msg)
 
-        except Exception as e:
-            self._handle_execution_error(e, "chat")
+        return self._run_sync(task_desc, _chat_impl)
 
     def __repr__(self) -> str:
         return f"ClaudeCodeAgent(model={self.model}, command={self.command})"

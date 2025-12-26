@@ -5,6 +5,7 @@ Tool registry utilities for Codur.
 from __future__ import annotations
 
 import inspect
+import shutil
 from typing import Any
 
 import codur.tools as tool_module
@@ -40,12 +41,19 @@ def _format_signature(func: Any) -> str:
     return str(signature.replace(parameters=filtered))
 
 
+def _rg_available() -> bool:
+    return shutil.which("rg") is not None
+
+
 def list_tool_directory(state: object | None = None) -> list[dict]:
     """
     List available tools with signatures and short summaries.
     """
     items = []
+    has_rg = _rg_available()
     for name, func in sorted(_iter_tool_functions().items()):
+        if not has_rg and name == "ripgrep_search":
+            continue
         items.append({
             "name": name,
             "signature": _format_signature(func),

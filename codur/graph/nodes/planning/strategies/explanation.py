@@ -14,6 +14,7 @@ from codur.graph.nodes.planning.strategies.prompt_utils import (
     format_examples,
     format_tool_suggestions,
 )
+from codur.graph.nodes.planning.injectors import get_injector_for_file
 
 # Domain-specific patterns for explanation tasks
 _EXPLANATION_PATTERNS = PatternConfig(
@@ -118,15 +119,17 @@ class ExplanationStrategy:
             "python_ast_dependencies_multifile",
             "search_files",
             "grep_files",
+            "ripgrep_search",
             "file_tree",
             "list_dirs",
         ])
         example_path = select_example_file(classification.detected_files)
-        example_tool_calls = [{"tool": "read_file", "args": {"path": example_path}}]
-        if example_path.endswith(".py"):
-            example_tool_calls.append(
-                {"tool": "python_ast_dependencies", "args": {"path": example_path}}
-            )
+        # Use injector to get language-specific example tool calls
+        injector = get_injector_for_file(example_path)
+        if injector:
+            example_tool_calls = injector.get_example_tool_calls(example_path)
+        else:
+            example_tool_calls = [{"tool": "read_file", "args": {"path": example_path}}]
         examples = [
             build_example_line(
                 f"What does {example_path} do?",
@@ -151,7 +154,7 @@ class ExplanationStrategy:
         ]
         focus = (
             "**Task Focus: Explanation**\n"
-            "- If a file path is known, call read_file first (python files auto-trigger AST deps).\n"
+            "- If a file path is known, call read_file first (language-specific tools auto-injected via Tool Injectors).\n"
             "- If no file path is known, call list_files to discover candidates.\n"
             "- After tool results, you have two options:\n"
             "  1. Respond directly (action: 'respond') for simple questions.\n"

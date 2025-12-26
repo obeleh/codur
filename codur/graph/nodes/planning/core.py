@@ -28,6 +28,7 @@ from .tool_analysis import (
     tool_results_include_read_file,
     select_file_from_tool_results,
 )
+from .injectors import inject_followup_tools
 
 console = Console()
 
@@ -519,12 +520,11 @@ class PlanningOrchestrator:
 
                 # For multi-file scenarios, check if we've read all discovered files
                 discovered_files = self._extract_files_from_tool_results(messages)
-                unread_py_files = []
+                unread_files = []
                 if discovered_files:
-                    py_files = [f for f in discovered_files if f.endswith('.py')]
                     # Check which files have NOT been read yet
-                    unread_py_files = [
-                        f for f in py_files
+                    unread_files = [
+                        f for f in discovered_files
                         if not any(f"read_file:" in msg.content and f in msg.content
                                    for msg in messages
                                    if isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:"))
@@ -535,23 +535,16 @@ class PlanningOrchestrator:
 
                     if discovered_files:
                         # We have a list of files - read them
-                        py_files = [f for f in discovered_files if f.endswith('.py')]
-
-                        if py_files:
-                            # Read all Python files for multi-file scenarios
-                            files_to_read = py_files
+                        if unread_files:
+                            files_to_read = unread_files
 
                             tool_calls = [
                                 {"tool": "read_file", "args": {"path": f}}
                                 for f in files_to_read
                             ]
 
-                            # Add AST analysis if reading Python files
-                            for f in files_to_read:
-                                tool_calls.append({
-                                    "tool": "python_ast_dependencies",
-                                    "args": {"path": f}
-                                })
+                            # Inject language-specific tools via injector system
+                            tool_calls = inject_followup_tools(tool_calls)
 
                             if state.get("verbose"):
                                 console.print(
@@ -580,25 +573,21 @@ class PlanningOrchestrator:
                             "reasoning": "Discovering files before reading for coding context",
                             "tool_calls": [{"tool": "list_files", "args": {}}],
                         }
-                elif unread_py_files:
+                elif unread_files:
                     # Some files have been read but others haven't - read the remaining ones
                     if state.get("verbose"):
                         console.print(
                             f"[yellow]Intercepted delegate to codur-coding with partial file context. "
-                            f"Reading remaining files: {unread_py_files}...[/yellow]"
+                            f"Reading remaining files: {unread_files}...[/yellow]"
                         )
 
                     tool_calls = [
                         {"tool": "read_file", "args": {"path": f}}
-                        for f in unread_py_files
+                        for f in unread_files
                     ]
 
-                    # Add AST analysis for remaining files
-                    for f in unread_py_files:
-                        tool_calls.append({
-                            "tool": "python_ast_dependencies",
-                            "args": {"path": f}
-                        })
+                    # Inject language-specific tools via injector system
+                    tool_calls = inject_followup_tools(tool_calls)
 
                     # Convert decision to tool action
                     decision = {
