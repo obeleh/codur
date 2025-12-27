@@ -107,6 +107,7 @@ from codur.tools.code_modification import (
 )
 from codur.tools.validation import (
     validate_python_syntax,
+    run_python_file,
 )
 from codur.tools.rope_tools import (
     rope_find_usages,
@@ -503,6 +504,7 @@ def _build_tool_map(
         "validate_python_syntax": lambda args: _format_syntax_validation_result(
             validate_python_syntax(args.get("code", ""))
         ),
+        "run_python_file": lambda args: run_python_file(state=tool_state, **args),
     }
 
 
