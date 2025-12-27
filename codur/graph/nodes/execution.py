@@ -426,9 +426,15 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                     console.print(f"[yellow]⚠ Local repair failed[/yellow]")
                     console.print(f"[dim]{repair_result['message']}[/dim]")
 
-            # Verification failed - loop back with error message
+            # Verification failed - decide whether to retry with coding or replan
+            # After 3 failed attempts, route back to planning for a fresh approach
+            should_replan = iterations >= 3
+
             if is_verbose(state):
-                console.print(f"[yellow]⚠ Verification failed - will retry[/yellow]")
+                if should_replan:
+                    console.print(f"[yellow]⚠ Verification failed - routing back to planning for fresh approach[/yellow]")
+                else:
+                    console.print(f"[yellow]⚠ Verification failed - will retry with coding agent[/yellow]")
                 console.print(f"[dim]{verification_result['message'][:200]}[/dim]")
 
             # Build a structured error message for the agent
@@ -477,13 +483,20 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             current_messages = get_messages(state)
             pruned_messages = prune_messages(current_messages + [error_message])
 
-            return {
+            result_dict = {
                 "final_response": result,
                 "next_action": ACTION_CONTINUE,
                 "messages": pruned_messages,
                 "local_repair_attempted": True,
                 "error_hashes": error_history,
             }
+
+            # After 3 failed attempts, clear selected_agent to route back to planning
+            # This allows the planner to try a different approach
+            if should_replan:
+                result_dict["selected_agent"] = None
+
+            return result_dict
 
     # For tool results (file reads, etc), continue back to planning with the result as context
     if is_tool_result:

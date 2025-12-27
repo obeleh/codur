@@ -72,6 +72,17 @@ class OpenAIProvider(BaseLLMProvider):
         """
         return "openai"
 
+    @staticmethod
+    def supports_native_tools() -> bool:
+        """OpenAI supports native tool calling via function calling API."""
+        return True
+
+    @staticmethod
+    def bind_tools_to_llm(llm: BaseChatModel, tool_schemas: list[dict]) -> BaseChatModel:
+        """Bind tools with parallel_tool_calls enabled for OpenAI."""
+        # OpenAI supports parallel tool calls (multiple tools in one response)
+        return llm.bind_tools(tool_schemas, parallel_tool_calls=True)
+
 
 # Register the provider
 ProviderRegistry.register("openai", OpenAIProvider)

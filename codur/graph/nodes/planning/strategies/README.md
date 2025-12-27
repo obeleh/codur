@@ -1,24 +1,37 @@
-# Task Strategies Package
+# Planning strategies
 
-This package contains task-specific strategies for the planning system. Each strategy owns the domain knowledge for one task type:
+This package contains task-specific strategies used by the planning system.
 
-- **Discovery behavior** (Phase 0) - File listing, reading, etc.
-- **Prompt building** (Phase 2) - Task-specific LLM planning prompts
+## Roles in planning
 
-## How to Create a New Strategy
+Strategies contribute in three places:
 
-To add a new strategy for a task type:
+- Classification patterns and scoring for Phase 0 (quick classifier)
+- Optional Phase 0 resolution via `execute` (fast discovery or short-circuit)
+- Phase 2 prompt building via `build_planning_prompt`
 
-1.  **Define the TaskType**: If it's a new task type, add it to `TaskType` enum in `codur/graph/nodes/planning/types.py`.
-2.  **Create a New File**: Create a new Python file in this directory (e.g., `my_new_task.py`).
-3.  **Implement the Strategy**: Create a class that implements the `TaskStrategy` protocol defined in `base.py`.
+Phase 1 LLM pre-plan is a separate classifier and does not use strategies.
+
+## Creating a new strategy
+
+1. Add a new `TaskType` in `codur/graph/nodes/planning/types.py` if needed.
+2. Create a file in this directory (for example, `my_task.py`).
+3. Implement the `TaskStrategy` protocol from `base.py`:
 
 ```python
 from codur.graph.nodes.planning.strategies.base import TaskStrategy
 from codur.graph.nodes.types import PlanNodeResult
-# ... other imports
+from codur.graph.nodes.planning.types import ClassificationResult
+from codur.config import CodurConfig
+from langchain_core.messages import BaseMessage
 
-class MyNewTaskStrategy:
+class MyTaskStrategy:
+    def get_patterns(self):
+        ...
+
+    def compute_score(self, text_lower, words, detected_files, has_code_file):
+        ...
+
     def execute(
         self,
         classification: ClassificationResult,
@@ -26,34 +39,19 @@ class MyNewTaskStrategy:
         messages: list[BaseMessage],
         iterations: int,
         config: CodurConfig,
-        verbose: bool = False
+        verbose: bool = False,
     ) -> PlanNodeResult | None:
-        # Implementation logic here
-        # Return PlanNodeResult to resolve in Phase 0
-        # Return None to pass to next phase
         return None
 
-    def build_planning_prompt(
-        self,
-        classification: ClassificationResult,
-        config: CodurConfig,
-    ) -> str:
-        # Return a context-aware planning prompt for this task type
+    def build_planning_prompt(self, classification: ClassificationResult, config: CodurConfig) -> str:
         return "..."
 ```
 
-4.  **Register the Strategy**: Import and add your strategy instance to the `_STRATEGIES` dictionary in `__init__.py`.
+4. Register the strategy in `codur/graph/nodes/planning/strategies/__init__.py` and in the classifier registry.
 
-## Directory Structure
+## Design principles
 
-- `base.py`: Defines the `TaskStrategy` interface.
-- `__init__.py`: Registry and `get_strategy_for_task()` dispatcher.
-- `[task_type].py`: Task-specific implementations.
-- `prompt_utils.py`: Shared prompt building utilities.
-
-## Design Principles
-
-- **Speed**: Strategies should be fast and avoid LLM calls if possible.
-- **Discovery**: Use strategies to gather context (e.g., `list_files`) if information is missing.
-- **Conservative**: Phase 0 does discovery only; Phase 2 makes routing decisions.
-- **Domain Ownership**: Each strategy is the single source of truth for its task type.
+- Keep strategies deterministic and fast.
+- Avoid LLM calls inside strategies.
+- Use centralized utilities in `codur/graph/nodes/planning/strategies/prompt_utils.py` when possible.
+- Phase 0 should only do lightweight discovery; defer complex reasoning to Phase 2.

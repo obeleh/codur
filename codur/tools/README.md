@@ -1,19 +1,32 @@
-# Codur Tools
+# Codur tools
 
-Tools are plain Python functions that the tool runner can call. Keep them simple,
-safe, and easy to serialize.
+Tools are plain Python functions. They are discovered via a centralized registry, turned into schemas for tool calling, and executed through a single tool executor.
 
-## How To Add A Tool
+## How tools are discovered
 
-1) Create a module in `codur/tools/` with your function(s).
-2) Export the function in `codur/tools/__init__.py` and add it to `__all__`.
-3) Register the tool in `codur/graph/nodes/tools.py` so it can be executed.
-4) Add a short docstring summary. It shows up in the tool directory listing.
-5) If the tool touches files, use `resolve_path()` / `resolve_root()` and honor
-   `allow_outside_root`.
-6) Return JSON-serializable data and keep outputs reasonably small.
-7) Add any required dependencies to `pyproject.toml`.
-8) For write-capable git tools, check `tools.allow_git_write` in `codur.yaml`.
+- Export tools in `codur/tools/__init__.py` and add them to `__all__`.
+- `codur/tools/registry.py` reads `__all__` to build the tool directory.
+- `codur/tools/schema_generator.py` converts signatures into JSON schemas for tool calling.
+
+## How tools execute
+
+- `codur/graph/nodes/tool_executor.py` owns the execution map.
+- Tools receive `root`, `allow_outside_root`, and `state` so they can respect workspace boundaries and config.
+- Path safety uses `resolve_path` and `validate_file_access`, plus gitignore and secret guards.
+
+## Add a tool
+
+1. Create a module in `codur/tools/` with the tool function.
+2. Use centralized helpers like `resolve_path`, `resolve_root`, and `validate_file_access`.
+3. Export the tool in `codur/tools/__init__.py` and add it to `__all__`.
+4. Register the tool in the executor map inside `codur/graph/nodes/tool_executor.py`.
+5. Keep the first docstring line short; it is used for summaries.
+6. Return JSON-serializable output and keep responses small.
+7. Add tests when the tool affects core behavior.
+
+## Tool schemas
+
+The coding agent uses tool schemas when the provider supports native tool calling. If native tool calling is not supported, it falls back to JSON tool calls that are parsed from the response text.
 
 ## Example
 
@@ -23,6 +36,8 @@ from __future__ import annotations
 from pathlib import Path
 from codur.graph.state import AgentState
 from codur.utils.path_utils import resolve_path
+from codur.utils.validation import validate_file_access
+from codur.utils.ignore_utils import get_config_from_state
 
 
 def example_tool(
@@ -33,41 +48,12 @@ def example_tool(
 ) -> dict:
     """One-line summary shown in tool listings."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    config = get_config_from_state(state)
+    validate_file_access(target, Path(root) if root else Path.cwd(), config)
     return {"path": str(target)}
 ```
 
-## Tool Call Example
+## Notes
 
-```json
-{
-  "tool": "fetch_webpage",
-  "args": {
-    "url": "https://duckduckgo.com/?q=codur",
-    "cleanup_level": "serp",
-    "output_format": "markdown",
-    "include_html": false
-  }
-}
-```
-
-```json
-{
-  "tool": "python_ast_graph",
-  "args": {
-    "path": "codur/tools/webrequests.py",
-    "max_nodes": 400
-  }
-}
-```
-
-```json
-{
-  "tool": "python_dependency_graph",
-  "args": {
-    "root": ".",
-    "include_external": false,
-    "max_nodes": 500,
-    "max_edges": 1500
-  }
-}
-```
+- Tools can call agents through `agent_call` or `retry_in_agent`.
+- Prefer centralized utilities over local ad-hoc helpers.

@@ -77,3 +77,16 @@ def get_tool_help(name: str, state: object | None = None) -> dict:
         "doc": inspect.getdoc(func) or "",
         "module": getattr(func, "__module__", ""),
     }
+
+
+def get_tool_by_name(name: str) -> callable | None:
+    """Get tool function by name for schema generation.
+
+    Args:
+        name: Tool name (e.g., "read_file")
+
+    Returns:
+        Callable function or None if not found
+    """
+    tools = _iter_tool_functions()
+    return tools.get(name)

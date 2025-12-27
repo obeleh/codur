@@ -91,32 +91,41 @@ def create_llm_profile(
     config: CodurConfig,
     profile_name: str,
     json_mode: bool = False,
-    temperature: float | None = None
+    temperature: float | None = None,
+    tool_schemas: list[dict] | None = None,
 ) -> BaseChatModel:
     """Create an LLM instance for a specific profile using the provider registry.
 
     Args:
         config: Codur configuration
         profile_name: Name of the profile to use
-        json_mode: If True, force JSON output format (supported by Groq and Ollama)
+        json_mode: If True, force JSON output format (mutually exclusive with tool_schemas)
         temperature: Optional temperature override (overrides profile and default)
+        tool_schemas: Tool schemas to bind (mutually exclusive with json_mode)
 
     Returns:
         BaseChatModel: Configured LLM instance
 
     Raises:
-        ValueError: If profile doesn't exist or provider is unsupported
+        ValueError: If profile doesn't exist, provider is unsupported, or both json_mode and tool_schemas are provided
     """
+    # CRITICAL: json_mode and tool_schemas are mutually exclusive
+    if json_mode and tool_schemas:
+        raise ValueError(
+            "json_mode and tool_schemas are mutually exclusive. "
+            "json_mode sets tool_choice=none, which conflicts with tool calling."
+        )
+
     profile = config.llm.profiles.get(profile_name)
     if not profile:
         raise ValueError(f"Unknown LLM profile: {profile_name}")
 
     provider = profile.provider.lower()
-    
+
     # Resolve temperature: override > profile > default
     if temperature is None:
         temperature = profile.temperature if profile.temperature is not None else config.llm.default_temperature
-    
+
     model = profile.model
     api_key = _resolve_api_key(config, provider, profile.api_key_env)
 
@@ -129,10 +138,55 @@ def create_llm_profile(
             f"Available providers: {available}"
         )
 
-    # Use provider to create LLM instance
+    # Create base LLM (with json_mode if requested and no tools)
     # Try to pass json_mode if provider supports it
     try:
-        return provider_class.create(config, model, temperature, api_key, json_mode=json_mode)
+        llm = provider_class.create(config, model, temperature, api_key, json_mode=json_mode)
     except TypeError:
         # Provider doesn't support json_mode, fallback to basic call
-        return provider_class.create(config, model, temperature, api_key)
+        llm = provider_class.create(config, model, temperature, api_key)
+
+    # Bind tools if provided and supported
+    if tool_schemas:
+        if not provider_class.supports_native_tools():
+            raise ValueError(
+                f"Provider '{provider}' does not support native tool calling. "
+                f"Use json_mode with prompt injection instead."
+            )
+        llm = provider_class.bind_tools_to_llm(llm, tool_schemas)
+
+    return llm
+
+
+def create_llm_with_tools(
+    config: CodurConfig,
+    profile_name: str,
+    tool_schemas: list[dict],
+    temperature: float | None = None,
+) -> BaseChatModel:
+    """Create LLM with tools bound (convenience wrapper).
+
+    Args:
+        config: Codur configuration
+        profile_name: Profile name from config
+        tool_schemas: Tool schemas to bind
+        temperature: Optional temperature override
+
+    Returns:
+        LLM with tools bound
+
+    Example:
+        from codur.tools.schema_generator import get_function_schemas
+
+        schemas = get_function_schemas()
+        llm = create_llm_with_tools(config, "groq-qwen3-32b", schemas)
+        response = llm.invoke([HumanMessage(content="Read main.py")])
+        # response.tool_calls will contain structured tool calls
+    """
+    return create_llm_profile(
+        config,
+        profile_name,
+        json_mode=False,  # Explicitly disabled
+        tool_schemas=tool_schemas,
+        temperature=temperature,
+    )

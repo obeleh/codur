@@ -1,6 +1,4 @@
 """Dedicated coding node for the codur-coding agent."""
-from typing import Optional
-
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from rich.console import Console
 
@@ -8,25 +6,57 @@ from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import ExecuteNodeResult
 from codur.graph.nodes.utils import normalize_messages
-from codur.graph.nodes.planning.json_parser import JSONResponseParser
 from codur.graph.state_operations import (
     get_iterations,
     get_llm_calls,
     get_messages,
-    get_tool_calls,
     is_verbose,
 )
-from codur.utils.llm_calls import invoke_llm
-from codur.utils.llm_helpers import invoke_llm_with_fallback
-from codur.utils.tool_helpers import extract_tool_info, validate_tool_call
-from codur.graph.nodes.tool_executor import execute_tool_calls, get_tool_names
-from codur.tools.registry import list_tool_directory
+from codur.tools.schema_generator import get_function_schemas
+from codur.utils.llm_helpers import create_and_invoke_with_tool_support
+from codur.utils.tool_response_handler import extract_tool_calls_unified
+from codur.graph.nodes.tool_executor import execute_tool_calls
+
+"""
+NOTE:
+    - Tool calls (or error handling thereof) should be executed by execute_tool_calls
+    - No local optimizations that should be global ones
+    - No code in this file specific to the challenges, the agent should be generally applicable
+    - State operations should use codur.graph.state_operations
+"""
 
 console = Console()
 
 
-# Built-in system prompt for the coding agent
-CODING_AGENT_SYSTEM_PROMPT = """You are Codur Coding Agent, a specialized coding solver.
+# Build system prompt with available tools
+def _get_system_prompt_with_tools():
+    """Build system prompt with available tools listed."""
+    from codur.tools.registry import list_tool_directory
+
+    tools = list_tool_directory()
+    tool_names = sorted([t['name'] for t in tools])
+
+    # Categorize tools for readability
+    file_tools = [n for n in tool_names if any(x in n for x in ['read', 'write', 'file', 'replace', 'inject'])]
+    code_tools = [n for n in tool_names if any(x in n for x in ['python_ast', 'function', 'class', 'method', 'rope'])]
+    other_tools = [n for n in tool_names if n not in file_tools and n not in code_tools]
+
+    tools_section = f"""
+## Available Tools
+
+You have access to the following tools. Call them directly - they will be executed automatically.
+
+**File Operations**: {', '.join(sorted(file_tools)[:15])}{"..." if len(file_tools) > 15 else ""}
+
+**Code Analysis & Modification**: {', '.join(sorted(code_tools)[:20])}{"..." if len(code_tools) > 20 else ""}
+
+**Other**: {', '.join(sorted(other_tools)[:10])}{"..." if len(other_tools) > 10 else ""}
+
+**CRITICAL**: Only use tools from this list. Do NOT invent or create new tools.
+All code modification tools (replace_function, write_file, etc.) require a 'path' parameter.
+"""
+
+    return f"""You are Codur Coding Agent, a specialized coding solver.
 
 Your mission: Solve coding requests with correct, efficient, and robust implementations.
 
@@ -38,204 +68,18 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
 4. **Correctness Over Cleverness**: Prioritize working code over premature optimization.
 5. **Targeted Changes**: Prefer modifying specific functions/classes over rewriting the whole file when possible.
 6. **Test File Safety**: Do not overwrite existing test files unless the user is asking to write/update tests there.
-
+7. **Use Existing Results**: Check previous messages for tool call results - reuse them rather than re-reading files.
 {tools_section}
+## Important Notes
 
-## Output Format
-
-You MUST return a valid JSON object with the following structure:
-
-{
-  "thought": "Your reasoning about the problem and your plan...",
-  "tool_calls": [
-    {
-      "tool": "replace_function",
-      "args": {
-        "path": "path/to/file.py",
-        "function_name": "name_of_function",
-        "new_code": "def name_of_function(...):\\n    ..."
-      }
-    }
-  ]
-}
-
-Respond with ONLY a valid JSON object. Do not wrap it in backticks or add extra text.
-
-Examples:
-{
-  "thought": "Replace title_case with a correct implementation.",
-  "tool_calls": [
-    {
-      "tool": "replace_function",
-      "args": {
-        "path": "string_utils.py",
-        "function_name": "title_case",
-        "new_code": "def title_case(sentence: str) -> str:\\n    words = sentence.split()\\n    if not words:\\n        return \\\"\\\"\\n    result = []\\n    for i, word in enumerate(words):\\n        result.append(word.capitalize())\\n    return \\\" \\\".join(result)"
-      }
-    }
-  ]
-}
-
-{
-  "thought": "Replace the whole file to match the spec.",
-  "tool_calls": [
-    {
-      "tool": "replace_file_content",
-      "args": {
-        "path": "app.py",
-        "new_code": "def main():\\n    print(\\\"ok\\\")\\n\\nif __name__ == \\\"__main__\\\":\\n    main()"
-      }
-    }
-  ]
-}
-
-**Important**:
-- `new_code` must be complete, valid Python code (including indentation).
-- You can include multiple tool calls in the list if needed.
-- Prefer targeted edits (replace_function, replace_class, replace_method, replace_lines) over replace_file_content for tests.
-- Tool names must be used EXACTLY as listed above (e.g., "replace_function", NOT "repo_browser.replace_function" or any other prefix).
-
-**BAD Example (DO NOT DO THIS):**
-{
-  "thought": "Read the file to understand the code",
-  "tool_calls": [
-    {
-      "tool": "repo_browser.open_file",
-      "args": {
-        "path": "main.py",
-        "line_start": 1,
-        "line_end": 400
-      }
-    }
-  ]
-}
-This is WRONG because:
-1. The tool name "repo_browser.open_file" does not exist - there is no "repo_browser" prefix
-2. "open_file" is not a valid tool - use "read_file" instead if you need to read a file
-
-You MUST return a valid JSON object!
+- You MUST return valid tool calls - do NOT create fake tool names or prefixes
+- If you need to read a file multiple times in the same conversation, use the results from the first read
+- All tool arguments must match the schema exactly
+- Do NOT attempt to run code locally - use the tools provided
 """
 
-
-def _parse_signature_to_args(signature: str) -> dict[str, str]:
-    """Parse function signature into a JSON-friendly args dict."""
-    # Extract parameters from signature like "(path: str, new_code: str, ...)"
-    # Remove the parentheses and return type
-    sig = signature.strip()
-    if sig.startswith("(") and ")" in sig:
-        params_str = sig[1:sig.index(")")]
-    else:
-        return {}
-
-    args = {}
-    if not params_str.strip():
-        return args
-
-    # Split by comma, but be careful with nested types like list[str]
-    params = []
-    current = []
-    depth = 0
-    for char in params_str + ",":
-        if char in "[<":
-            depth += 1
-        elif char in "]>":
-            depth -= 1
-        if char == "," and depth == 0:
-            params.append("".join(current).strip())
-            current = []
-        else:
-            current.append(char)
-
-    for param in params:
-        if not param:
-            continue
-        # Parse "name: type = default" or "name: type"
-        if ":" in param:
-            name, rest = param.split(":", 1)
-            name = name.strip()
-            type_info = rest.split("=")[0].strip()
-
-            # Check if optional (has default or ends with | None)
-            is_optional = "=" in rest or "None" in type_info
-
-            # Simplify type info
-            if "|" in type_info:
-                type_info = type_info.split("|")[0].strip()
-            type_info = type_info.replace("'", "").replace('"', "")
-
-            if is_optional:
-                args[name] = f"{type_info} (optional)"
-            else:
-                args[name] = type_info
-
-    return args
-
-
-def _build_tools_section() -> str:
-    """Build the tools section dynamically from the tool registry in JSON format."""
-    tools = list_tool_directory()
-
-    # Filter for code modification tools (most relevant for coding agent)
-    code_mod_tools = [
-        t for t in tools
-        if isinstance(t, dict)
-        and "name" in t
-        and any(keyword in t["name"] for keyword in ["replace", "inject", "rope"])
-    ]
-
-    # Also include other useful tools
-    other_tools = [
-        t for t in tools
-        if isinstance(t, dict)
-        and "name" in t
-        and t not in code_mod_tools
-        and any(keyword in t["name"] for keyword in ["read", "write", "find", "validate"])
-    ]
-
-    lines = ["## Available Tools", ""]
-
-    if code_mod_tools:
-        lines.append("**Code Modification Tools:**")
-        lines.append("")
-        for i, tool in enumerate(code_mod_tools[:10], 1):  # Limit to top 10
-            name = tool["name"]
-            sig = tool.get("signature", "")
-            summary = tool.get("summary", "")
-            args = _parse_signature_to_args(sig)
-
-            # Build compact single-line JSON
-            args_json = ", ".join([f'"{k}": "{v}"' for k, v in args.items()])
-            json_example = f'{{"tool": "{name}", "args": {{{args_json}}}}}'
-
-            lines.append(f'{i}. **{name}**: {summary}')
-            lines.append(f'   {json_example}')
-            lines.append("")
-
-    if other_tools[:3]:  # Limit to top 3 useful tools
-        lines.append("**Other Useful Tools:**")
-        lines.append("")
-        for tool in other_tools[:3]:
-            name = tool["name"]
-            sig = tool.get("signature", "")
-            summary = tool.get("summary", "")
-            args = _parse_signature_to_args(sig)
-
-            # Build compact single-line JSON
-            args_json = ", ".join([f'"{k}": "{v}"' for k, v in args.items()])
-            json_example = f'{{"tool": "{name}", "args": {{{args_json}}}}}'
-
-            lines.append(f'- **{name}**: {summary}')
-            lines.append(f'  {json_example}')
-            lines.append("")
-
-    return "\n".join(lines) if lines else "## Available Tools\n\nNo tools available."
-
-
-def _build_system_prompt() -> str:
-    """Build the complete system prompt with dynamically discovered tools."""
-    tools_section = _build_tools_section()
-    print("tools section", tools_section)
-    return CODING_AGENT_SYSTEM_PROMPT.replace("{tools_section}", tools_section)
+# Initialize system prompt with tools
+CODING_AGENT_SYSTEM_PROMPT = _get_system_prompt_with_tools()
 
 
 def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
@@ -257,59 +101,94 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
 
     # Build context-aware prompt
     prompt = _build_coding_prompt(get_messages(state), iterations)
-    if verbose:
-        console.print(f"[dim]Constructed prompt:\n{prompt}[/dim]")
 
-    # Use built-in system prompt with dynamic tools
-    system_prompt = _build_system_prompt()
+    tool_schemas = get_function_schemas()  # All 70+ tools
+
+    # Simplified system prompt (no tool injection)
+    system_prompt = CODING_AGENT_SYSTEM_PROMPT
     messages = [
         SystemMessage(content=system_prompt),
         HumanMessage(content=prompt),
     ]
 
-    # Invoke LLM
+    # Invoke with tool support (native or JSON fallback)
     if verbose:
-        console.log("[bold cyan]Invoking codur-coding LLM (JSON mode)...[/bold cyan]")
-    
-    llm, response = invoke_llm_with_fallback(
-        config,
-        messages,
-        profile_name=config.llm.default_profile,
-        fallback_model=config.agents.preferences.fallback_model,
-        json_mode=True,
-        temperature=config.llm.generation_temperature,
-        invoked_by="coding.primary",
-        fallback_invoked_by="coding.fallback",
-        state=state,
-    )
+        console.log("[bold cyan]Invoking codur-coding LLM with native tools...[/bold cyan]")
+    try:
+        response, used_native = create_and_invoke_with_tool_support(
+            config,
+            messages,
+            tool_schemas,
+            profile_name=config.llm.default_profile,
+            temperature=config.llm.generation_temperature,
+            invoked_by="coding.primary",
+            state=state,
+        )
+    except Exception as exc:
+        # Fallback on error
+        if verbose:
+            console.log(f"[yellow]Primary invocation failed: {exc}[/yellow]")
 
-    result = response.content
+        # Try fallback model
+        fallback_profile = config.agents.preferences.fallback_model
+        if fallback_profile:
+            response, used_native = create_and_invoke_with_tool_support(
+                config,
+                messages,
+                tool_schemas,
+                profile_name=fallback_profile,
+                temperature=config.llm.generation_temperature,
+                invoked_by="coding.fallback",
+                state=state,
+            )
+        else:
+            raise
 
-    # Apply result and check for validation errors
-    error = _apply_coding_result(result, state, config)
-    if error:
-        console.log("[red]Validation/application error detected.[/red]")
-        console.log(f"[red]{error}[/red]")
-        
-        # Validation or application failed - retry once with explicit error
+    # Extract tool calls (works for both native and JSON)
+    tool_calls = extract_tool_calls_unified(response, used_native)
+
+    if not tool_calls:
+        # No tools called - return response as-is
+        return {
+            "agent_outcome": {
+                "agent": agent_name,
+                "result": response.content,
+                "status": "success",
+            },
+            "llm_calls": get_llm_calls(state),
+        }
+
+    # Execute tools
+    if verbose:
+        console.log(f"[cyan]Executing {len(tool_calls)} tool call(s)...[/cyan]")
+
+    execution = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="full")
+    errors = list(execution.errors)
+
+    for item in execution.results:
+        tool_name = item.get("tool")
+        output = item.get("output")
+        if isinstance(output, str):
+            if _looks_like_tool_failure(output):
+                errors.append(output)
+
+    if errors:
+        error_text = "\n".join(errors)
+
+        # Retry once on error
         if iterations >= 1:
-            # Already tried at least once, give up
             return {
                 "agent_outcome": {
                     "agent": agent_name,
-                    "result": f"Failed after retry: {error}",
+                    "result": f"Failed after retry: {error_text}",
                     "status": "error",
                 }
             }
 
         # Retry with error feedback
         retry_message = SystemMessage(
-            content=f"Previous attempt failed with error:\n{error}\n\nPlease ensure you return valid JSON and correct code."
+            content=f"Previous attempt failed with error:\n{error_text}\n\nPlease fix and try again."
         )
-        console.log("[yellow]Preparing retry prompt...[/yellow]")
-        if verbose:
-            console.print(f"[dim]{prompt}[/dim]")
-            
         messages_for_retry = [
             SystemMessage(content=system_prompt),
             retry_message,
@@ -317,41 +196,151 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
         ]
 
         if verbose:
-            console.log("[yellow]Retrying due to validation error...[/yellow]")
+            console.log("[yellow]Retrying due to tool execution error...[/yellow]")
 
-        response = invoke_llm(
-            llm,
+        response, used_native = create_and_invoke_with_tool_support(
+            config,
             messages_for_retry,
+            tool_schemas,
+            profile_name=config.llm.default_profile,
+            temperature=config.llm.generation_temperature,
             invoked_by="coding.retry",
             state=state,
-            config=config,
         )
-        result = response.content
 
-        # Try to apply again
-        error = _apply_coding_result(result, state, config)
-        if error:
+        # Extract and execute again
+        tool_calls = extract_tool_calls_unified(response, used_native)
+        if tool_calls:
+            execution = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="full")
+            errors = list(execution.errors)
+            if errors:
+                return {
+                    "agent_outcome": {
+                        "agent": agent_name,
+                        "result": f"Failed after retry: {'\n'.join(errors)}",
+                        "status": "error",
+                    }
+                }
+
+    # Tool execution successful - feed results back to LLM for continuation
+    if verbose:
+        console.print("[green]Tool execution completed - feeding results back to LLM[/green]")
+
+    # Implement tool loop: keep invoking LLM with tool results until it's done
+    max_tool_iterations = 5
+    tool_iteration = 1
+
+    # Determine the working file path from initial tool calls
+    working_file = None
+    for call in tool_calls:
+        args = call.get("args", {})
+        if "path" in args:
+            working_file = args["path"]
+            break
+
+    # Add tool results with clear instructions to use them and not re-read
+    tool_result_msg = f"Tool results:\n{execution.summary}"
+
+    # Track which files were read to prevent re-reading
+    files_read = set()
+    for call in tool_calls:
+        if call.get("tool") == "read_file":
+            path = call.get("args", {}).get("path")
+            if path:
+                files_read.add(path)
+
+    if working_file:
+        tool_result_msg += f"\n\n⚠️ You are working on: {working_file}"
+        tool_result_msg += f"\n⚠️ All code modification tools MUST include: path: {working_file}"
+
+    if files_read:
+        tool_result_msg += f"\n\n⚠️ Files already read (DO NOT read again): {', '.join(sorted(files_read))}"
+        tool_result_msg += f"\n⚠️ Use the content above to implement the solution - do NOT call read_file again!"
+
+    conversation_messages = messages + [
+        AIMessage(content=response.content),
+        SystemMessage(content=tool_result_msg)
+    ]
+
+    while tool_iteration < max_tool_iterations:
+        if verbose:
+            console.log(f"[cyan]Tool iteration {tool_iteration}: invoking LLM with tool results[/cyan]")
+
+        # Invoke LLM with accumulated conversation including tool results
+        try:
+            response, used_native = create_and_invoke_with_tool_support(
+                config,
+                conversation_messages,
+                tool_schemas,
+                profile_name=config.llm.default_profile,
+                temperature=config.llm.generation_temperature,
+                invoked_by=f"coding.tool_loop.{tool_iteration}",
+                state=state,
+            )
+        except Exception as e:
+            error_msg = str(e)
+            if verbose:
+                console.log(f"[red]LLM invocation failed in tool loop: {error_msg}[/red]")
+            # Return the error with more context
             return {
                 "agent_outcome": {
                     "agent": agent_name,
-                    "result": f"Failed after retry: {error}",
+                    "result": f"LLM error in tool loop iteration {tool_iteration}: {error_msg}",
                     "status": "error",
-                }
+                },
+                "llm_calls": get_llm_calls(state),
             }
 
+        # Extract tool calls from response
+        tool_calls = extract_tool_calls_unified(response, used_native)
+
+        if not tool_calls:
+            # No more tool calls - LLM is done, return final response
+            if verbose:
+                console.log(f"[green]LLM finished after {tool_iteration} tool iteration(s)[/green]")
+            return {
+                "agent_outcome": {
+                    "agent": agent_name,
+                    "result": response.content,
+                    "status": "success",
+                },
+                "llm_calls": get_llm_calls(state),
+            }
+
+        # Execute the new tool calls
+        if verbose:
+            console.log(f"[cyan]Executing {len(tool_calls)} tool call(s)...[/cyan]")
+
+        execution = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="full")
+
+        # Check for errors
+        errors = [item.get("output") for item in execution.results if _looks_like_tool_failure(item.get("output", ""))]
+        if errors:
+            error_text = "\n".join(errors)
+            if verbose:
+                console.log(f"[red]Tool execution failed: {error_text}[/red]")
+            return {
+                "agent_outcome": {
+                    "agent": agent_name,
+                    "result": f"Tool execution failed: {error_text}",
+                    "status": "error",
+                },
+                "llm_calls": get_llm_calls(state),
+            }
+
+        # Add to conversation and continue loop
+        conversation_messages.append(AIMessage(content=response.content))
+        conversation_messages.append(SystemMessage(content=f"Tool results:\n{execution.summary}"))
+        tool_iteration += 1
+
+    # Max iterations reached
     if verbose:
-        console.print(f"[dim]codur-coding response length: {len(result)} chars[/dim]")
-        if iterations > 0:
-            console.print(f"[yellow]Retry attempt {iterations}[/yellow]")
-        if len(result) < 500:
-            console.print(f"[dim]Response preview:\n{result}[/dim]")
-        else:
-            console.print(f"[dim]Response preview:\n{result[:400]}...[/dim]")
+        console.log(f"[yellow]Max tool iterations ({max_tool_iterations}) reached[/yellow]")
 
     return {
         "agent_outcome": {
             "agent": agent_name,
-            "result": result,
+            "result": response.content,
             "status": "success",
         },
         "llm_calls": get_llm_calls(state),
@@ -421,89 +410,6 @@ def _build_retry_prompt(challenge: str, verification_error: str, iterations: int
     return "\n".join(prompt_parts)
 
 
-def _apply_coding_result(result: str, state: AgentState, config: CodurConfig) -> Optional[str]:
-    """
-    Parse JSON result and apply tool calls.
-    """
-    parser = JSONResponseParser()
-    data = parser.parse(result)
-    if data is None:
-        return "Failed to parse JSON response."
-
-    tool_calls = data.get("tool_calls", [])
-    if not tool_calls:
-        # Fallback: check if 'code' is directly in the object (legacy/fallback)
-        if "code" in data:
-            default_path = _get_default_path(state, data)
-            if not default_path:
-                return "Could not determine target file path for code replacement."
-            tool_calls = [{
-                "tool": "replace_file_content",
-                "args": {"path": default_path, "new_code": data["code"]},
-            }]
-        else:
-            return "No 'tool_calls' found in JSON response."
-
-    if not isinstance(tool_calls, list):
-        return "Invalid 'tool_calls' format; expected a list."
-
-    data["tool_calls"] = tool_calls
-    code_tools = {
-        "replace_function",
-        "replace_class",
-        "replace_method",
-        "replace_file_content",
-        "inject_function",
-    }
-    supported_tools = get_tool_names(state, config)
-    common_default_path = _get_default_path(state, data)
-    for call in tool_calls:
-        error = validate_tool_call(call, supported_tools)
-        if error:
-            return error
-        tool_name, args = extract_tool_info(call)
-        call["args"] = args
-        if tool_name in code_tools and "path" not in args:
-            if not common_default_path:
-                return f"Missing 'path' for tool '{tool_name}' and could not determine a default."
-            args["path"] = common_default_path
-
-    execution = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="full")
-    errors = list(execution.errors)
-    for item in execution.results:
-        tool_name = item.get("tool")
-        output = item.get("output")
-        if isinstance(output, str):
-            if tool_name in code_tools and _looks_like_tool_failure(output):
-                errors.append(output)
-            elif tool_name in code_tools:
-                console.log(f"[green]{output}[/green]")
-
-    if errors:
-        return "\n".join(errors)
-
-    return None
-
-
 def _looks_like_tool_failure(output: str) -> bool:
-    return "Failed" in output or "Invalid" in output or "Could not find" in output
+    return bool("Failed" in output or "Invalid" in output or "Could not find" in output)
 
-
-def _get_default_path(state: AgentState, data: dict) -> Optional[str]:
-    """Try to determine the target file path from state or JSON data."""
-    # 1. Check if any tool call in the current response has a path
-    tool_calls = data.get("tool_calls", [])
-    for call in tool_calls:
-        path = call.get("args", {}).get("path")
-        if path:
-            return path
-
-    # 2. Check if the state has previous tool calls with a path (from planner)
-    planner_tool_calls = get_tool_calls(state)
-    for call in planner_tool_calls:
-        args = call.get("args", {})
-        path = args.get("path") or args.get("file_path")
-        if path:
-            return path
-
-    return None

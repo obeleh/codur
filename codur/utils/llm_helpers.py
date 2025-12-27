@@ -144,3 +144,130 @@ def invoke_llm_with_fallback(
         config=config,
     )
     return fallback_llm, response
+
+
+def create_and_invoke_with_tool_support(
+    config: CodurConfig,
+    messages: list[BaseMessage],
+    tool_schemas: list[dict],
+    profile_name: str | None = None,
+    temperature: float | None = None,
+    invoked_by: str = "unknown",
+    state: "AgentState | None" = None,
+) -> tuple[BaseMessage, bool]:
+    """
+    Invoke LLM with tools if supported, else JSON fallback.
+
+    Automatically detects provider capability:
+    - If provider supports native tools: bind tools and invoke
+    - If provider doesn't support native tools: use json_mode with prompt injection
+
+    Args:
+        config: Codur configuration
+        messages: Conversation messages
+        tool_schemas: Tool schemas to bind
+        profile_name: Profile name from config
+        temperature: Override temperature
+        invoked_by: Caller identifier for logging
+        state: Agent state
+
+    Returns:
+        Tuple of (response_message, used_native_tools)
+        - response_message: BaseMessage from LLM
+        - used_native_tools: True if native API used, False if JSON fallback
+
+    Example usage:
+        from codur.tools.schema_generator import get_function_schemas
+        from codur.utils.tool_response_handler import extract_tool_calls_unified
+
+        # Get tool schemas
+        schemas = get_function_schemas()
+
+        # Invoke with tool support
+        response, used_native = create_and_invoke_with_tool_support(
+            config, messages, schemas,
+            profile_name="groq-qwen3-32b",
+            invoked_by="coding.primary",
+            state=state
+        )
+
+        # Extract tool calls (works for both native and JSON)
+        tool_calls = extract_tool_calls_unified(response, used_native)
+
+        # Execute tools
+        if tool_calls:
+            execution = execute_tool_calls(tool_calls, state, config)
+    """
+    from codur.providers.base import ProviderRegistry
+    from codur.llm import create_llm_with_tools
+
+    # Resolve profile
+    resolved_profile = profile_name or config.llm.default_profile
+    if not resolved_profile:
+        raise ValueError("No profile specified and no default profile configured")
+
+    profile = config.llm.profiles.get(resolved_profile)
+    if not profile:
+        raise ValueError(f"Profile '{resolved_profile}' not found")
+
+    provider_name = profile.provider
+    provider_class = ProviderRegistry.get(provider_name)
+
+    # Check if provider supports native tool calling
+    if provider_class.supports_native_tools():
+        # Native path: bind tools and invoke
+        llm = create_llm_with_tools(
+            config,
+            resolved_profile,
+            tool_schemas,
+            temperature=temperature,
+        )
+        response = invoke_llm(
+            llm,
+            messages,
+            invoked_by=invoked_by,
+            state=state,
+            config=config,
+        )
+        return response, True  # Used native tools
+
+    else:
+        # JSON fallback path: inject tools in prompt, use json_mode
+        # Build tool descriptions for prompt
+        tool_descriptions = _build_tool_descriptions_for_prompt(tool_schemas)
+        system_message_content = (
+            f"Available tools:\n{tool_descriptions}\n\n"
+            "Return JSON with: {\"thought\": \"...\", \"tool_calls\": [{\"tool\": \"name\", \"args\": {...}}]}"
+        )
+
+        # Prepend system message
+        from langchain_core.messages import SystemMessage
+        enhanced_messages = [SystemMessage(content=system_message_content)] + list(messages)
+
+        # Create LLM with json_mode
+        llm = _create_llm(
+            config,
+            resolved_profile,
+            json_mode=True,
+            temperature=temperature,
+        )
+        response = invoke_llm(
+            llm,
+            enhanced_messages,
+            invoked_by=f"{invoked_by}.json_fallback",
+            state=state,
+            config=config,
+        )
+        return response, False  # Used JSON fallback
+
+
+def _build_tool_descriptions_for_prompt(tool_schemas: list[dict]) -> str:
+    """Build tool descriptions for prompt injection (JSON fallback)."""
+    lines = []
+    for schema in tool_schemas[:20]:  # Limit to prevent prompt bloat
+        name = schema["name"]
+        desc = schema.get("description", "")
+        params = schema.get("parameters", {}).get("properties", {})
+        args_str = ", ".join([f'"{k}": "{v.get("type", "string")}"' for k, v in params.items()])
+        lines.append(f'{{"tool": "{name}", "args": {{{args_str}}}}}  # {desc}')
+    return "\n".join(lines)

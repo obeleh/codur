@@ -189,6 +189,46 @@ class ToolExecutionResult:
     summary: str
 
 
+def _inject_missing_required_params(tool_calls: list[dict], state: AgentState) -> None:
+    """Inject missing required parameters when they can be inferred from context.
+
+    Shows warnings when parameters are injected, indicating the LLM omitted them.
+    """
+    CODE_TOOLS_REQUIRING_PATH = {
+        "replace_function", "replace_class", "replace_method",
+        "replace_file_content", "inject_function", "write_file",
+        "read_file", "append_file", "delete_file",
+    }
+
+    # Try to infer path from recent tool calls
+    from codur.graph.state_operations import get_tool_calls
+    try:
+        previous_calls = get_tool_calls(state)
+    except Exception:
+        previous_calls = []
+
+    inferred_path = None
+    for call in previous_calls:
+        args = call.get("args", {})
+        path = args.get("path") or args.get("file_path")
+        if path:
+            inferred_path = path
+            break
+
+    # Check and inject missing paths
+    for call in tool_calls:
+        tool_name = call.get("tool")
+        args = call.get("args", {})
+
+        if tool_name in CODE_TOOLS_REQUIRING_PATH and "path" not in args:
+            if inferred_path:
+                console.log(f"[yellow]⚠ Warning: Injecting missing 'path' for {tool_name}: {inferred_path}[/yellow]")
+                console.log(f"[dim]  LLM omitted required parameter - possible context/token limit issue[/dim]")
+                args["path"] = inferred_path
+            else:
+                console.log(f"[red]✗ {tool_name} missing required 'path' and none could be inferred[/red]")
+
+
 def execute_tool_calls(
     tool_calls: list[dict],
     state: AgentState,
@@ -206,6 +246,9 @@ def execute_tool_calls(
     if augment:
         tool_calls = _augment_tool_calls(tool_calls)
 
+    # Inject missing required parameters when possible (with warnings)
+    _inject_missing_required_params(tool_calls, state)
+
     results = []
     errors = []
     last_read_file_output = None
@@ -217,13 +260,13 @@ def execute_tool_calls(
     i = 0
     while i < len(tool_calls):
         call = tool_calls[i]
-        if config.verbose:
-            console.log(f"Executing tool call: {call}")
         tool_name = call.get("tool")
         args = call.get("args", {})
         if not isinstance(args, dict):
             args = {}
         _normalize_tool_args(args)
+        if config.verbose:
+            console.log(f"Executing tool call: {_format_tool_call_for_log(tool_name, args)}")
 
         # For agent_call, inject file_contents from the most recent read_file result
         if tool_name == "agent_call" and last_read_file_output is not None:
@@ -519,6 +562,11 @@ def _normalize_tool_args(args: dict) -> None:
             args[key] = _strip_at_prefix(value)
         elif isinstance(value, list):
             args[key] = [_strip_at_prefix(item) if isinstance(item, str) else item for item in value]
+
+
+def _format_tool_call_for_log(tool_name: Optional[str], args: dict) -> dict:
+    """Render a log-friendly tool call dict without internal fields."""
+    return {"tool": tool_name, "args": dict(args) if isinstance(args, dict) else {}}
 
 
 def _strip_at_prefix(value: str) -> str:

@@ -86,6 +86,18 @@ class OllamaProvider(BaseLLMProvider):
         """
         return "ollama"
 
+    @staticmethod
+    def supports_native_tools() -> bool:
+        """Ollama does NOT support native tool calling (local models)."""
+        return False
+
+    @staticmethod
+    def bind_tools_to_llm(llm: BaseChatModel, tool_schemas: list[dict]) -> BaseChatModel:
+        """Ollama doesn't support native tools - use JSON fallback."""
+        raise NotImplementedError(
+            "Ollama does not support native tool calling. Use json_mode with prompt injection instead."
+        )
+
 
 # Register the provider
 ProviderRegistry.register("ollama", OllamaProvider)

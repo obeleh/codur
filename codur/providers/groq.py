@@ -72,6 +72,17 @@ class GroqProvider(BaseLLMProvider):
         """
         return "groq"
 
+    @staticmethod
+    def supports_native_tools() -> bool:
+        """Groq supports native tool calling (via OpenAI-compatible API)."""
+        return True
+
+    @staticmethod
+    def bind_tools_to_llm(llm: BaseChatModel, tool_schemas: list[dict]) -> BaseChatModel:
+        """Bind tools for Groq."""
+        # Groq uses OpenAI-compatible API
+        return llm.bind_tools(tool_schemas)
+
 
 # Register the provider
 ProviderRegistry.register("groq", GroqProvider)

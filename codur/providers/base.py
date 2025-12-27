@@ -64,6 +64,38 @@ class BaseLLMProvider(ABC):
         pass
 
     @staticmethod
+    @abstractmethod
+    def supports_native_tools() -> bool:
+        """Return True if provider supports native API tool calling.
+
+        Returns:
+            True if provider supports llm.bind_tools() natively, False otherwise
+        """
+        pass
+
+    @staticmethod
+    def bind_tools_to_llm(llm: BaseChatModel, tool_schemas: list[dict]) -> BaseChatModel:
+        """Bind tools to LLM instance.
+
+        Default implementation uses LangChain's bind_tools() method.
+        Providers can override for custom behavior.
+
+        Args:
+            llm: Language model instance to bind tools to
+            tool_schemas: List of JSON schemas for tools
+
+        Returns:
+            LLM instance with tools bound
+
+        Raises:
+            NotImplementedError: If provider doesn't support native tools
+        """
+        # Note: This is a default implementation, but since supports_native_tools()
+        # is abstract, each provider will define if it's supported
+        # This will be called only if the provider returns True for supports_native_tools()
+        return llm.bind_tools(tool_schemas)
+
+    @staticmethod
     def _resolve_api_key_env(config: CodurConfig, provider_name: str, default_env: str) -> str:
         """Resolve API key environment variable name for a provider.
 

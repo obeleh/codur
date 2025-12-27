@@ -66,6 +66,17 @@ class AnthropicProvider(BaseLLMProvider):
         """
         return "anthropic"
 
+    @staticmethod
+    def supports_native_tools() -> bool:
+        """Anthropic Claude supports native tool calling."""
+        return True
+
+    @staticmethod
+    def bind_tools_to_llm(llm: BaseChatModel, tool_schemas: list[dict]) -> BaseChatModel:
+        """Bind tools for Anthropic Claude."""
+        # Use default implementation (no parallel_tool_calls parameter)
+        return llm.bind_tools(tool_schemas)
+
 
 # Register the provider
 ProviderRegistry.register("anthropic", AnthropicProvider)
