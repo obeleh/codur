@@ -115,6 +115,11 @@ class ComplexRefactorStrategy:
             "search_files",
             "grep_files",
             "ripgrep_search",
+            "rope_find_usages",
+            "rope_find_definition",
+            "rope_rename_symbol",
+            "rope_move_module",
+            "rope_extract_method",
         ])
         default_agent = normalize_agent_name(
             config.agents.preferences.routing.get("multifile"),

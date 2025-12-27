@@ -6,6 +6,7 @@ from langchain_core.messages import BaseMessage, SystemMessage
 
 from codur.config import CodurConfig
 from codur.tools.registry import list_tool_directory
+from codur.utils.validation import require_config
 
 
 # System prompt for planning (DEPRECATED - use PlanningPromptBuilder.build_system_prompt instead)
@@ -17,8 +18,11 @@ class PlanningPromptBuilder:
 
     def build_system_prompt(self) -> str:
         default_agent = self.config.agents.preferences.default_agent
-        if not default_agent:
-            raise ValueError("agents.preferences.default_agent must be configured")
+        require_config(
+            default_agent,
+            "agents.preferences.default_agent",
+            "agents.preferences.default_agent must be configured",
+        )
 
         tools = list_tool_directory()
         tool_names = [t["name"] for t in tools if isinstance(t, dict) and "name" in t]
@@ -42,7 +46,6 @@ class PlanningPromptBuilder:
 5. If user asks code generation (no specific file) → use action: "delegate"
 6. For bug fixes, debugging, or tasks requiring iteration on a file → read file first, then delegate with context
 7. For simple file operations (move/copy/delete) → use tool, not delegate
-8. When you call read_file on a .py file, also call python_ast_dependencies on the same path
 9. If the task is a code fix/generation and no file is mentioned, call list_files first to discover likely involved files, then read a likely .py file
 
 **WEB SEARCH & RESEARCH:**

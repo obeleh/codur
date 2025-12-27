@@ -88,6 +88,14 @@ def test_markdown_file_with_fix_intent() -> None:
     ]
 
 
+def test_rename_symbol_detection() -> None:
+    detector = create_default_tool_detector()
+    result = detector.detect("rename foo to bar in @app.py")
+    assert result == [
+        {"tool": "rope_rename_symbol", "args": {"path": "app.py", "symbol": "foo", "new_name": "bar"}}
+    ]
+
+
 def test_json_tool_calls_with_python_file() -> None:
     """Test JSON tool calls format with Python file injection."""
     detector = create_default_tool_detector()

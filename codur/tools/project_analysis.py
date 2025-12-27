@@ -14,16 +14,30 @@ from typing import Iterator
 
 from codur.constants import DEFAULT_MAX_RESULTS
 from codur.graph.state import AgentState
-from codur.tools.filesystem import EXCLUDE_DIRS
+from codur.utils.ignore_utils import (
+    get_config_from_state,
+    get_exclude_dirs,
+    is_gitignored,
+    load_gitignore,
+    should_include_hidden,
+    should_respect_gitignore,
+)
 from codur.utils.path_utils import resolve_path, resolve_root
+from codur.utils.validation import validate_file_access
 
 DEFAULT_MAX_NODES = 2000
 DEFAULT_MAX_EDGES = 4000
 
 
-def _iter_python_files(root: Path, exclude_folders: list[str] | None = None) -> list[Path]:
+def _iter_python_files(
+    root: Path,
+    exclude_folders: list[str] | None = None,
+    config: object | None = None,
+) -> list[Path]:
     files: list[Path] = []
-    default_excludes = set(EXCLUDE_DIRS)
+    default_excludes = get_exclude_dirs(config)
+    include_hidden = should_include_hidden(config)
+    gitignore_spec = load_gitignore(root) if should_respect_gitignore(config) else None
     
     # Pre-process exclude folders for platform compatibility
     norm_excludes = []
@@ -31,32 +45,29 @@ def _iter_python_files(root: Path, exclude_folders: list[str] | None = None) -> 
         norm_excludes = [ex.replace("/", os.sep) for ex in exclude_folders]
 
     for dirpath, dirnames, filenames in os.walk(root):
-        # 1. Standard exclusions
-        dirnames[:] = [d for d in dirnames if d not in default_excludes]
-        
-        # 2. Custom exclusions (path-based)
-        if norm_excludes:
-            allowed_dirs = []
-            for d in dirnames:
-                full_path = Path(dirpath) / d
-                try:
-                    rel_path = full_path.relative_to(root)
-                    s_rel = str(rel_path)
-                    
-                    should_exclude = False
-                    for ex in norm_excludes:
-                        if s_rel == ex or s_rel.startswith(ex + os.sep):
-                            should_exclude = True
-                            break
-                    
-                    if not should_exclude:
-                        allowed_dirs.append(d)
-                except ValueError:
-                    # Should not happen if traversing inside root, but strictly safe
-                    allowed_dirs.append(d)
-            dirnames[:] = allowed_dirs
+        rel_dir = Path(dirpath).relative_to(root)
+        filtered_dirs: list[str] = []
+        for dirname in dirnames:
+            if dirname in default_excludes:
+                continue
+            if not include_hidden and dirname.startswith("."):
+                continue
+            rel_path = rel_dir / dirname
+            if gitignore_spec and is_gitignored(rel_path, root, gitignore_spec, is_dir=True):
+                continue
+            if norm_excludes:
+                s_rel = str(rel_path)
+                if any(s_rel == ex or s_rel.startswith(ex + os.sep) for ex in norm_excludes):
+                    continue
+            filtered_dirs.append(dirname)
+        dirnames[:] = filtered_dirs
 
         for filename in filenames:
+            if not include_hidden and filename.startswith("."):
+                continue
+            rel_path = rel_dir / filename
+            if gitignore_spec and is_gitignored(rel_path, root, gitignore_spec, is_dir=False):
+                continue
             if filename.endswith(".py"):
                 files.append(Path(dirpath) / filename)
     return files
@@ -129,17 +140,18 @@ def python_dependency_graph(
     Build a Python module dependency graph and return DOT output.
     """
     root_path = resolve_root(root)
+    config = get_config_from_state(state)
     file_paths: list[Path] = []
 
     if paths:
         for raw in paths:
             target = resolve_path(raw, root_path, allow_outside_root=allow_outside_root)
             if target.is_dir():
-                file_paths.extend(_iter_python_files(target, exclude_folders=exclude_folders))
+                file_paths.extend(_iter_python_files(target, exclude_folders=exclude_folders, config=config))
             elif target.is_file() and target.suffix == ".py":
                 file_paths.append(target)
     else:
-        file_paths = _iter_python_files(root_path, exclude_folders=exclude_folders)
+        file_paths = _iter_python_files(root_path, exclude_folders=exclude_folders, config=config)
 
     module_map: dict[str, Path] = {}
     for file_path in sorted(set(file_paths)):
@@ -155,6 +167,13 @@ def python_dependency_graph(
 
     for module_name, file_path in module_map.items():
         try:
+            validate_file_access(
+                file_path,
+                root_path,
+                config,
+                operation="read",
+                allow_outside_root=allow_outside_root,
+            )
             source = file_path.read_text(encoding="utf-8", errors="replace")
             tree = ast.parse(source, filename=str(file_path))
         except SyntaxError as exc:
@@ -394,17 +413,18 @@ def deep_python_dependency_graph(
     Build a deep dependency graph including classes, methods, and functions.
     """
     root_path = resolve_root(root)
+    config = get_config_from_state(state)
     file_paths: list[Path] = []
 
     if paths:
         for raw in paths:
             target = resolve_path(raw, root_path, allow_outside_root=allow_outside_root)
             if target.is_dir():
-                file_paths.extend(_iter_python_files(target, exclude_folders=exclude_folders))
+                file_paths.extend(_iter_python_files(target, exclude_folders=exclude_folders, config=config))
             elif target.is_file() and target.suffix == ".py":
                 file_paths.append(target)
     else:
-        file_paths = _iter_python_files(root_path, exclude_folders=exclude_folders)
+        file_paths = _iter_python_files(root_path, exclude_folders=exclude_folders, config=config)
 
     module_map: dict[str, Path] = {}
     for file_path in sorted(set(file_paths)):
@@ -421,6 +441,13 @@ def deep_python_dependency_graph(
 
     for module_name, file_path in module_map.items():
         try:
+            validate_file_access(
+                file_path,
+                root_path,
+                config,
+                operation="read",
+                allow_outside_root=allow_outside_root,
+            )
             source = file_path.read_text(encoding="utf-8", errors="replace")
             tree = ast.parse(source, filename=str(file_path))
         except (SyntaxError, OSError) as exc:
@@ -525,17 +552,18 @@ def python_unused_code(
     Identify unused code using vulture.
     """
     root_path = resolve_root(root)
+    config = get_config_from_state(state)
     file_paths: list[Path] = []
 
     if paths:
         for raw in paths:
             target = resolve_path(raw, root_path, allow_outside_root=allow_outside_root)
             if target.is_dir():
-                file_paths.extend(_iter_python_files(target, exclude_folders=exclude_folders))
+                file_paths.extend(_iter_python_files(target, exclude_folders=exclude_folders, config=config))
             elif target.is_file() and target.suffix == ".py":
                 file_paths.append(target)
     else:
-        file_paths = _iter_python_files(root_path, exclude_folders=exclude_folders)
+        file_paths = _iter_python_files(root_path, exclude_folders=exclude_folders, config=config)
 
     module_map: dict[str, Path] = {}
     for file_path in sorted(set(file_paths)):
@@ -744,6 +772,7 @@ def code_quality(
 ) -> dict:
     """Run Prospector and return structured code-quality results."""
     root_path = resolve_root(root)
+    config = get_config_from_state(state)
 
     try:
         from prospector.config import ProspectorConfig
@@ -767,7 +796,7 @@ def code_quality(
     else:
         target_paths = [root_path]
 
-    ignore_paths = sorted(set(EXCLUDE_DIRS) | set(exclude_folders or []))
+    ignore_paths = sorted(set(get_exclude_dirs(config)) | set(exclude_folders or []))
     ignore_patterns = exclude_patterns[:] if exclude_patterns else []
 
     runs: list[dict] = []
@@ -824,7 +853,7 @@ def code_quality(
 
     for path in target_paths:
         if path.is_dir():
-            total_files += len(_iter_python_files(path, exclude_folders=exclude_folders))
+            total_files += len(_iter_python_files(path, exclude_folders=exclude_folders, config=config))
         else:
             total_files += 1
 

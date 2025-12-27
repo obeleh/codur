@@ -12,6 +12,8 @@ from codur.config import CodurConfig
 from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS
 from codur.graph.state import AgentState
 from codur.utils.path_utils import resolve_root, resolve_path
+from codur.utils.text_helpers import truncate_chars
+from codur.utils.validation import require_tool_permission
 
 
 _INDEX_FLAGS = (
@@ -40,12 +42,6 @@ def _open_repo(root: str | Path | None) -> pygit2.Repository:
     return pygit2.Repository(repo_path)
 
 
-def _truncate(text: str, max_bytes: int) -> str:
-    if len(text) <= max_bytes:
-        return text
-    return text[:max_bytes] + "\n... [truncated]"
-
-
 def _resolve_config(config: CodurConfig | None, state: AgentState | None) -> CodurConfig:
     if config is not None:
         return config
@@ -57,8 +53,12 @@ def _resolve_config(config: CodurConfig | None, state: AgentState | None) -> Cod
 
 
 def _require_git_write_enabled(config: CodurConfig) -> None:
-    if not config.tools.allow_git_write:
-        raise ValueError("Git write tools are disabled. Set tools.allow_git_write: true in codur.yaml.")
+    require_tool_permission(
+        config,
+        "tools.allow_git_write",
+        "Git write tools",
+        "Git write tools are disabled. Set tools.allow_git_write: true in codur.yaml.",
+    )
 
 
 def _repo_workdir(repo: pygit2.Repository) -> Path:
@@ -202,7 +202,7 @@ def git_diff(
             chunks.append(text)
 
     diff_text = "\n".join(chunks)
-    return _truncate(diff_text, max_bytes)
+    return truncate_chars(diff_text, max_chars=max_bytes)
 
 
 def git_log(

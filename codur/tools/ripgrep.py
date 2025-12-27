@@ -15,7 +15,7 @@ from ripgrepy import Ripgrepy, RipGrepNotFound
 
 from codur.constants import DEFAULT_MAX_RESULTS
 from codur.graph.state import AgentState
-from codur.tools.filesystem import EXCLUDE_DIRS
+from codur.utils.ignore_utils import get_config_from_state, get_exclude_dirs, should_respect_gitignore
 from codur.utils.path_utils import resolve_root
 
 _DEFAULT_MAX_DEPTH = 50
@@ -23,11 +23,8 @@ _DEFAULT_MAX_COUNT = 10_000
 
 
 def _resolve_exclude_dirs(state: AgentState | None) -> Iterable[str]:
-    if state and hasattr(state, "get_config"):
-        config = state.get_config()
-        if config and getattr(config, "tools", None) and config.tools.exclude_dirs:
-            return config.tools.exclude_dirs
-    return EXCLUDE_DIRS
+    config = get_config_from_state(state)
+    return get_exclude_dirs(config)
 
 
 def _rg_available() -> bool:
@@ -43,9 +40,11 @@ def _apply_common_flags(
     globs: Iterable[str] | None,
     types: Iterable[str] | None,
     exclude_dirs: Iterable[str],
+    respect_gitignore: bool,
 ) -> None:
     rg.json()
-    rg.no_ignore()
+    if not respect_gitignore:
+        rg.no_ignore()
     if hidden:
         rg.hidden()
     if fixed_strings:
@@ -197,6 +196,7 @@ def ripgrep_search(
         return []
     root_path = resolve_root(root)
     exclude_dirs = _resolve_exclude_dirs(state)
+    respect_gitignore = should_respect_gitignore(get_config_from_state(state))
     if not _rg_available():
         raise ValueError("ripgrep not found")
     try:
@@ -211,6 +211,7 @@ def ripgrep_search(
         globs=globs,
         types=types,
         exclude_dirs=exclude_dirs,
+        respect_gitignore=respect_gitignore,
     )
     output = rg.run().as_string
     return _parse_ripgrep_json(output, root_path, max_results)

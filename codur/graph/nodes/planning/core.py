@@ -11,11 +11,13 @@ from rich.console import Console
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import PlanNodeResult
-from codur.graph.nodes.utils import normalize_messages
+from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose
 from codur.graph.nodes.non_llm_tools import run_non_llm_tools
 from codur.llm import create_llm_profile
 from codur.utils.retry import LLMRetryStrategy
 from codur.utils.llm_calls import invoke_llm, LLMCallLimitExceeded
+from codur.utils.llm_helpers import create_and_invoke
+from codur.utils.validation import require_config
 
 from .decision_handler import PlanningDecisionHandler
 from .prompt_builder import PlanningPromptBuilder
@@ -51,17 +53,17 @@ def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
 
     If resolved, routes directly. If uncertain, passes to llm-pre-plan.
     """
-    messages = normalize_messages(state.get("messages"))
-    iterations = state.get("iterations", 0)
+    messages = get_messages(state)
+    iterations = get_iterations(state)
 
-    if state.get("verbose"):
+    if is_verbose(state):
         console.print("[bold blue]Planning (Phase 0: Pattern Matching)...[/bold blue]")
 
     # Step 1: Try instant resolution for trivial cases
     if config.runtime.detect_tool_calls_from_text:
         non_llm_result = run_non_llm_tools(messages, state)
         if non_llm_result:
-            if state.get("verbose"):
+            if is_verbose(state):
                 console.print("[green]✓ Pattern resolved instantly[/green]")
             return non_llm_result
 
@@ -73,7 +75,7 @@ def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
 
     classification = quick_classify(messages, config)
 
-    if state.get("verbose"):
+    if is_verbose(state):
         console.print(f"[dim]Classification: {classification.task_type.value} "
                      f"(confidence: {classification.confidence:.0%})[/dim]")
         if classification.candidates:
@@ -87,16 +89,16 @@ def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
         messages,
         iterations,
         config,
-        verbose=state.get("verbose", False)
+        verbose=is_verbose(state)
     )
 
     if result:
-        if state.get("verbose"):
+        if is_verbose(state):
             console.print("[green]✓ Pattern resolved via strategy[/green]")
         return result
 
     # No pattern match - pass to next phase
-    if state.get("verbose"):
+    if is_verbose(state):
         next_phase = "LLM pre-plan" if config.planning.use_llm_pre_plan else "full LLM planning"
         console.print(f"[dim]No patterns matched, moving to {next_phase}[/dim]")
 
@@ -124,18 +126,18 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
     """
     # If LLM pre-plan is disabled, skip directly to full planning
     if not config.planning.use_llm_pre_plan:
-        if state.get("verbose"):
+        if is_verbose(state):
             console.print("[dim]LLM pre-plan disabled, passing to full planning[/dim]")
         return {
             "next_action": "continue_to_llm_plan",
-            "iterations": state.get("iterations", 0),
+            "iterations": get_iterations(state),
             "classification": state.get("classification"),
         }
 
-    messages = normalize_messages(state.get("messages"))
-    iterations = state.get("iterations", 0)
+    messages = get_messages(state)
+    iterations = get_iterations(state)
 
-    if state.get("verbose"):
+    if is_verbose(state):
         console.print("[bold blue]Planning (Phase 1: LLM Classification)...[/bold blue]")
 
     # Get classification from Phase 0 if available
@@ -170,6 +172,9 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
   "reasoning": "brief explanation"
 }
 
+Only use file_operation when the user explicitly asks to move/copy/delete/rename files.
+If the user asks to implement/fix code in a file, classify as code_fix or code_generation.
+
 **Examples:**
 
 User: "Hello!"
@@ -178,11 +183,17 @@ User: "Hello!"
 User: "Fix the bug in main.py"
 {"task_type": "code_fix", "confidence": 0.9, "detected_files": ["main.py"], "suggested_action": "delegate", "reasoning": "Bug fix request with file path"}
 
+User: "Fix the bug in @main.py"
+{"task_type": "code_fix", "confidence": 0.9, "detected_files": ["main.py"], "suggested_action": "delegate", "reasoning": "Bug fix request with @file path"}
+
 User: "What does app.py do?"
 {"task_type": "explanation", "confidence": 0.85, "detected_files": ["app.py"], "suggested_action": "tool", "reasoning": "Explanation request for specific file"}
 
 User: "Write a sorting function"
 {"task_type": "code_generation", "confidence": 0.8, "detected_files": [], "suggested_action": "delegate", "reasoning": "New code generation request"}
+
+User: "Implement title case in @main.py"
+{"task_type": "code_generation", "confidence": 0.85, "detected_files": ["main.py"], "suggested_action": "delegate", "reasoning": "Code generation request with @file path"}
 
 User: "What's the weather in Paris?"
 {"task_type": "web_search", "confidence": 0.9, "detected_files": [], "suggested_action": "tool", "reasoning": "Real-time weather data request"}
@@ -193,27 +204,23 @@ User: "hey fix main.py"
 Respond with ONLY valid JSON matching the schema above.""")
 
     try:
-        # Use default profile (Groq) with JSON mode
-        planning_llm = create_llm_profile(
+        response = create_and_invoke(
             config,
-            config.llm.default_profile,
-            json_mode=True,
-            temperature=0.2  # Low temperature for deterministic classification
-        )
-
-        response = invoke_llm(
-            planning_llm,
             [system_prompt, HumanMessage(content=user_message)],
+            profile_name=config.llm.default_profile,
+            json_mode=True,
+            temperature=0.2,  # Low temperature for deterministic classification
             invoked_by="planning.llm_pre_plan",
             state=state,
-            config=config,
         )
 
         # Parse LLM response
-        import json
-        llm_result = json.loads(response.content)
+        parser = JSONResponseParser()
+        llm_result = parser.parse(response.content)
+        if llm_result is None:
+            raise ValueError("Failed to parse LLM pre-plan JSON response")
 
-        if state.get("verbose"):
+        if is_verbose(state):
             console.print(f"[dim]LLM classification: {llm_result.get('task_type')} "
                          f"(confidence: {llm_result.get('confidence', 0):.0%})[/dim]")
 
@@ -237,11 +244,11 @@ Respond with ONLY valid JSON matching the schema above.""")
                 pass
 
         # Pass to Phase 2 for routing decisions (Phase 1 only handles greetings)
-        if state.get("verbose"):
+        if is_verbose(state):
             console.print("[dim]Passing to Phase 2 for agent routing and planning[/dim]")
 
     except Exception as exc:
-        if state.get("verbose"):
+        if is_verbose(state):
             console.print(f"[yellow]LLM pre-plan failed: {exc}[/yellow]")
 
     # Pass to Phase 2 for full analysis
@@ -271,15 +278,15 @@ class PlanningOrchestrator:
         if "config" not in state:
             raise ValueError("AgentState must include config")
 
-        if state.get("verbose"):
+        if is_verbose(state):
             console.print("[bold blue]Planning (Phase 2: Full LLM Planning)...[/bold blue]")
 
         def _with_llm_calls(result: PlanNodeResult) -> PlanNodeResult:
-            result["llm_calls"] = state.get("llm_calls", 0)
+            result["llm_calls"] = get_llm_calls(state)
             return result
 
-        messages = normalize_messages(state.get("messages"))
-        iterations = state.get("iterations", 0)
+        messages = get_messages(state)
+        iterations = get_iterations(state)
 
         tool_results_present = any(
             isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:")
@@ -290,7 +297,7 @@ class PlanningOrchestrator:
         classification = state.get("classification")
         if not classification:
             classification = quick_classify(messages, self.config)
-            if state.get("verbose"):
+            if is_verbose(state):
                 console.print(f"[dim]Classification (re-evaluated): {classification.task_type.value} "
                              f"(confidence: {classification.confidence:.0%})[/dim]")
                 if classification.candidates:
@@ -360,7 +367,7 @@ class PlanningOrchestrator:
                 invoked_by="planning.llm_plan",
             )
             content = response.content
-            if state.get("verbose"):
+            if is_verbose(state):
                 console.print(f"[dim]LLM content: {content}[/dim]")
         except Exception as exc:
             if isinstance(exc, LLMCallLimitExceeded):
@@ -368,10 +375,13 @@ class PlanningOrchestrator:
             if "Failed to validate JSON" in str(exc):
                 console.print("  PLANNING ERROR - LLM returned invalid JSON", style="red bold on yellow")
 
-            if not self.config.agents.preferences.default_agent:
-                raise ValueError("agents.preferences.default_agent must be configured") from exc
             default_agent = self.config.agents.preferences.default_agent
-            if state.get("verbose"):
+            require_config(
+                default_agent,
+                "agents.preferences.default_agent",
+                "agents.preferences.default_agent must be configured",
+            )
+            if is_verbose(state):
                 console.print(f"[red]Planning failed: {str(exc)}[/red]")
                 console.print(f"[yellow]Falling back to default agent: {default_agent}[/yellow]")
             return _with_llm_calls({
@@ -442,9 +452,12 @@ class PlanningOrchestrator:
                             "iterations": iterations + 1,
                             "llm_debug": llm_debug,
                         })
-                if not self.config.agents.preferences.default_agent:
-                    raise ValueError("agents.preferences.default_agent must be configured")
                 default_agent = self.config.agents.preferences.default_agent
+                require_config(
+                    default_agent,
+                    "agents.preferences.default_agent",
+                    "agents.preferences.default_agent must be configured",
+                )
                 decision = {
                     "action": "delegate",
                     "agent": default_agent,
@@ -546,7 +559,7 @@ class PlanningOrchestrator:
                             # Inject language-specific tools via injector system
                             tool_calls = inject_followup_tools(tool_calls)
 
-                            if state.get("verbose"):
+                            if is_verbose(state):
                                 console.print(
                                     f"[yellow]Intercepted delegate to codur-coding without file context. "
                                     f"Reading {files_to_read} first...[/yellow]"
@@ -561,7 +574,7 @@ class PlanningOrchestrator:
                             }
                     else:
                         # No files discovered yet - list files first
-                        if state.get("verbose"):
+                        if is_verbose(state):
                             console.print(
                                 "[yellow]Intercepted delegate to codur-coding without file discovery. "
                                 "Listing files first...[/yellow]"
@@ -575,7 +588,7 @@ class PlanningOrchestrator:
                         }
                 elif unread_files:
                     # Some files have been read but others haven't - read the remaining ones
-                    if state.get("verbose"):
+                    if is_verbose(state):
                         console.print(
                             f"[yellow]Intercepted delegate to codur-coding with partial file context. "
                             f"Reading remaining files: {unread_files}...[/yellow]"
@@ -614,9 +627,12 @@ class PlanningOrchestrator:
                 "raw_response": content[:500],
             }
 
-            if not self.config.agents.preferences.default_agent:
-                raise ValueError("agents.preferences.default_agent must be configured")
             default_agent = self.config.agents.preferences.default_agent
+            require_config(
+                default_agent,
+                "agents.preferences.default_agent",
+                "agents.preferences.default_agent must be configured",
+            )
             console.print(f"  Falling back to default agent: {default_agent}", style="yellow")
 
             return _with_llm_calls({

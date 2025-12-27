@@ -15,7 +15,7 @@ from pathlib import Path
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from codur.config import CodurConfig
-from codur.graph.nodes.path_utils import extract_file_paths
+from codur.utils.path_extraction import extract_file_paths
 
 from codur.graph.nodes.planning.types import (
     TaskType,

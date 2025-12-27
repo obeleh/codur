@@ -30,6 +30,13 @@ def has_mutation_tool(tool_calls: list[dict]) -> bool:
         "write_ini",
         "set_ini_value",
         "inject_function",
+        "replace_function",
+        "replace_class",
+        "replace_method",
+        "replace_file_content",
+        "rope_rename_symbol",
+        "rope_move_module",
+        "rope_extract_method",
     }
     for call in tool_calls or []:
         tool_name = call.get("tool")

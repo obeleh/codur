@@ -12,9 +12,9 @@ import warnings
 import threading
 import os
 import re
+from pathlib import Path
 from datetime import datetime
 from pathspec import PathSpec
-from pathspec.patterns import GitWildMatchPattern
 warnings.filterwarnings(
     "ignore",
     message="Core Pydantic V1 functionality isn't compatible with Python 3.14 or greater.",
@@ -31,7 +31,14 @@ from textual.theme import Theme
 from rich.panel import Panel
 from typing import Optional
 
-from codur.tools.filesystem import EXCLUDE_DIRS
+from codur.utils.ignore_utils import (
+    get_exclude_dirs,
+    is_gitignored,
+    is_hidden_path,
+    load_gitignore,
+    should_include_hidden,
+    should_respect_gitignore,
+)
 from codur.tui_components import AgentStatus, FileSearchScreen
 from codur.tui_style import TUI_CSS
 
@@ -197,31 +204,21 @@ class CodurTUI(App):
 
     def _load_gitignore(self, root: str) -> PathSpec | None:
         """Load and parse .gitignore patterns from the repository root."""
-        gitignore_path = os.path.join(root, ".gitignore")
-        if not os.path.exists(gitignore_path):
+        if not should_respect_gitignore(self.config):
             return None
+        return load_gitignore(Path(root))
 
-        try:
-            with open(gitignore_path, "r", encoding="utf-8") as f:
-                patterns = f.read().splitlines()
-            # Filter out empty lines and comments
-            patterns = [p for p in patterns if p.strip() and not p.strip().startswith("#")]
-            return PathSpec.from_lines(GitWildMatchPattern, patterns)
-        except (IOError, OSError):
-            return None
-
-    def _is_ignored(self, path: str, spec: PathSpec | None, is_dir: bool = False) -> bool:
+    def _is_ignored(self, path: str, root: str, spec: PathSpec | None, is_dir: bool = False) -> bool:
         """Check if a path is ignored by gitignore patterns or hardcoded excludes."""
-        # Check hardcoded exclude directories
-        if is_dir and os.path.basename(path) in EXCLUDE_DIRS:
+        exclude_dirs = get_exclude_dirs(self.config)
+        if is_dir and os.path.basename(path) in exclude_dirs:
             return True
 
-        # Check gitignore patterns
+        if not should_include_hidden(self.config) and is_hidden_path(Path(path)):
+            return True
+
         if spec:
-            # For directories, check both with and without trailing slash
-            if is_dir:
-                return spec.match_file(path) or spec.match_file(path + "/")
-            return spec.match_file(path)
+            return is_gitignored(Path(path), Path(root), spec, is_dir=is_dir)
 
         return False
 
@@ -238,6 +235,7 @@ class CodurTUI(App):
                 d for d in dirnames
                 if not self._is_ignored(
                     os.path.relpath(os.path.join(dirpath, d), root),
+                    root,
                     gitignore_spec,
                     is_dir=True
                 )
@@ -253,7 +251,7 @@ class CodurTUI(App):
             for filename in filenames:
                 full_path = os.path.join(dirpath, filename)
                 rel_path = os.path.relpath(full_path, root)
-                if not self._is_ignored(rel_path, gitignore_spec, is_dir=False):
+                if not self._is_ignored(rel_path, root, gitignore_spec, is_dir=False):
                     results.append(rel_path)
 
         return results

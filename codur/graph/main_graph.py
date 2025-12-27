@@ -34,11 +34,12 @@ from codur.constants import (
     ACTION_END,
 )
 from codur.llm import create_llm, create_llm_profile
+from codur.graph.state_operations import get_next_action, get_selected_agent
 
 
 def should_continue_to_llm_pre_plan(state: AgentState) -> str:
     """Route from pattern_plan to llm_pre_plan."""
-    next_action = state.get("next_action")
+    next_action = get_next_action(state)
     if next_action == "continue_to_llm_pre_plan":
         return "llm_pre_plan"
     # If resolved in pattern_plan, route based on the decision
@@ -47,7 +48,7 @@ def should_continue_to_llm_pre_plan(state: AgentState) -> str:
 
 def should_continue_to_llm_plan(state: AgentState) -> str:
     """Route from llm-pre-plan to llm-plan."""
-    next_action = state.get("next_action")
+    next_action = get_next_action(state)
     if next_action == "continue_to_llm_plan":
         return "llm_plan"
     # If resolved in llm-pre-plan, route based on the decision
@@ -56,9 +57,9 @@ def should_continue_to_llm_plan(state: AgentState) -> str:
 
 def _route_based_on_decision(state: AgentState) -> str:
     """Route based on the planning decision (delegate, tool, or end)."""
-    next_action = state.get("next_action")
+    next_action = get_next_action(state)
     if next_action == ACTION_DELEGATE:
-        selected_agent = state.get("selected_agent")
+        selected_agent = get_selected_agent(state)
         if selected_agent in (REF_AGENT_CODING, AGENT_CODING):
             return "coding"
         if selected_agent in (REF_AGENT_EXPLAINING, AGENT_EXPLAINING):

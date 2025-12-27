@@ -8,7 +8,7 @@ import re
 import json
 from typing import Callable, Optional
 
-from codur.graph.nodes.path_utils import extract_path_from_message, looks_like_path
+from codur.utils.path_extraction import extract_path_from_message, looks_like_path
 from codur.graph.nodes.planning.injectors import inject_followup_tools
 
 
@@ -47,7 +47,7 @@ class ToolDetector:
                 all_tools.extend(result)
 
         # Inject language-specific followup tools via the injector system
-        extended = inject_followup_tools(all_tools)
+        extended = inject_followup_tools(all_tools, preserve_order=True)
         return extended
 
 
@@ -183,6 +183,26 @@ def create_default_tool_detector() -> ToolDetector:
         path = match.group(3).strip()
         return [{"tool": "replace_in_file", "args": {"path": path, "pattern": pattern, "replacement": replacement}}]
 
+    def rename_symbol(msg: str, msg_lower: str) -> Optional[ToolCallList]:
+        if "rename" not in msg_lower:
+            return None
+        match = re.search(
+            r"\brename\s+(?:symbol|function|variable|class|method)?\s*([A-Za-z_][A-Za-z0-9_]*)\s+to\s+([A-Za-z_][A-Za-z0-9_]*)",
+            msg,
+            re.IGNORECASE,
+        )
+        if not match:
+            return None
+        old_name = match.group(1)
+        new_name = match.group(2)
+        target = extract_path_from_message(msg)
+        if not target:
+            return None
+        return [{
+            "tool": "rope_rename_symbol",
+            "args": {"path": target, "symbol": old_name, "new_name": new_name},
+        }]
+
     def read_struct(msg: str, msg_lower: str) -> Optional[ToolCallList]:
         match = re.search(r"read\s+(json|yaml|yml|ini)\s+([^\s]+)", msg, re.IGNORECASE)
         if not match:
@@ -292,6 +312,7 @@ def create_default_tool_detector() -> ToolDetector:
         ToolPattern("ripgrep_search", ripgrep_search, priority=55),
         ToolPattern("grep_files", grep_files, priority=50),
         ToolPattern("replace_in_file", replace_in_file, priority=50),
+        ToolPattern("rename_symbol", rename_symbol, priority=50),
         ToolPattern("read_struct", read_struct, priority=40),
         ToolPattern("write_struct", write_struct, priority=40),
         ToolPattern("set_struct", set_struct, priority=40),

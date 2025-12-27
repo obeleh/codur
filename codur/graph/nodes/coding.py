@@ -1,7 +1,5 @@
 """Dedicated coding node for the codur-coding agent."""
-import json
-from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from rich.console import Console
@@ -9,15 +7,19 @@ from rich.console import Console
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import ExecuteNodeResult
-from codur.graph.nodes.utils import normalize_messages, resolve_llm_for_model
-from codur.utils.llm_calls import invoke_llm
-from codur.tools.code_modification import (
-    replace_function,
-    replace_class,
-    replace_method,
-    replace_file_content,
-    inject_function,
+from codur.graph.nodes.utils import normalize_messages
+from codur.graph.nodes.planning.json_parser import JSONResponseParser
+from codur.graph.state_operations import (
+    get_iterations,
+    get_llm_calls,
+    get_messages,
+    get_tool_calls,
+    is_verbose,
 )
+from codur.utils.llm_calls import invoke_llm
+from codur.utils.llm_helpers import invoke_llm_with_fallback
+from codur.utils.tool_helpers import extract_tool_info, validate_tool_call
+from codur.graph.nodes.tool_executor import execute_tool_calls, get_tool_names
 
 console = Console()
 
@@ -30,9 +32,11 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
 ## Key Principles
 
 1. **Understand Requirements**: Carefully read the challenge and any provided context.
-2. **Edge Cases First**: Consider boundary conditions, empty inputs, large inputs, special characters.
-3. **Correctness Over Cleverness**: Prioritize working code over premature optimization.
-4. **Targeted Changes**: Prefer modifying specific functions/classes over rewriting the whole file when possible.
+2. **Docstring Compliance**: If a docstring lists rules/requirements, enumerate them and ensure each is implemented.
+3. **Edge Cases First**: Consider boundary conditions, empty inputs, large inputs, special characters.
+4. **Correctness Over Cleverness**: Prioritize working code over premature optimization.
+5. **Targeted Changes**: Prefer modifying specific functions/classes over rewriting the whole file when possible.
+6. **Test File Safety**: Do not overwrite existing test files unless the user is asking to write/update tests there.
 
 ## Output Format
 
@@ -89,11 +93,17 @@ Examples:
 3. `replace_method(path, class_name, method_name, new_code)`: Replace a specific method in a class.
 4. `replace_file_content(path, new_code)`: Replace the entire file content (use if others don't apply).
 5. `inject_function(path, new_code, function_name?)`: Insert a new top-level function (optional name check).
+6. `rope_find_usages(path, line|offset, column?)`: Find symbol usages using rope.
+7. `rope_find_definition(path, line|offset, column?)`: Find the definition location using rope.
+8. `rope_rename_symbol(path, new_name, line|offset, column?, symbol?)`: Rename a symbol using rope.
+9. `rope_move_module(path, destination_dir)`: Move a module file and update imports using rope.
+10. `rope_extract_method(path, extracted_name, start/end offsets)`: Extract a method using rope.
 
 **Important**:
 - `new_code` must be complete, valid Python code (including indentation).
 - `path` should match the file path in the request
 - You can include multiple tool calls in the list if needed.
+- Prefer targeted edits (replace_function, replace_class, replace_method, replace_lines) over replace_file_content for tests.
 
 You MUST return a valid JSON object!
 """
@@ -110,24 +120,14 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
         ExecuteNodeResult with agent_outcome
     """
     agent_name = "agent:codur-coding"
-    iterations = state.get("iterations", 0)
-    verbose = state.get("verbose", False)
+    iterations = get_iterations(state)
+    verbose = is_verbose(state)
 
     if verbose:
         console.print(f"[bold blue]Running codur-coding node (iteration {iterations})...[/bold blue]")
 
-    # Resolve LLM (uses default LLM - system prompt is self-contained)
-    # Use generation temperature for coding tasks
-    # Enable JSON mode for structured output
-    llm = resolve_llm_for_model(
-        config,
-        None,
-        temperature=config.llm.generation_temperature,
-        json_mode=True
-    )
-
     # Build context-aware prompt
-    prompt = _build_coding_prompt(state.get("messages", []), iterations)
+    prompt = _build_coding_prompt(get_messages(state), iterations)
     if verbose:
         console.print(f"[dim]Constructed prompt:\n{prompt}[/dim]")
 
@@ -141,35 +141,17 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
     if verbose:
         console.log("[bold cyan]Invoking codur-coding LLM (JSON mode)...[/bold cyan]")
     
-    try:
-        response = invoke_llm(
-            llm,
-            messages,
-            invoked_by="coding.primary",
-            state=state,
-            config=config,
-        )
-    except Exception as e:
-        # Check for JSON validation error (common with some Groq models like Qwen)
-        error_msg = str(e)
-        if "json_validate_failed" in error_msg or ("400" in error_msg and "JSON" in error_msg):
-            fallback_model = config.agents.preferences.fallback_model
-            console.log(f"[yellow]Primary LLM failed JSON validation. Falling back to {fallback_model}...[/yellow]")
-            fallback_llm = resolve_llm_for_model(
-                config, 
-                model=fallback_model,
-                temperature=config.llm.generation_temperature,
-                json_mode=True
-            )
-            response = invoke_llm(
-                fallback_llm,
-                messages,
-                invoked_by="coding.fallback",
-                state=state,
-                config=config,
-            )
-        else:
-            raise e
+    llm, response = invoke_llm_with_fallback(
+        config,
+        messages,
+        profile_name=config.llm.default_profile,
+        fallback_model=config.agents.preferences.fallback_model,
+        json_mode=True,
+        temperature=config.llm.generation_temperature,
+        invoked_by="coding.primary",
+        fallback_invoked_by="coding.fallback",
+        state=state,
+    )
 
     result = response.content
 
@@ -242,7 +224,7 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
             "result": result,
             "status": "success",
         },
-        "llm_calls": state.get("llm_calls", 0),
+        "llm_calls": get_llm_calls(state),
     }
 
 
@@ -313,80 +295,68 @@ def _apply_coding_result(result: str, state: AgentState, config: CodurConfig) ->
     """
     Parse JSON result and apply tool calls.
     """
-    try:
-        # Simple JSON extraction if wrapped in code blocks
-        if "```json" in result:
-            json_str = result.split("```json")[1].split("```")[0].strip()
-        elif "```" in result:
-            json_str = result.split("```")[1].split("```")[0].strip()
-        else:
-            json_str = result
-
-        data = json.loads(json_str)
-    except json.JSONDecodeError as e:
-        return f"Failed to parse JSON response: {str(e)}"
+    parser = JSONResponseParser()
+    data = parser.parse(result)
+    if data is None:
+        return "Failed to parse JSON response."
 
     tool_calls = data.get("tool_calls", [])
     if not tool_calls:
         # Fallback: check if 'code' is directly in the object (legacy/fallback)
         if "code" in data:
-             # Treat as full file replacement
-             default_path = _get_default_path(state, data)
-             if not default_path:
-                 return "Could not determine target file path for code replacement."
-             return replace_file_content(path=default_path, new_code=data["code"], root=Path.cwd(), allow_outside_root=config.runtime.allow_outside_workspace, state=state)
-        return "No 'tool_calls' found in JSON response."
+            default_path = _get_default_path(state, data)
+            if not default_path:
+                return "Could not determine target file path for code replacement."
+            tool_calls = [{
+                "tool": "replace_file_content",
+                "args": {"path": default_path, "new_code": data["code"]},
+            }]
+        else:
+            return "No 'tool_calls' found in JSON response."
 
-    errors = []
-    
-    # Map tool names to functions
-    tool_map = {
-        "replace_function": replace_function,
-        "replace_class": replace_class,
-        "replace_method": replace_method,
-        "replace_file_content": replace_file_content,
-        "inject_function": inject_function,
+    if not isinstance(tool_calls, list):
+        return "Invalid 'tool_calls' format; expected a list."
+
+    data["tool_calls"] = tool_calls
+    code_tools = {
+        "replace_function",
+        "replace_class",
+        "replace_method",
+        "replace_file_content",
+        "inject_function",
     }
-
-    # Pre-determine a default path for all tool calls in this result
+    supported_tools = get_tool_names(state, config)
     common_default_path = _get_default_path(state, data)
-
     for call in tool_calls:
-        tool_name = call.get("tool")
-        args = call.get("args", {})
-        
-        if tool_name not in tool_map:
-            errors.append(f"Unknown tool: {tool_name}")
-            continue
-            
-        # Execute tool
-        try:
-            func = tool_map[tool_name]
-            # Inject common args
-            args["root"] = Path.cwd()
-            args["allow_outside_root"] = config.runtime.allow_outside_workspace
-            args["state"] = state
-            
-            # Use dynamic default path if missing
-            if "path" not in args:
-                if not common_default_path:
-                    errors.append(f"Missing 'path' for tool '{tool_name}' and could not determine a default.")
-                    continue
-                args["path"] = common_default_path
-                
-            outcome = func(**args)
-            if "Failed" in outcome or "Invalid" in outcome or "Could not find" in outcome:
-                errors.append(outcome)
-            else:
-                console.log(f"[green]{outcome}[/green]")
-                
-        except Exception as e:
-            errors.append(f"Error executing {tool_name}: {str(e)}")
+        error = validate_tool_call(call, supported_tools)
+        if error:
+            return error
+        tool_name, args = extract_tool_info(call)
+        call["args"] = args
+        if tool_name in code_tools and "path" not in args:
+            if not common_default_path:
+                return f"Missing 'path' for tool '{tool_name}' and could not determine a default."
+            args["path"] = common_default_path
+
+    execution = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="full")
+    errors = list(execution.errors)
+    for item in execution.results:
+        tool_name = item.get("tool")
+        output = item.get("output")
+        if isinstance(output, str):
+            if tool_name in code_tools and _looks_like_tool_failure(output):
+                errors.append(output)
+            elif tool_name in code_tools:
+                console.log(f"[green]{output}[/green]")
 
     if errors:
         return "\n".join(errors)
 
     return None
+
+
+def _looks_like_tool_failure(output: str) -> bool:
+    return "Failed" in output or "Invalid" in output or "Could not find" in output
 
 
 def _get_default_path(state: AgentState, data: dict) -> Optional[str]:
@@ -399,7 +369,7 @@ def _get_default_path(state: AgentState, data: dict) -> Optional[str]:
             return path
 
     # 2. Check if the state has previous tool calls with a path (from planner)
-    planner_tool_calls = state.get("tool_calls", [])
+    planner_tool_calls = get_tool_calls(state)
     for call in planner_tool_calls:
         args = call.get("args", {})
         path = args.get("path") or args.get("file_path")

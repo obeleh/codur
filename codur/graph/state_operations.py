@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Optional
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 
-from codur.graph.nodes.utils import normalize_messages
+from codur.graph.nodes.utils import normalize_messages as _normalize_messages
 
 if TYPE_CHECKING:
     # Avoid circular imports for type checking
@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
     from codur.graph.state import AgentState
     from codur.graph.nodes.types import ExecuteNodeResult
+    from codur.config import CodurConfig
 
 # ============================================================================
 # Verbose Logging Helpers
@@ -18,6 +19,10 @@ if TYPE_CHECKING:
 def is_verbose(state: "AgentState") -> bool:
     """Check if verbose logging is enabled in state."""
     return state.get("verbose", False)
+
+def get_config(state: "AgentState") -> "CodurConfig | None":
+    """Get the runtime configuration attached to state, if any."""
+    return state.get("config")
 
 # ============================================================================
 # Message Operations
@@ -31,7 +36,7 @@ def add_message(state: "AgentState", message: BaseMessage) -> None:
 def get_messages(state: "AgentState") -> list[BaseMessage]:
     """Get normalized messages from state."""
     messages = state.get("messages", [])
-    return normalize_messages(messages)
+    return _normalize_messages(messages)
 
 def get_last_human_message(state: "AgentState") -> Optional[BaseMessage]:
     """Get the last human message from state, if any."""

@@ -12,7 +12,9 @@ from typing import Any
 import yaml
 
 from codur.graph.state import AgentState
-from codur.utils.path_utils import resolve_path
+from codur.utils.path_utils import resolve_path, resolve_root
+from codur.utils.ignore_utils import get_config_from_state
+from codur.utils.validation import validate_file_access
 
 
 def _set_nested_value(data: Any, key_path: str | list[str], value: Any) -> Any:
@@ -40,6 +42,13 @@ def read_json(
     state: AgentState | None = None,
 ) -> Any:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     with open(target, "r", encoding="utf-8") as handle:
         return json.load(handle)
 
@@ -70,6 +79,13 @@ def set_json_value(
     state: AgentState | None = None,
 ) -> dict:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     with open(target, "r", encoding="utf-8") as handle:
         data = json.load(handle)
     updated = _set_nested_value(data, key_path, value)
@@ -86,6 +102,13 @@ def read_yaml(
     state: AgentState | None = None,
 ) -> Any:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     with open(target, "r", encoding="utf-8") as handle:
         return yaml.safe_load(handle)
 
@@ -114,6 +137,13 @@ def set_yaml_value(
     state: AgentState | None = None,
 ) -> dict:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     with open(target, "r", encoding="utf-8") as handle:
         data = yaml.safe_load(handle)
     updated = _set_nested_value(data or {}, key_path, value)
@@ -129,6 +159,13 @@ def read_ini(
     state: AgentState | None = None,
 ) -> dict:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     parser = configparser.ConfigParser()
     parser.read(target, encoding="utf-8")
     data: dict[str, dict[str, str]] = {}
@@ -164,6 +201,13 @@ def set_ini_value(
     state: AgentState | None = None,
 ) -> dict:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     parser = configparser.ConfigParser()
     parser.read(target, encoding="utf-8")
     if not parser.has_section(section):

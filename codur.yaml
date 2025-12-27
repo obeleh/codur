@@ -162,6 +162,8 @@ runtime:
   max_runtime_s: null
   verbose: true
   allow_outside_workspace: true
+  # Workspace root used for resolving relative paths (auto-set on startup if omitted).
+  workspace_root: null
   # This allows tool detection outside LLM calls (RECOMMENDED: keeps it reliable)
   detect_tool_calls_from_text: true
   # Planner fallback profiles if primary LLM fails

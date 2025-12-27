@@ -12,6 +12,7 @@ import requests
 
 from codur.constants import DEFAULT_MAX_BYTES
 from codur.graph.state import AgentState
+from codur.utils.text_helpers import truncate_chars
 
 try:
     from readability import Document
@@ -27,12 +28,6 @@ try:
     from markdownify import markdownify as _markdownify
 except ImportError:  # pragma: no cover - optional dependency
     _markdownify = None
-
-
-def _truncate(text: str, max_bytes: int) -> str:
-    if len(text) <= max_bytes:
-        return text
-    return text[:max_bytes] + "\n... [truncated]"
 
 
 def _collapse_whitespace(text: str) -> str:
@@ -277,7 +272,7 @@ def fetch_webpage(
         else:
             text = extracted.get("text", "")
 
-    text = _truncate(text, max_bytes)
+    text = truncate_chars(text, max_chars=max_bytes)
     result = {
         "url": response.url,
         "status_code": response.status_code,
@@ -290,7 +285,7 @@ def fetch_webpage(
     }
 
     if include_html:
-        result["html"] = _truncate(html_output, max_bytes)
+        result["html"] = truncate_chars(html_output, max_chars=max_bytes)
 
     return result
 

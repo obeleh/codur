@@ -67,17 +67,13 @@ class TestExplainingNode:
         assert "Expected Output" not in prompt
         assert "Actual file content here" in prompt
 
-    @patch("codur.graph.nodes.explaining.invoke_llm")
-    @patch("codur.graph.nodes.explaining.resolve_llm_for_model")
-    def test_explaining_node_execution(self, mock_resolve, mock_invoke):
+    @patch("codur.graph.nodes.explaining.create_and_invoke")
+    def test_explaining_node_execution(self, mock_create_and_invoke):
         """Test that the node executes and returns a result."""
         # Setup mocks
-        mock_llm = MagicMock()
-        mock_resolve.return_value = mock_llm
-
         mock_response = MagicMock()
         mock_response.content = "This is the explanation."
-        mock_invoke.return_value = mock_response
+        mock_create_and_invoke.return_value = mock_response
 
         # Setup state
         state = {
@@ -99,13 +95,12 @@ class TestExplainingNode:
         assert result["agent_outcome"]["status"] == "success"
 
         # Verify LLM call with correct temperature
-        mock_resolve.assert_called_once()
-        call_kwargs = mock_resolve.call_args[1]
+        mock_create_and_invoke.assert_called_once()
+        call_kwargs = mock_create_and_invoke.call_args[1]
         assert call_kwargs["temperature"] == 0.5, "Should use temperature 0.5 for precision"
 
         # Verify system prompt
-        mock_invoke.assert_called_once()
-        args, kwargs = mock_invoke.call_args
+        args, kwargs = mock_create_and_invoke.call_args
         messages = args[1]
         assert isinstance(messages[0], SystemMessage)
         assert "Codur Code Explainer Agent" in messages[0].content

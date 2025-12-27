@@ -15,7 +15,7 @@ from rich.console import Console
 
 from codur.graph.state import AgentState
 from codur.config import CodurConfig
-from codur.llm import create_llm_profile, create_llm
+from codur.utils.llm_helpers import create_and_invoke
 from codur.agents import AgentRegistry
 from codur.graph.nodes.types import DelegateNodeResult, ExecuteNodeResult, ReviewNodeResult
 from codur.graph.nodes.utils import (
@@ -27,6 +27,8 @@ from codur.constants import (
     ACTION_CONTINUE,
     ACTION_END,
 )
+from codur.utils.config_helpers import get_default_agent
+from codur.utils.validation import require_config
 from codur.graph.state_operations import (
     is_verbose,
     get_messages,
@@ -44,8 +46,10 @@ from codur.graph.state_operations import (
     get_selected_agent,
 )
 from codur.graph.nodes.tool_detection import create_default_tool_detector
-from codur.tools import read_file, write_file
-from codur.utils.llm_calls import invoke_llm, LLMCallLimitExceeded
+from codur.graph.nodes.tool_executor import execute_tool_calls
+from codur.utils.llm_calls import LLMCallLimitExceeded
+from codur.tools.project_discovery import get_primary_entry_point
+from codur.utils.text_helpers import truncate_lines
 
 # Import agents to ensure they are registered
 import codur.agents.ollama_agent  # noqa: F401
@@ -60,7 +64,12 @@ class AgentExecutor:
     def __init__(self, state: AgentState, config: CodurConfig, agent_name: Optional[str]=None) -> None:
         self.state = state
         self.config = config
-        self.default_agent = config.agents.preferences.default_agent or "agent:ollama"
+        self.default_agent = get_default_agent(config)
+        require_config(
+            self.default_agent,
+            "agents.preferences.default_agent",
+            "agents.preferences.default_agent must be configured",
+        )
         if agent_name:
             self.agent_name = agent_name
         else:
@@ -121,13 +130,13 @@ class AgentExecutor:
         profile_name = self.agent_name.split(":", 1)[1]
         if is_verbose(self.state):
             console.print(f"[dim]Using LLM profile: {profile_name}[/dim]")
-        llm = create_llm_profile(self.config, profile_name, temperature=self.config.llm.generation_temperature)
-        response = invoke_llm(
-            llm,
+        response = create_and_invoke(
+            self.config,
             [HumanMessage(content=task)],
+            profile_name=profile_name,
+            temperature=self.config.llm.generation_temperature,
             invoked_by="execution.llm_profile",
             state=self.state,
-            config=self.config,
         )
         result = response.content
         if is_verbose(self.state):
@@ -149,13 +158,13 @@ class AgentExecutor:
                 matching_profile = profile_name
                 break
 
-        llm = create_llm_profile(self.config, matching_profile, temperature=self.config.llm.generation_temperature) if matching_profile else create_llm(self.config, temperature=self.config.llm.generation_temperature)
-        response = invoke_llm(
-            llm,
+        response = create_and_invoke(
+            self.config,
             [HumanMessage(content=task)],
+            profile_name=matching_profile,
+            temperature=self.config.llm.generation_temperature,
             invoked_by="execution.llm_agent",
             state=self.state,
-            config=self.config,
         )
         result = response.content
         if is_verbose(self.state):
@@ -239,30 +248,8 @@ class AgentExecutor:
 
     def _execute_tool_calls(self, tool_calls: list[dict]) -> str:
         """Execute detected tool calls and return results."""
-        results = []
-        root = Path.cwd()
-        allow_outside_root = self.config.runtime.allow_outside_workspace
-
-        for call in tool_calls:
-            tool_name = call.get("tool")
-            args = call.get("args", {})
-
-            if not isinstance(args, dict):
-                args = {}
-
-            try:
-                if tool_name == "read_file":
-                    output = read_file(root=root, allow_outside_root=allow_outside_root, **args)
-                    results.append(f"read_file: {args.get('path', 'unknown')} -> {len(output) if isinstance(output, str) else len(str(output))} chars")
-                elif tool_name == "write_file":
-                    output = write_file(root=root, allow_outside_root=allow_outside_root, **args)
-                    results.append(f"write_file: {args.get('path', 'unknown')} -> {output}")
-                else:
-                    results.append(f"Unknown tool: {tool_name}")
-            except Exception as e:
-                results.append(f"{tool_name} failed: {str(e)}")
-
-        return "\n".join(results) if results else "Tools executed (no output)"
+        execution = execute_tool_calls(tool_calls, self.state, self.config, augment=False, summary_mode="full")
+        return execution.summary
 
 
 def delegate_node(state: AgentState, config: CodurConfig) -> DelegateNodeResult:
@@ -279,7 +266,12 @@ def delegate_node(state: AgentState, config: CodurConfig) -> DelegateNodeResult:
         console.print("[bold cyan]Delegating task...[/bold cyan]")
 
     # Use the agent selected by the plan_node, fallback to configured default
-    default_agent = config.agents.preferences.default_agent or "agent:ollama"
+    default_agent = get_default_agent(config)
+    require_config(
+        default_agent,
+        "agents.preferences.default_agent",
+        "agents.preferences.default_agent must be configured",
+    )
     selected_agent = get_selected_agent(state, default_agent)
 
     return {
@@ -340,10 +332,22 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         if has_read_file and not has_agent_call:
             if is_verbose(state):
                 console.print("[dim]Tool read_file completed - delegating to codur-coding[/dim]")
+
+            # Add explicit implementation instruction to prevent investigation loop
+            impl_instruction = SystemMessage(content=(
+                "You have gathered sufficient context from reading files. "
+                "Now IMPLEMENT the solution using code modification tools "
+                "(replace_function, replace_class, write_file, etc.). "
+                "Do NOT read more files - proceed directly to fixing the code based on what you've learned."
+            ))
+
+            current_messages = get_messages(state)
+
             return {
                 "final_response": result,
                 "next_action": ACTION_CONTINUE,
                 "selected_agent": REF_AGENT_CODING,
+                "messages": current_messages + [impl_instruction],
             }
 
     if is_verbose(state):
@@ -437,26 +441,28 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 if verification_result.get("return_code"):
                     error_parts[0] = f"Verification failed: Code exited with code {verification_result['return_code']}"
                 if verification_result.get("stdout"):
-                    stdout_content = _truncate_output(verification_result['stdout'], max_lines=15)
+                    stdout_content = truncate_lines(verification_result['stdout'], max_lines=15)
                     error_parts.append(f"\n=== Standard Output ===\n{stdout_content}")
 
             # Include stderr if available (for both error types)
             if verification_result.get("stderr"):
-                stderr_content = _truncate_output(verification_result['stderr'], max_lines=15)
+                stderr_content = truncate_lines(verification_result['stderr'], max_lines=15)
                 error_parts.append(f"\n=== Error/Exception ===\n{stderr_content}")
 
-            # Try to include current main.py for context
+            # Try to include current implementation for context
             cwd = Path.cwd()
-            main_py = cwd / "main.py"
-            if main_py.exists():
-                try:
-                    main_content = main_py.read_text()
-                    if len(main_content) < 3000:  # Only include if not too large
-                        error_parts.append(f"\n=== Current Implementation (main.py) ===\n```python\n{main_content}\n```")
-                    else:
-                        error_parts.append(f"\n[Current main.py is {len(main_content)} chars - impl too large to display, check what's wrong with current code]")
-                except Exception as read_err:
-                    pass
+            entry_point_name = get_primary_entry_point(root=cwd)
+            if entry_point_name and not entry_point_name.startswith("Error"):
+                entry_point_file = cwd / entry_point_name
+                if entry_point_file.exists():
+                    try:
+                        impl_content = entry_point_file.read_text()
+                        if len(impl_content) < 3000:  # Only include if not too large
+                            error_parts.append(f"\n=== Current Implementation ({entry_point_name}) ===\n```python\n{impl_content}\n```")
+                        else:
+                            error_parts.append(f"\n[Current {entry_point_name} is {len(impl_content)} chars - impl too large to display, check what's wrong with current code]")
+                    except Exception as read_err:
+                        pass
 
             error_parts.append("\n=== Action ===\nAnalyze the output mismatch and fix the implementation to match expected output.")
 
@@ -499,19 +505,6 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     }
 
 
-def _truncate_output(text: str, max_lines: int = 50) -> str:
-    """Truncate output to a reasonable length for display and agent processing.
-
-    Using 50 lines to give agents more context to understand
-    what went wrong and fix issues. This improves reliability.
-    """
-    lines = text.split('\n')
-    if len(lines) > max_lines:
-        truncated = '\n'.join(lines[:max_lines])
-        return f"{truncated}\n... ({len(lines) - max_lines} more lines)"
-    return text
-
-
 def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
     """Verify if a fix actually works by running tests.
 
@@ -527,17 +520,24 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
     """
     verbose = is_verbose(state)
 
-    # Look for main.py in current directory
+    # Look for main.py or app.py in current directory
     cwd = Path.cwd()
     main_py = cwd / "main.py"
+    app_py = cwd / "app.py"
 
-    if not main_py.exists():
+    # Prefer main.py if it exists, otherwise use app.py
+    entry_point = None
+    if main_py.exists():
+        entry_point = "main.py"
+    elif app_py.exists():
+        entry_point = "app.py"
+    else:
         if verbose:
-            console.print("[dim]No main.py found - skipping verification[/dim]")
+            console.print("[dim]No main.py or app.py found - skipping verification[/dim]")
         return {"success": True, "message": "No verification file found"}
 
     if verbose:
-        console.print(f"[dim]Running verification: python main.py[/dim]")
+        console.print(f"[dim]Running verification: python {entry_point}[/dim]")
 
     # Check for fail-early mode to use shorter timeout
     fail_early = os.getenv("EARLY_FAILURE_HELPERS_FOR_TESTS") == "1"
@@ -554,7 +554,7 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
         try:
             # Run with streaming for early exit on mismatch
             process = subprocess.Popen(
-                ["python", "main.py"],
+                ["python", entry_point],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -614,8 +614,8 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
                     "message": f"Output mismatch.\nActual: {actual_output}\nExpected: {expected_output}",
                     "expected_output": expected_output,
                     "actual_output": actual_output,
-                    "expected_truncated": _truncate_output(expected_output),
-                    "actual_truncated": _truncate_output(actual_output),
+                    "expected_truncated": truncate_lines(expected_output),
+                    "actual_truncated": truncate_lines(actual_output),
                     "mismatch_at_line": mismatch_at_line,
                     "stderr": stderr.strip() if stderr else None
                 }
@@ -628,7 +628,7 @@ def _verify_fix(state: AgentState, config: CodurConfig) -> dict:
         # No expected.txt - use standard verification
         try:
             result = subprocess.run(
-                ["python", "main.py"],
+                ["python", entry_point],
                 capture_output=True,
                 text=True,
                 timeout=execution_timeout,
@@ -667,15 +667,22 @@ def _attempt_local_repair(state: AgentState) -> dict:
 
     This is a last-resort fallback when external agents are unavailable.
     Uses parallel execution for faster mutation testing.
+    Supports both main.py and app.py entry points.
     """
     cwd = Path.cwd()
-    main_py = cwd / "main.py"
     expected_file = cwd / "expected.txt"
 
-    if not main_py.exists() or not expected_file.exists():
+    # Discover the entry point (main.py or app.py)
+    entry_point_name = get_primary_entry_point(root=cwd)
+    if entry_point_name.startswith("Error"):
+        return {"success": False, "message": entry_point_name}
+
+    entry_point_file = cwd / entry_point_name
+
+    if not entry_point_file.exists() or not expected_file.exists():
         return {"success": False, "message": "No repair target found"}
 
-    original = main_py.read_text()
+    original = entry_point_file.read_text()
     expected_output = expected_file.read_text().strip()
 
     def mutate_range_inclusive(text: str) -> str:
@@ -796,8 +803,8 @@ def _attempt_local_repair(state: AgentState) -> dict:
             try:
                 result = future.result()
                 if result.get("success"):
-                    # Found a working mutation - apply it to main.py
-                    main_py.write_text(result["code"])
+                    # Found a working mutation - apply it to the entry point
+                    entry_point_file.write_text(result["code"])
                     # Cancel remaining futures
                     for f in futures:
                         f.cancel()

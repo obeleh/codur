@@ -92,7 +92,18 @@ from codur.tools.ast_utils import (
     find_method_lines,
 )
 from codur.tools.code_modification import (
+    replace_function,
+    replace_class,
+    replace_method,
+    replace_file_content,
     inject_function,
+)
+from codur.tools.rope_tools import (
+    rope_find_usages,
+    rope_find_definition,
+    rope_rename_symbol,
+    rope_move_module,
+    rope_extract_method,
 )
 from codur.tools.registry import (
     list_tool_directory,
@@ -105,6 +116,10 @@ from codur.tools.psutil_tools import (
     system_process_snapshot,
     system_processes_top,
     system_processes_list,
+)
+from codur.tools.project_discovery import (
+    discover_entry_points,
+    get_primary_entry_point,
 )
 
 __all__ = [
@@ -167,7 +182,16 @@ __all__ = [
     "find_function_lines",
     "find_class_lines",
     "find_method_lines",
+    "replace_function",
+    "replace_class",
+    "replace_method",
+    "replace_file_content",
     "inject_function",
+    "rope_find_usages",
+    "rope_find_definition",
+    "rope_rename_symbol",
+    "rope_move_module",
+    "rope_extract_method",
     "list_tool_directory",
     "get_tool_help",
     "system_cpu_stats",
@@ -176,4 +200,6 @@ __all__ = [
     "system_process_snapshot",
     "system_processes_top",
     "system_processes_list",
+    "discover_entry_points",
+    "get_primary_entry_point",
 ]

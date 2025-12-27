@@ -39,6 +39,18 @@ from codur.graph.nodes.planning.types import TaskType
             id="implement-treated-as-fix",
         ),
         pytest.param(
+            "fix the bug in @main.py. The subtotal and discounted total are wrong.",
+            TaskType.CODE_FIX,
+            None,
+            id="fix-with-at-file",
+        ),
+        pytest.param(
+            "Implement the title casing rules in @main.py based on the docstring.",
+            TaskType.CODE_GENERATION,
+            None,
+            id="implement-with-at-file",
+        ),
+        pytest.param(
             "Create a summary of today's weather",
             TaskType.WEB_SEARCH,
             None,

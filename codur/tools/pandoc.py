@@ -9,7 +9,9 @@ import subprocess
 from pathlib import Path
 
 from codur.graph.state import AgentState
-from codur.utils.path_utils import resolve_path
+from codur.utils.ignore_utils import get_config_from_state
+from codur.utils.path_utils import resolve_path, resolve_root
+from codur.utils.validation import validate_file_access
 
 
 _DEFAULT_EXTENSIONS = {
@@ -40,6 +42,13 @@ def convert_document(
         raise FileNotFoundError("pandoc is not available on PATH")
 
     source = resolve_path(input_path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        source,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
 
     if output_path is None:
         ext = _DEFAULT_EXTENSIONS.get(output_format, output_format)

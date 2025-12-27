@@ -1,8 +1,8 @@
 """Routing helpers for graph flow control."""
 
 from codur.graph.state import AgentState
+from codur.graph.state_operations import get_config, get_iterations, get_next_action, get_selected_agent
 from codur.constants import (
-    DEFAULT_MAX_ITERATIONS,
     AGENT_CODING,
     AGENT_EXPLAINING,
     REF_AGENT_CODING,
@@ -11,6 +11,7 @@ from codur.constants import (
     ACTION_CONTINUE,
     ACTION_END,
 )
+from codur.utils.config_helpers import get_max_iterations
 
 def should_delegate(state: AgentState) -> str:
     """Decide if we should delegate to an agent or end.
@@ -21,8 +22,8 @@ def should_delegate(state: AgentState) -> str:
     Returns:
         "delegate", "tool", "coding", "explaining", or "end" based on the next_action in state
     """
-    next_action = state.get("next_action", ACTION_DELEGATE)
-    selected_agent = state.get("selected_agent")
+    next_action = get_next_action(state) or ACTION_DELEGATE
+    selected_agent = get_selected_agent(state)
     if next_action == ACTION_DELEGATE:
         if selected_agent in (REF_AGENT_CODING, AGENT_CODING):
             return "coding"
@@ -40,18 +41,18 @@ def should_continue(state: AgentState) -> str:
     Returns:
         "continue" or "end" based on iteration limit and next_action
     """
-    iterations = state.get("iterations", 0)
-    next_action = state.get("next_action", ACTION_END)
+    iterations = get_iterations(state)
+    next_action = get_next_action(state) or ACTION_END
 
     # Get max iterations from config if available, otherwise use constant
-    config = state.get("config")
-    max_iterations = config.runtime.max_iterations if config else DEFAULT_MAX_ITERATIONS
+    config = get_config(state)
+    max_iterations = get_max_iterations(config)
 
     # Max iterations check
     if iterations >= max_iterations:
         return ACTION_END
 
-    selected_agent = state.get("selected_agent")
+    selected_agent = get_selected_agent(state)
 
     if next_action == ACTION_CONTINUE:
         if selected_agent in (REF_AGENT_CODING, AGENT_CODING):

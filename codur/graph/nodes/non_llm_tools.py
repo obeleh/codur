@@ -11,10 +11,10 @@ from rich.console import Console
 
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import PlanNodeResult
-from codur.tools.filesystem import EXCLUDE_DIRS
 from codur.constants import GREETING_MAX_WORDS
 from codur.graph.nodes.tool_detection import create_default_tool_detector
-from codur.graph.nodes.path_utils import find_workspace_match
+from codur.graph.state_operations import get_iterations, is_verbose
+from codur.utils.path_extraction import find_workspace_match
 
 
 console = Console()
@@ -44,6 +44,45 @@ def _looks_like_explain_request(text: str) -> bool:
 
 
 _TOOL_DETECTOR = create_default_tool_detector()
+_CONTEXT_ONLY_TOOLS = {
+    "read_file",
+    "read_files",
+    "python_ast_dependencies",
+    "python_ast_dependencies_multifile",
+    "markdown_outline",
+}
+_CODE_TASK_KEYWORDS = {
+    "fix",
+    "bug",
+    "debug",
+    "issue",
+    "broken",
+    "incorrect",
+    "wrong",
+    "implement",
+    "write",
+    "create",
+    "add",
+    "generate",
+    "build",
+    "refactor",
+    "docstring",
+}
+
+
+def _looks_like_code_task(text: str) -> bool:
+    lowered = text.lower()
+    return any(keyword in lowered for keyword in _CODE_TASK_KEYWORDS)
+
+
+def _context_only_tool_calls(tool_calls: list[dict]) -> bool:
+    if not tool_calls:
+        return False
+    for call in tool_calls:
+        tool = call.get("tool")
+        if tool not in _CONTEXT_ONLY_TOOLS:
+            return False
+    return True
 
 
 def run_non_llm_tools(messages: list[BaseMessage], state: AgentState) -> Optional[PlanNodeResult]:
@@ -58,7 +97,7 @@ def run_non_llm_tools(messages: list[BaseMessage], state: AgentState) -> Optiona
             last_human_msg = msg.content
             break
 
-    verbose = state.get("verbose", False)
+    verbose = is_verbose(state)
 
     if last_human_msg:
         trivial_response = _trivial_response(last_human_msg)
@@ -68,12 +107,12 @@ def run_non_llm_tools(messages: list[BaseMessage], state: AgentState) -> Optiona
             return {
                 "next_action": "end",
                 "final_response": trivial_response,
-                "iterations": state.get("iterations", 0) + 1,
+                "iterations": get_iterations(state) + 1,
             }
 
     if last_human_msg and not tool_results_present:
         if _looks_like_explain_request(last_human_msg):
-            matched_path = find_workspace_match(last_human_msg)
+            matched_path = find_workspace_match(last_human_msg, state=state)
             if matched_path:
                 if verbose:
                     console.log(f"[dim]Non-LLM tool node: Detected explain request for file {matched_path}.[/dim]")
@@ -83,17 +122,19 @@ def run_non_llm_tools(messages: list[BaseMessage], state: AgentState) -> Optiona
                         {"tool": "read_file", "args": {"path": matched_path}},
                         {"tool": "agent_call", "args": {"challenge": f"Please explain the contents of the file {matched_path}.", "agent": "agent:codur-explaining"}},
                     ],
-                    "iterations": state.get("iterations", 0) + 1,
+                    "iterations": get_iterations(state) + 1,
                 }
 
         file_op_result = _TOOL_DETECTOR.detect(last_human_msg)
         if file_op_result:
+            if _looks_like_code_task(last_human_msg) and _context_only_tool_calls(file_op_result):
+                return None
             if verbose:
                 console.log(f"[dim]Non-LLM tool node: Detected file operation tools: {file_op_result}.[/dim]")
             return {
                 "next_action": "tool",
                 "tool_calls": file_op_result,
-                "iterations": state.get("iterations", 0) + 1,
+                "iterations": get_iterations(state) + 1,
             }
 
     return None

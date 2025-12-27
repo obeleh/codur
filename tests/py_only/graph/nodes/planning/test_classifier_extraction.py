@@ -39,3 +39,19 @@ def test_extract_file_paths_extensions():
     assert "config.yaml" in paths
     assert "data.json" in paths
     assert "script.ts" in paths
+
+def test_extract_file_paths_backticks():
+    text = "Implement the `format_table` function in `main.py` for the formatter."
+    paths = extract_file_paths(text)
+    assert "main.py" in paths
+    assert len(paths) == 1
+
+def test_extract_file_paths_backticks_with_command():
+    text = (
+        "Implement the `format_table` function in `main.py` to create a working "
+        "Markdown table formatter. Run `python main.py` to test your solution."
+    )
+    paths = extract_file_paths(text)
+    assert "main.py" in paths
+    assert "python main.py" not in paths
+    assert len(paths) == 1

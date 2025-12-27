@@ -59,6 +59,10 @@ class CodeGenerationStrategy:
         has_generation = any(kw in text_lower for kw in patterns.primary_keywords)
         if has_generation:
             result.add(0.6, "generation keyword")
+            if detected_files:
+                result.add(0.1, "file hint present")
+            if "docstring" in text_lower or "requirements" in text_lower:
+                result.add(0.05, "explicit requirements")
             # Boost if no fix keywords
             if not any(kw in text_lower for kw in patterns.negative_keywords):
                 result.add(0.05, "no fix keywords")

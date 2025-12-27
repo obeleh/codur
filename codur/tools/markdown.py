@@ -8,8 +8,18 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any
 
+from codur.graph.state import AgentState
+from codur.utils.path_utils import resolve_path, resolve_root
+from codur.utils.ignore_utils import get_config_from_state
+from codur.utils.validation import validate_file_access
 
-def markdown_outline(path: str) -> str:
+
+def markdown_outline(
+    path: str,
+    root: str | Path | None = None,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> str:
     """Extract headers from a markdown file to show document structure.
 
     Args:
@@ -26,7 +36,20 @@ def markdown_outline(path: str) -> str:
         >>> #     ### Subsection
         >>> #   ## Section 2
     """
-    content = Path(path).read_text(encoding='utf-8')
+    raw_path = Path(path)
+    effective_allow_outside_root = allow_outside_root or (root is None and raw_path.is_absolute())
+    if root is None and raw_path.is_absolute():
+        target = raw_path.resolve()
+    else:
+        target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=effective_allow_outside_root,
+    )
+    content = target.read_text(encoding="utf-8", errors="replace")
     lines = content.split('\n')
 
     outline_lines = []
@@ -45,7 +68,13 @@ def markdown_outline(path: str) -> str:
     return '\n'.join(outline_lines)
 
 
-def markdown_extract_sections(path: str, section_names: List[str]) -> Dict[str, str]:
+def markdown_extract_sections(
+    path: str,
+    section_names: List[str],
+    root: str | Path | None = None,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> Dict[str, str]:
     """Extract specific sections from a markdown file by header name.
 
     Extracts the content under each specified header, including any subsections,
@@ -62,7 +91,20 @@ def markdown_extract_sections(path: str, section_names: List[str]) -> Dict[str, 
         >>> extract_sections("README.md", ["Installation", "Usage"])
         >>> # Returns: {"Installation": "## Installation\\n...\\n", "Usage": "## Usage\\n...\\n"}
     """
-    content = Path(path).read_text(encoding='utf-8')
+    raw_path = Path(path)
+    effective_allow_outside_root = allow_outside_root or (root is None and raw_path.is_absolute())
+    if root is None and raw_path.is_absolute():
+        target = raw_path.resolve()
+    else:
+        target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=effective_allow_outside_root,
+    )
+    content = target.read_text(encoding="utf-8", errors="replace")
     lines = content.split('\n')
 
     sections = {}
@@ -104,7 +146,12 @@ def markdown_extract_sections(path: str, section_names: List[str]) -> Dict[str, 
     return sections
 
 
-def markdown_extract_tables(path: str) -> List[Dict[str, Any]]:
+def markdown_extract_tables(
+    path: str,
+    root: str | Path | None = None,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> List[Dict[str, Any]]:
     """Extract markdown tables from a file and convert to structured data.
 
     Parses markdown pipe tables into a structured format with headers and rows.
@@ -123,7 +170,20 @@ def markdown_extract_tables(path: str) -> List[Dict[str, Any]]:
         >>> # | Bob   | 25 |
         >>> # Returns: [{"headers": ["Name", "Age"], "rows": [["Alice", "30"], ["Bob", "25"]]}]
     """
-    content = Path(path).read_text(encoding='utf-8')
+    raw_path = Path(path)
+    effective_allow_outside_root = allow_outside_root or (root is None and raw_path.is_absolute())
+    if root is None and raw_path.is_absolute():
+        target = raw_path.resolve()
+    else:
+        target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=effective_allow_outside_root,
+    )
+    content = target.read_text(encoding="utf-8", errors="replace")
     lines = content.split('\n')
 
     tables = []

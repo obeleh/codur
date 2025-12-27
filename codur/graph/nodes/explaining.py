@@ -9,8 +9,9 @@ from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.nodes.types import ExecuteNodeResult
 from codur.graph.nodes.utils import normalize_messages, resolve_llm_for_model
-from codur.llm import create_llm_profile
+from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose
 from codur.utils.llm_calls import invoke_llm
+from codur.utils.llm_helpers import create_and_invoke
 
 console = Console()
 
@@ -71,23 +72,14 @@ def explaining_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult
         ExecuteNodeResult with agent_outcome
     """
     agent_name = "agent:codur-explaining"
-    iterations = state.get("iterations", 0)
-    verbose = state.get("verbose", False)
+    iterations = get_iterations(state)
+    verbose = is_verbose(state)
 
     if verbose:
         console.print(f"[bold blue]Running codur-explaining node (iteration {iterations})...[/bold blue]")
 
-    # Resolve LLM (uses default LLM)
-    # Use lower temperature for technical explanations (prioritize precision over creativity)
-    llm = resolve_llm_for_model(
-        config,
-        None,
-        temperature=0.5,
-        json_mode=False
-    )
-
     # Build context-aware prompt
-    prompt = _build_explaining_prompt(state.get("messages", []))
+    prompt = _build_explaining_prompt(get_messages(state))
 
     # Use built-in system prompt
     messages = [
@@ -99,12 +91,12 @@ def explaining_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult
     if verbose:
         console.log("[bold cyan]Invoking codur-explaining LLM...[/bold cyan]")
     
-    response = invoke_llm(
-        llm,
+    response = create_and_invoke(
+        config,
         messages,
+        temperature=0.5,
         invoked_by="explaining.primary",
         state=state,
-        config=config,
     )
 
     result = response.content
@@ -122,7 +114,7 @@ def explaining_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult
             "result": result,
             "status": "success",
         },
-        "llm_calls": state.get("llm_calls", 0),
+        "llm_calls": get_llm_calls(state),
     }
 
 

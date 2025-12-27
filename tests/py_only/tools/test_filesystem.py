@@ -1,6 +1,7 @@
 import os
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 import pytest
 from codur.tools.filesystem import (
     read_file, write_file, append_file, delete_file,
@@ -150,6 +151,24 @@ def test_line_count_empty_file(temp_fs):
 def test_read_file_rejects_outside_root(temp_fs):
     with pytest.raises(ValueError, match="Path escapes workspace root"):
         read_file("../outside.txt", root=temp_fs)
+
+
+def test_read_file_blocks_secret_by_default(temp_fs):
+    secret_path = temp_fs / ".env"
+    secret_path.write_text("SECRET=1", encoding="utf-8")
+    config = SimpleNamespace(tools=SimpleNamespace(allow_read_secrets=False, secret_globs=[]))
+    state = {"config": config}
+    with pytest.raises(ValueError, match="secret files"):
+        read_file(".env", root=temp_fs, state=state)
+
+
+def test_read_file_allows_secret_when_enabled(temp_fs):
+    secret_path = temp_fs / ".env"
+    secret_path.write_text("SECRET=1", encoding="utf-8")
+    config = SimpleNamespace(tools=SimpleNamespace(allow_read_secrets=True, secret_globs=[]))
+    state = {"config": config}
+    content = read_file(".env", root=temp_fs, state=state)
+    assert "SECRET=1" in content
 
 
 def test_list_dirs_excludes_special_and_limits(temp_fs):

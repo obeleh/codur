@@ -91,6 +91,7 @@ class RuntimeSettings(BaseModel):
     allow_outside_workspace: bool = False
     detect_tool_calls_from_text: bool = True
     planner_fallback_profiles: List[str] = Field(default_factory=list)
+    workspace_root: str | None = None
     async_: AsyncSettings = Field(default_factory=AsyncSettings, alias="async")
 
     model_config = ConfigDict(populate_by_name=True)
@@ -153,6 +154,10 @@ class ToolSettings(BaseModel):
         }
     )
     allow_git_write: bool = False
+    allow_read_secrets: bool = False
+    secret_globs: list[str] = Field(default_factory=list)
+    include_hidden_files: bool = False
+    respect_gitignore: bool = True
 
     @field_validator("default_max_bytes", "default_max_results")
     @classmethod
@@ -307,7 +312,15 @@ def load_config(config_path: Optional[Path] = None) -> CodurConfig:
     if "llm_provider" in config_data or "llm_model" in config_data:
         llm.setdefault("default_profile", None)
 
-    return CodurConfig(**config_data)
+    config = CodurConfig(**config_data)
+    if not config.runtime.workspace_root:
+        config.runtime.workspace_root = str(Path.cwd().resolve())
+    try:
+        from codur.utils.path_utils import set_default_root
+        set_default_root(config.runtime.workspace_root)
+    except Exception:
+        pass
+    return config
 
 
 def save_config(config: CodurConfig, path: Optional[Path] = None):

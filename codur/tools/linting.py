@@ -9,34 +9,41 @@ import os
 from pathlib import Path
 from typing import Iterable
 
-from codur.tools.filesystem import EXCLUDE_DIRS
+from codur.utils.ignore_utils import (
+    get_config_from_state,
+    get_exclude_dirs,
+    is_gitignored,
+    load_gitignore,
+    should_include_hidden,
+    should_respect_gitignore,
+)
 from codur.graph.state import AgentState
+from codur.utils.path_utils import resolve_root, resolve_path
 
 
-def _resolve_root(root: str | Path | None) -> Path:
-    return (Path(root) if root else Path.cwd()).resolve()
-
-
-def _resolve_path(
-    path: str,
-    root: str | Path | None,
-    allow_outside_root: bool = False,
-) -> Path:
-    root_path = _resolve_root(root)
-    raw_path = Path(path)
-    target = raw_path if raw_path.is_absolute() else root_path / raw_path
-    target = target.resolve()
-    if allow_outside_root:
-        return target
-    if target == root_path or root_path in target.parents:
-        return target
-    raise ValueError(f"Path escapes workspace root: {path}")
-
-
-def _iter_python_files(root: Path) -> Iterable[Path]:
+def _iter_python_files(root: Path, config: object | None = None) -> Iterable[Path]:
+    exclude_dirs = get_exclude_dirs(config)
+    include_hidden = should_include_hidden(config)
+    gitignore_spec = load_gitignore(root) if should_respect_gitignore(config) else None
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
+        rel_dir = Path(dirpath).relative_to(root)
+        filtered_dirs: list[str] = []
+        for dirname in dirnames:
+            if dirname in exclude_dirs:
+                continue
+            if not include_hidden and dirname.startswith("."):
+                continue
+            rel_path = rel_dir / dirname
+            if gitignore_spec and is_gitignored(rel_path, root, gitignore_spec, is_dir=True):
+                continue
+            filtered_dirs.append(dirname)
+        dirnames[:] = filtered_dirs
         for filename in filenames:
+            if not include_hidden and filename.startswith("."):
+                continue
+            rel_path = rel_dir / filename
+            if gitignore_spec and is_gitignored(rel_path, root, gitignore_spec, is_dir=False):
+                continue
             if filename.endswith(".py"):
                 yield Path(dirpath) / filename
 
@@ -70,11 +77,11 @@ def lint_python_files(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
-    root_path = _resolve_root(root)
+    root_path = resolve_root(root)
     errors: list[dict] = []
     checked = 0
     for raw_path in paths:
-        target = _resolve_path(raw_path, root_path, allow_outside_root=allow_outside_root)
+        target = resolve_path(raw_path, root_path, allow_outside_root=allow_outside_root)
         checked += 1
         errors.extend(_lint_file(target))
         if len(errors) >= max_errors:
@@ -88,10 +95,11 @@ def lint_python_tree(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
-    root_path = _resolve_root(root)
+    root_path = resolve_root(root)
+    config = get_config_from_state(state)
     errors: list[dict] = []
     checked = 0
-    for path in _iter_python_files(root_path):
+    for path in _iter_python_files(root_path, config=config):
         checked += 1
         errors.extend(_lint_file(path))
         if len(errors) >= max_errors:

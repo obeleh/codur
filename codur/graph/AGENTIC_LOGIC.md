@@ -344,6 +344,7 @@ The LLM response must be valid JSON in one of these formats:
 - MCP: `list_mcp_tools`, `call_mcp_tool`, `read_mcp_resource`
 - Web: `fetch_webpage`, `duckduckgo_search`
 - Python AST: `python_ast_graph`, `python_ast_outline`, `python_ast_dependencies`, `python_ast_dependencies_multifile`
+- Rope: `rope_find_usages`, `rope_find_definition`, `rope_rename_symbol`, `rope_move_module`, `rope_extract_method`
 
 **Automatic Augmentation:**
 When `read_file` targets a `.py` file, the tool node automatically adds a `python_ast_dependencies` call for the same path.

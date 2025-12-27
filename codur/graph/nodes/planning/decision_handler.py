@@ -11,6 +11,7 @@ from codur.config import CodurConfig
 from codur.graph.nodes.types import PlanNodeResult, PlanningDecision
 from codur.graph.state import AgentState
 from codur.utils.llm_calls import invoke_llm
+from codur.utils.validation import require_config
 
 from .json_parser import JSONResponseParser
 
@@ -125,9 +126,12 @@ class PlanningDecisionHandler:
                 "llm_debug": llm_debug,
             }
         if action == "delegate":
-            if not self.config.agents.preferences.default_agent:
-                raise ValueError("agents.preferences.default_agent must be configured")
             default_agent = self.config.agents.preferences.default_agent
+            require_config(
+                default_agent,
+                "agents.preferences.default_agent",
+                "agents.preferences.default_agent must be configured",
+            )
             return {
                 "next_action": "delegate",
                 "selected_agent": decision.get("agent", default_agent),

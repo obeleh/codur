@@ -6,7 +6,9 @@ import ast
 from pathlib import Path
 from codur.constants import DEFAULT_MAX_RESULTS
 from codur.graph.state import AgentState
-from codur.utils.path_utils import resolve_path
+from codur.utils.ignore_utils import get_config_from_state
+from codur.utils.path_utils import resolve_path, resolve_root
+from codur.utils.validation import validate_file_access
 DEFAULT_AST_MAX_NODES = 2000
 
 def _node_label(node: ast.AST) -> str:
@@ -48,6 +50,13 @@ def python_ast_graph(
     Return a node/edge AST graph for a Python file.
     """
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     with open(target, "r", encoding="utf-8", errors="replace") as handle:
         source = handle.read()
     tree = ast.parse(source, filename=str(target))
@@ -125,6 +134,13 @@ def python_ast_outline(
     Return a high-level outline of classes and functions in a Python file.
     """
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     with open(target, "r", encoding="utf-8", errors="replace") as handle:
         source = handle.read()
     tree = ast.parse(source, filename=str(target))
@@ -182,6 +198,13 @@ def python_ast_dependencies(
     Example: ["func_a -> func_b", "ClassA.method -> external_func"]
     """
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        get_config_from_state(state),
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     with open(target, "r", encoding="utf-8", errors="replace") as handle:
         source = handle.read()
     tree = ast.parse(source, filename=str(target))

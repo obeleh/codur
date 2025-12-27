@@ -12,15 +12,60 @@ from typing import Iterable
 
 from codur.graph.state import AgentState
 from codur.utils.path_utils import resolve_path, resolve_root
+from codur.utils.ignore_utils import (
+    get_config_from_state,
+    get_exclude_dirs,
+    is_gitignored,
+    load_gitignore,
+    should_include_hidden,
+    should_respect_gitignore,
+)
+from codur.utils.validation import validate_file_access
 from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS
 
-EXCLUDE_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache"}
+def _filter_dirnames(
+    *,
+    dirpath: str,
+    dirnames: list[str],
+    root: Path,
+    include_hidden: bool,
+    exclude_dirs: set[str],
+    gitignore_spec: object | None,
+) -> None:
+    rel_dir = Path(dirpath).relative_to(root)
+    filtered: list[str] = []
+    for dirname in dirnames:
+        if dirname in exclude_dirs:
+            continue
+        if not include_hidden and dirname.startswith("."):
+            continue
+        rel_path = rel_dir / dirname
+        if gitignore_spec and is_gitignored(rel_path, root, gitignore_spec, is_dir=True):
+            continue
+        filtered.append(dirname)
+    dirnames[:] = filtered
 
 
-def _iter_files(root: Path) -> Iterable[Path]:
+def _iter_files(root: Path, config: object | None = None) -> Iterable[Path]:
+    exclude_dirs = get_exclude_dirs(config)
+    include_hidden = should_include_hidden(config)
+    gitignore_spec = load_gitignore(root) if should_respect_gitignore(config) else None
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
+        _filter_dirnames(
+            dirpath=dirpath,
+            dirnames=dirnames,
+            root=root,
+            include_hidden=include_hidden,
+            exclude_dirs=exclude_dirs,
+            gitignore_spec=gitignore_spec,
+        )
+        rel_dir = Path(dirpath).relative_to(root)
         for filename in filenames:
+            if not include_hidden and filename.startswith("."):
+                continue
+            rel_path = rel_dir / filename
+            if gitignore_spec and is_gitignored(rel_path, root, gitignore_spec, is_dir=False):
+                continue
             yield Path(dirpath) / filename
 
 
@@ -32,6 +77,15 @@ def read_file(
     state: AgentState | None = None,
 ) -> str:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    root_path = resolve_root(root)
+    config = get_config_from_state(state)
+    validate_file_access(
+        target,
+        root_path,
+        config,
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     with open(target, "r", encoding="utf-8", errors="replace") as handle:
         data = handle.read(max_bytes + 1)
     if len(data) > max_bytes:
@@ -152,8 +206,9 @@ def list_files(
     state: AgentState | None = None,
 ) -> list[str]:
     root_path = resolve_root(root)
+    config = get_config_from_state(state)
     results: list[str] = []
-    for file_path in _iter_files(root_path):
+    for file_path in _iter_files(root_path, config):
         results.append(str(file_path.relative_to(root_path)))
         if len(results) >= max_results:
             break
@@ -166,9 +221,20 @@ def list_dirs(
     state: AgentState | None = None,
 ) -> list[str]:
     root_path = resolve_root(root)
+    config = get_config_from_state(state)
+    exclude_dirs = get_exclude_dirs(config)
+    include_hidden = should_include_hidden(config)
+    gitignore_spec = load_gitignore(root_path) if should_respect_gitignore(config) else None
     results: list[str] = []
     for dirpath, dirnames, _ in os.walk(root_path):
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
+        _filter_dirnames(
+            dirpath=dirpath,
+            dirnames=dirnames,
+            root=root_path,
+            include_hidden=include_hidden,
+            exclude_dirs=exclude_dirs,
+            gitignore_spec=gitignore_spec,
+        )
         for dirname in dirnames:
             dir_path = Path(dirpath) / dirname
             results.append(str(dir_path.relative_to(root_path)))
@@ -186,6 +252,10 @@ def file_tree(
     state: AgentState | None = None,
 ) -> list[str]:
     root_path = resolve_root(root)
+    config = get_config_from_state(state)
+    exclude_dirs = get_exclude_dirs(config)
+    include_hidden = should_include_hidden(config)
+    gitignore_spec = load_gitignore(root_path) if should_respect_gitignore(config) else None
     if path:
         target = resolve_path(path, root_path, allow_outside_root=allow_outside_root)
     else:
@@ -197,16 +267,29 @@ def file_tree(
     base = target
     for dirpath, dirnames, filenames in os.walk(base):
         rel_dir = Path(dirpath).relative_to(base)
+        rel_dir_root = Path(dirpath).relative_to(root_path)
         depth = 0 if rel_dir == Path(".") else len(rel_dir.parts)
         if depth > max_depth:
             dirnames[:] = []
             continue
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_DIRS]
+        _filter_dirnames(
+            dirpath=dirpath,
+            dirnames=dirnames,
+            root=root_path,
+            include_hidden=include_hidden,
+            exclude_dirs=exclude_dirs,
+            gitignore_spec=gitignore_spec,
+        )
         for dirname in dirnames:
             results.append(str((Path(dirpath) / dirname).relative_to(base)) + "/")
             if len(results) >= max_results:
                 return results
         for filename in filenames:
+            if not include_hidden and filename.startswith("."):
+                continue
+            rel_path = rel_dir_root / filename
+            if gitignore_spec and is_gitignored(rel_path, root_path, gitignore_spec, is_dir=False):
+                continue
             results.append(str((Path(dirpath) / filename).relative_to(base)))
             if len(results) >= max_results:
                 return results
@@ -221,9 +304,10 @@ def search_files(
     state: AgentState | None = None,
 ) -> list[str]:
     root_path = resolve_root(root)
+    config = get_config_from_state(state)
     results: list[str] = []
     needle = query if case_sensitive else query.lower()
-    for file_path in _iter_files(root_path):
+    for file_path in _iter_files(root_path, config):
         name = str(file_path.relative_to(root_path))
         haystack = name if case_sensitive else name.lower()
         if needle in haystack:
@@ -243,6 +327,14 @@ def replace_in_file(
     state: AgentState | None = None,
 ) -> dict:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    config = get_config_from_state(state)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        config,
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     with open(target, "r", encoding="utf-8", errors="replace") as handle:
         content = handle.read()
     new_content, num_replaced = re.subn(pattern, replacement, content, count=count)
@@ -258,6 +350,14 @@ def line_count(
     state: AgentState | None = None,
 ) -> dict:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    config = get_config_from_state(state)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        config,
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     count = 0
     with open(target, "r", encoding="utf-8", errors="replace") as handle:
         for count, _ in enumerate(handle, start=1):
@@ -277,6 +377,14 @@ def inject_lines(
     if line < 1:
         raise ValueError("line must be >= 1")
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    config = get_config_from_state(state)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        config,
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     text = target.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines(keepends=True)
     if line > len(lines) + 1:
@@ -301,6 +409,14 @@ def replace_lines(
     if start_line < 1 or end_line < start_line:
         raise ValueError("start_line must be >= 1 and <= end_line")
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    config = get_config_from_state(state)
+    validate_file_access(
+        target,
+        resolve_root(root),
+        config,
+        operation="read",
+        allow_outside_root=allow_outside_root,
+    )
     text = target.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines(keepends=True)
     if start_line > len(lines) + 1:
