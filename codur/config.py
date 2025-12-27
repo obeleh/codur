@@ -139,6 +139,12 @@ class PlanningSettings(BaseModel):
         return value
 
 
+class ModelAgentInstruction(BaseModel):
+    """Instructions for specific agents to counter model biases."""
+    agent: str  # Agent name pattern (e.g., "all", "coding", "planning")
+    instruction: str  # Instruction text to inject as system message
+
+
 class ToolSettings(BaseModel):
     """Default tool settings."""
     default_max_bytes: int = 200_000
@@ -192,6 +198,7 @@ class CodurConfig(BaseModel):
     tools: ToolSettings = Field(default_factory=ToolSettings)
     agent_execution: AgentExecutionSettings = Field(default_factory=AgentExecutionSettings)
     providers: Dict[str, LLMProviderSettings] = Field(default_factory=dict)
+    model_agent_instructions: List[ModelAgentInstruction] = Field(default_factory=list)
 
     # Convenience properties for existing code that expects flat fields
     @property

@@ -193,6 +193,20 @@ agent_execution:
   default_cli_timeout: 300         # 5 minutes instead of 10
   claude_code_max_tokens: 8000     # Max tokens for Claude Code
 
+# Model Agent Instructions - Counter model biases with custom instructions
+# These instructions are injected as system messages before LLM invocations
+# matching the agent pattern in the invoked_by parameter
+model_agent_instructions:
+  # Apply to all LLM invocations (planning, coding, explaining, etc.)
+  # - agent: "all"
+  #   instruction: "Be concise and avoid unnecessary explanations unless specifically asked."
+  # Apply only to coding-related LLM invocations (coding.primary, coding.retry, etc.)
+  - agent: "coding"
+    instruction: "Do not suddenly inject reading from stdin. Only read from stdin if explicitly requested by the user."
+  # Apply only to planning LLM invocations (planning.llm_plan, planning.retry_json, etc.)
+  # - agent: "planning"
+  #   instruction: "Prefer delegating to local tools over external API calls when possible."
+
 # Tool settings
 tools:
   # Allow git write operations like staging or commits.

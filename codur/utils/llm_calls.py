@@ -5,7 +5,7 @@ LLM invocation accounting and limits.
 from __future__ import annotations
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
@@ -17,6 +17,31 @@ class LLMCallLimitExceeded(RuntimeError):
     """Raised when the LLM call limit is exceeded."""
 
 
+def _get_matching_instructions(config: CodurConfig | None, invoked_by: str) -> list[str]:
+    """Get all matching model agent instructions for the given invoked_by value.
+
+    Args:
+        config: Codur configuration (may be None)
+        invoked_by: The invoked_by string (e.g., "coding.primary", "planning.llm_plan")
+
+    Returns:
+        List of instruction strings that match the invoked_by value
+    """
+    if not config or not config.model_agent_instructions:
+        return []
+
+    instructions = []
+    for instruction_config in config.model_agent_instructions:
+        agent_pattern = instruction_config.agent.lower()
+        invoked_by_lower = invoked_by.lower()
+
+        # Match "all" or partial match in invoked_by string
+        if agent_pattern == "all" or agent_pattern in invoked_by_lower:
+            instructions.append(instruction_config.instruction)
+
+    return instructions
+
+
 def invoke_llm(
     llm: BaseChatModel,
     prompt_messages: list[BaseMessage],
@@ -25,6 +50,17 @@ def invoke_llm(
     config: CodurConfig | None = None,
 ) -> BaseMessage:
     _increment_llm_calls(state, config, invoked_by)
+
+    # Get matching instructions and inject as system messages
+    instructions = _get_matching_instructions(config, invoked_by)
+    if instructions:
+        # Prepend instructions as system messages
+        instruction_messages = [
+            SystemMessage(content=instruction)
+            for instruction in instructions
+        ]
+        prompt_messages = instruction_messages + list(prompt_messages)
+
     return llm.invoke(prompt_messages)
 
 

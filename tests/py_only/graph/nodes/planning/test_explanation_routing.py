@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from codur.graph.nodes.planning.core import pattern_plan
-from codur.graph.nodes.planning.classifier import quick_classify
+from codur.graph.nodes.planning.classifier import quick_classify, text_confidence_backoff
 from codur.graph.nodes.planning.types import TaskType
 from codur.graph.nodes.planning.strategies import ExplanationStrategy
 
@@ -27,53 +27,59 @@ class TestPhase0ExplanationRouting:
 
     def test_classify_explain_keyword(self, config):
         """Test that 'explain' keyword triggers EXPLANATION classification."""
-        messages = [HumanMessage(content="Explain how the authentication system works")]
+        content = "Explain how the authentication system works"
+        messages = [HumanMessage(content=content)]
 
         result = quick_classify(messages, config)
 
         assert result.task_type == TaskType.EXPLANATION
-        assert result.confidence >= 0.65  # Should have good confidence
+        assert result.confidence >= 0.65 * text_confidence_backoff(content)
         assert "explanation keyword" in result.reasoning.lower()
 
     def test_classify_what_does_question(self, config):
         """Test that 'what does' question triggers EXPLANATION."""
-        messages = [HumanMessage(content="What does the main.py file do?")]
+        content = "What does the main.py file do?"
+        messages = [HumanMessage(content=content)]
 
         result = quick_classify(messages, config)
 
         assert result.task_type == TaskType.EXPLANATION
-        assert result.confidence >= 0.65
+        assert result.confidence >= 0.65 * text_confidence_backoff(content)
 
     def test_classify_describe_keyword(self, config):
         """Test that 'describe' keyword triggers EXPLANATION."""
-        messages = [HumanMessage(content="Describe the project architecture")]
+        content = "Describe the project architecture"
+        messages = [HumanMessage(content=content)]
 
         result = quick_classify(messages, config)
 
         assert result.task_type == TaskType.EXPLANATION
-        assert result.confidence >= 0.65
+        assert result.confidence >= 0.65 * text_confidence_backoff(content)
 
     def test_classify_how_does_question(self, config):
         """Test that 'how does' question triggers EXPLANATION."""
-        messages = [HumanMessage(content="How does the title_case function handle edge cases?")]
+        content = "How does the title_case function handle edge cases?"
+        messages = [HumanMessage(content=content)]
 
         result = quick_classify(messages, config)
 
         assert result.task_type == TaskType.EXPLANATION
-        assert result.confidence >= 0.65
+        assert result.confidence >= 0.65 * text_confidence_backoff(content)
 
     def test_classify_tell_me_about(self, config):
         """Test that 'tell me about' triggers EXPLANATION."""
-        messages = [HumanMessage(content="Tell me about the authentication system in this codebase")]
+        content = "Tell me about the authentication system in this codebase"
+        messages = [HumanMessage(content=content)]
 
         result = quick_classify(messages, config)
 
         assert result.task_type == TaskType.EXPLANATION
-        assert result.confidence >= 0.65
+        assert result.confidence >= 0.65 * text_confidence_backoff(content)
 
     def test_classify_with_file_hint(self, config):
         """Test that explanation with file path gets boosted score."""
-        messages = [HumanMessage(content="Explain main.py")]
+        content = "Explain main.py"
+        messages = [HumanMessage(content=content)]
 
         result = quick_classify(messages, config)
 
@@ -81,7 +87,7 @@ class TestPhase0ExplanationRouting:
         assert len(result.detected_files) > 0
         assert "main.py" in result.detected_files[0]
         # Should have higher confidence with file hint
-        assert result.confidence >= 0.7
+        assert result.confidence >= 0.7 * text_confidence_backoff(content)
 
     def test_classify_lookup_with_code_context(self, config):
         """Test that lookup questions with code context trigger EXPLANATION."""

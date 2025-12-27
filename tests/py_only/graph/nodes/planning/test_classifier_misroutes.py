@@ -7,7 +7,7 @@ import pytest
 from unittest.mock import MagicMock
 from langchain_core.messages import HumanMessage
 
-from codur.graph.nodes.planning.classifier import quick_classify
+from codur.graph.nodes.planning.classifier import quick_classify, text_confidence_backoff
 from codur.graph.nodes.planning.types import TaskType
 
 
@@ -225,4 +225,4 @@ def test_quick_classify_misroutes(prompt: str, expected_type: TaskType, min_conf
     result = quick_classify([HumanMessage(content=prompt)], config)
     assert result.task_type == expected_type
     if min_confidence:
-        assert result.confidence >= min_confidence
+        assert result.confidence >= min_confidence * text_confidence_backoff(prompt)

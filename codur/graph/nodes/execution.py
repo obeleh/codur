@@ -331,7 +331,12 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         # Only route to coding agent if we read files but didn't call an agent yet
         if has_read_file and not has_agent_call:
             if is_verbose(state):
-                console.print("[dim]Tool read_file completed - delegating to codur-coding[/dim]")
+                tool_names = [call.get("tool") for call in tool_calls if call.get("tool")]
+                tool_label = ", ".join(tool_names) if tool_names else "tool calls"
+                console.print(
+                    f"[dim]Tool calls completed ({tool_label}; auto-injected follow-ups may have run) - "
+                    "delegating to codur-coding[/dim]"
+                )
 
             # Add explicit implementation instruction to prevent investigation loop
             impl_instruction = SystemMessage(content=(

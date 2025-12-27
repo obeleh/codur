@@ -55,11 +55,12 @@ _STRATEGIES = {
 def _build_candidates(
     scores: dict[TaskType, float],
     reasons: dict[TaskType, list[str]],
+    confidence_backoff: float = 1.0,
 ) -> list[ClassificationCandidate]:
     candidates: list[ClassificationCandidate] = []
     for task_type in TaskType:
         score = scores.get(task_type, 0.0)
-        confidence = min(0.95, 0.4 + (score * 0.5))
+        confidence = min(0.95, 0.4 + (score * 0.5)) * confidence_backoff
         reason_list = reasons.get(task_type, [])
         reasoning = "; ".join(reason_list) if reason_list else "baseline"
         candidates.append(
@@ -71,6 +72,15 @@ def _build_candidates(
         )
     candidates.sort(key=lambda item: item.confidence, reverse=True)
     return candidates
+
+
+def text_confidence_backoff(text: str) -> float:
+    if text:
+        # ignore the first 200 characters for backoff calculation
+        text = text[:200]
+    if not text:
+        return 1.0
+    return 0.95 ** (len(text) / 100.0)
 
 
 def _determine_detected_action(
@@ -135,6 +145,7 @@ def quick_classify(messages: list[BaseMessage], config: CodurConfig) -> Classifi
     # Extract file paths
     detected_files = extract_file_paths(text)
     has_code_file = any(Path(path).suffix.lower() in CODE_FILE_EXTENSIONS for path in detected_files)
+    confidence_backoff = text_confidence_backoff(text)
 
     # Delegate scoring to strategies
     scores: dict[TaskType, float] = {}
@@ -163,11 +174,11 @@ def quick_classify(messages: list[BaseMessage], config: CodurConfig) -> Classifi
     best_task = max(scores.items(), key=lambda item: (item[1], priority.get(item[0], 0)))[0]
     best_score = scores[best_task]
 
-    candidates = _build_candidates(scores, reasons)
+    candidates = _build_candidates(scores, reasons, confidence_backoff)
     if best_score <= 0.0:
         return ClassificationResult(
             task_type=TaskType.UNKNOWN,
-            confidence=0.4,
+            confidence=0.4 * confidence_backoff,
             detected_files=detected_files,
             detected_action=None,
             reasoning="No clear pattern matched",
