@@ -10,8 +10,8 @@ from codur.graph.state import AgentState
 from codur.config import CodurConfig
 from codur.utils.llm_helpers import create_and_invoke
 from codur.agents import AgentRegistry
-from codur.graph.nodes.types import ExecuteNodeResult
-from codur.graph.nodes.utils import (
+from codur.graph.node_types import ExecuteNodeResult
+from codur.graph.utils import (
     _resolve_agent_profile,
     _resolve_agent_reference,
 )
@@ -22,8 +22,7 @@ from codur.graph.state_operations import (
     get_messages,
     get_llm_calls,
 )
-from codur.graph.nodes.tool_detection import create_default_tool_detector
-from codur.graph.nodes.tool_executor import execute_tool_calls
+from codur.graph.tool_executor import execute_tool_calls
 from codur.utils.llm_calls import LLMCallLimitExceeded
 
 # Import agents to ensure they are registered
@@ -32,7 +31,6 @@ import codur.agents.codex_agent  # noqa: F401
 import codur.agents.claude_code_agent  # noqa: F401
 
 console = Console()
-_TOOL_DETECTOR = create_default_tool_detector()
 
 
 class AgentExecutor:
@@ -169,6 +167,10 @@ class AgentExecutor:
         3. Tools are executed and results fed back
         4. Loop continues until no more tool calls or max iterations
         """
+        # Lazy import to break circular dependency at module load time
+        from codur.graph.tool_detection import create_default_tool_detector
+        tool_detector = create_default_tool_detector()
+
         messages = [HumanMessage(content=task)]
         result = None
         tool_iteration = 0
@@ -187,7 +189,7 @@ class AgentExecutor:
                 console.print(f"[dim]Agent iteration {tool_iteration}: result length {len(result)} chars[/dim]")
 
             # Check for tool calls in the response
-            tool_calls = _TOOL_DETECTOR.detect(result)
+            tool_calls = tool_detector.detect(result)
 
             if not tool_calls:
                 # No tool calls detected, return final result

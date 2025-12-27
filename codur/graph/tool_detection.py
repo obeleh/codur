@@ -9,7 +9,7 @@ import json
 from typing import Callable, Optional
 
 from codur.utils.path_extraction import extract_path_from_message, looks_like_path
-from codur.graph.nodes.planning.injectors import inject_followup_tools
+from codur.graph.planning.injectors import inject_followup_tools
 
 
 ToolCallList = list[dict]

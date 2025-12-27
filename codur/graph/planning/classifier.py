@@ -18,11 +18,11 @@ from codur.config import CodurConfig
 from codur.utils.path_extraction import extract_file_paths
 
 from codur.constants import TaskType
-from codur.graph.nodes.planning.types import (
+from codur.graph.planning.types import (
     ClassificationResult,
     ClassificationCandidate,
 )
-from codur.graph.nodes.planning.strategies import (
+from codur.graph.planning.strategies import (
     GreetingStrategy,
     FileOperationStrategy,
     CodeFixStrategy,

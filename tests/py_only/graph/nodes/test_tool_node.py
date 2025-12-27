@@ -2,7 +2,7 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage
 
-from codur.graph.nodes.tools import tool_node
+from codur.graph.tools import tool_node
 
 
 class _Runtime:

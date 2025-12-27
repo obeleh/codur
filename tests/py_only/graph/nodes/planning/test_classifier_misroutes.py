@@ -7,8 +7,8 @@ import pytest
 from unittest.mock import MagicMock
 from langchain_core.messages import HumanMessage
 
-from codur.graph.nodes.planning.classifier import quick_classify, text_confidence_backoff
-from codur.graph.nodes.planning.types import TaskType
+from codur.graph.planning.classifier import quick_classify, text_confidence_backoff
+from codur.graph.planning.types import TaskType
 
 
 @pytest.mark.parametrize(

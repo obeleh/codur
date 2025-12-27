@@ -4,7 +4,7 @@ from rich.console import Console
 
 from codur.graph.state import AgentState
 from codur.config import CodurConfig
-from codur.graph.nodes.types import DelegateNodeResult
+from codur.graph.node_types import DelegateNodeResult
 from codur.utils.config_helpers import get_default_agent
 from codur.utils.validation import require_config
 from codur.graph.state_operations import is_verbose, get_selected_agent

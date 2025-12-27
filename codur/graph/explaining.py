@@ -1,16 +1,13 @@
 "Dedicated explaining node for the codur-explaining agent."
-import json
-from typing import Optional, List, Dict, Any
 
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
-from codur.graph.nodes.types import ExecuteNodeResult
-from codur.graph.nodes.utils import normalize_messages, resolve_llm_for_model
+from codur.graph.node_types import ExecuteNodeResult
+from codur.graph.utils import normalize_messages
 from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose
-from codur.utils.llm_calls import invoke_llm
 from codur.utils.llm_helpers import create_and_invoke
 
 console = Console()

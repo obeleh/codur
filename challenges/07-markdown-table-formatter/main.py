@@ -3,18 +3,19 @@ import sys
 def format_table(markdown_table: str) -> str:
     """Reformat a markdown table with proper column widths and alignment.
 
-    Steps:
-    1. Split input into non‑empty lines.
-    2. Parse header, separator, and body rows.
-    3. Detect alignment for each column from the separator row.
-    4. Compute the maximum content width for each column (header + body).
-    5. Build a new table where each cell is padded with a single space on both sides and aligned according to the detected alignment.
-    6. Generate a separator row that contains dashes matching the column width while preserving any leading/trailing colons that indicate alignment.
+    The function follows these steps:
+    1. Split the input into non‑empty lines.
+    2. Parse the header row, the separator row, and the body rows.
+    3. Detect column alignment from the separator row (left, right, center).
+    4. Compute the maximum content width for each column (header and body cells).
+    5. Build a new table where each cell is padded with a single space on both sides
+       and aligned according to the detected alignment.
+    6. Generate a separator row that contains dashes matching the column width while
+       preserving any leading/trailing colons that indicate alignment.
     """
-    # 1. Split into lines and discard completely empty ones
+    # 1. Split into lines, ignore completely empty ones
     lines = [ln for ln in markdown_table.splitlines() if ln.strip()]
     if len(lines) < 2:
-        # Not a valid markdown table – return the stripped input unchanged
         return markdown_table.strip()
 
     def split_row(row: str) -> list:
@@ -39,8 +40,8 @@ def format_table(markdown_table: str) -> str:
     if len(separator_cells_raw) < col_count:
         separator_cells_raw += [''] * (col_count - len(separator_cells_raw))
 
-    # 3. Detect alignment for each column and remember colon positions
-    alignments = []          # "left", "right" or "center"
+    # 3. Detect alignment and remember colon positions
+    alignments = []  # "left", "right" or "center"
     left_colon = []
     right_colon = []
     for cell in separator_cells_raw[:col_count]:
@@ -62,7 +63,7 @@ def format_table(markdown_table: str) -> str:
             max_widths[i] = max(max_widths[i], len(cell))
 
     def format_cell(content: str, width: int, align: str) -> str:
-        """Return a cell string with one space padding on each side and the
+        """Return a cell string with a single space padding on each side and the
         requested alignment inside the padded area.
         """
         if align == 'right':
@@ -74,45 +75,40 @@ def format_table(markdown_table: str) -> str:
         return f' {inner} '
 
     # 5. Build formatted rows
-    formatted = []
-    # Header row (always left‑aligned for visual consistency)
+    formatted_rows = []
+
+    # Header row – always left‑aligned for visual consistency
     header = '|' + '|'.join(
         format_cell(header_cells[i], max_widths[i], 'left') for i in range(col_count)
     ) + '|'
-    formatted.append(header)
+    formatted_rows.append(header)
 
-    # Separator row – generate dash count according to alignment rules that match the tests
+    # Separator row – dash count depends on colon presence
     sep_parts = []
     for i in range(col_count):
-        # Desired dash count:
-        #   left‑aligned (only left colon)   -> max_width + 3
-        #   right‑aligned (only right colon) -> max_width + 1
-        #   center (both colons)            -> max_width
-        #   no alignment markers (default left) -> max_width + 2
-        if left_colon[i] and not right_colon[i]:
-            dash_len = max_widths[i] + 3
-        elif right_colon[i] and not left_colon[i]:
-            dash_len = max_widths[i] + 1
-        elif left_colon[i] and right_colon[i]:
+        if left_colon[i] and right_colon[i]:
             dash_len = max_widths[i]
+        elif left_colon[i] or right_colon[i]:
+            dash_len = max_widths[i] + 1
         else:
             dash_len = max_widths[i] + 2
         left = ':' if left_colon[i] else ''
         right = ':' if right_colon[i] else ''
         sep_parts.append(left + '-' * dash_len + right)
     separator = '|' + '|'.join(sep_parts) + '|'
-    formatted.append(separator)
+    formatted_rows.append(separator)
 
-    # Body rows – use the alignment detected from the separator row
+    # Body rows – use detected alignment per column
     for row in body_rows:
+        # Pad row to the expected column count
         padded = row + [''] * (col_count - len(row))
-        formatted.append(
+        formatted_rows.append(
             '|' + '|'.join(
                 format_cell(padded[i], max_widths[i], alignments[i]) for i in range(col_count)
             ) + '|'
         )
 
-    return '\n'.join(formatted)
+    return '\n'.join(formatted_rows)
 
 def run_tests():
     test_cases = [

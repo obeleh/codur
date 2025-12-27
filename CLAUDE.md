@@ -19,7 +19,7 @@ This document explains how Codur works at a high level and how to make changes s
 
 - **Do not hardcode challenge-specific patterns**: Never assume `expected.txt`, or other challenge-specific file names in tools or agents. The review node already handles challenge validation. Any new tool must work generically across any Python project, not just the test fixtures.
 - Prefer centralized utilities in `codur/utils` over local ad-hoc helpers.
-- Keep all tool execution logic in `codur/graph/nodes/tool_executor.py`.
+- Keep all tool execution logic in `codur/graph/tool_executor.py`.
 - Do not add code that only satisfies the `challenges/` fixtures; changes must generalize.
 - Observability/tracing is deprecated; rely on Rich logging and the TUI debug view.
 - Tools, strategies, and agents should use TaskType annotations when appropriate.
@@ -29,8 +29,8 @@ This document explains how Codur works at a high level and how to make changes s
 
 - `AGENTIC_LOGIC.md` for the full planner and execution flow.
 - `CODING.md` for the coding agent tool loop and guardrails.
-- `codur/graph/nodes/execution/README.md` for execution, delegation, and review nodes.
+- `codur/graph/execution/README.md` for execution, delegation, and review nodes.
 - `codur/tools/README.md` for tool registry and schemas.
-- `codur/graph/nodes/planning/injectors/README.md` for language-specific tool injectors.
-- `codur/graph/nodes/planning/strategies/README.md` for textual planning strategies.
+- `codur/graph/planning/injectors/README.md` for language-specific tool injectors.
+- `codur/graph/planning/strategies/README.md` for textual planning strategies.
 - `challenges/README.md` for the validation harness.

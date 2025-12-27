@@ -2,7 +2,7 @@ import os
 import pytest
 from pathlib import Path
 from codur.config import load_config
-from codur.graph.nodes.coding import coding_node
+from codur.graph.coding import coding_node
 from langchain_core.messages import HumanMessage
 
 # Skip if GROQ_API_KEY is not set

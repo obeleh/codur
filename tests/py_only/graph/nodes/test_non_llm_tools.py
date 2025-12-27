@@ -2,7 +2,7 @@
 
 from langchain_core.messages import HumanMessage
 
-from codur.graph.nodes.non_llm_tools import run_non_llm_tools
+from codur.graph.non_llm_tools import run_non_llm_tools
 
 
 def test_non_llm_tools_skips_code_fix_with_file_hint():

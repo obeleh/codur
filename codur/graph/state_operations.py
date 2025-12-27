@@ -2,14 +2,14 @@ from typing import TYPE_CHECKING, Optional
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 
-from codur.graph.nodes.utils import normalize_messages as _normalize_messages
+from codur.graph.utils import normalize_messages as _normalize_messages
 
 if TYPE_CHECKING:
     # Avoid circular imports for type checking
-    # We don't want to import anything from codur.graph.state or codur.graph.nodes.types at runtime
+    # We don't want to import anything from codur.graph.state or codur.graph.node_types at runtime
 
     from codur.graph.state import AgentState
-    from codur.graph.nodes.types import ExecuteNodeResult
+    from codur.graph.node_types import ExecuteNodeResult
     from codur.config import CodurConfig
 
 # ============================================================================

@@ -4,8 +4,8 @@ from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
-from codur.graph.nodes.types import ExecuteNodeResult
-from codur.graph.nodes.utils import normalize_messages
+from codur.graph.node_types import ExecuteNodeResult
+from codur.graph.utils import normalize_messages
 from codur.graph.state_operations import (
     get_iterations,
     get_llm_calls,
@@ -15,7 +15,7 @@ from codur.graph.state_operations import (
 from codur.tools.schema_generator import get_function_schemas
 from codur.utils.llm_helpers import create_and_invoke_with_tool_support
 from codur.utils.tool_response_handler import extract_tool_calls_unified
-from codur.graph.nodes.tool_executor import execute_tool_calls
+from codur.graph.tool_executor import execute_tool_calls
 
 """
 NOTE:

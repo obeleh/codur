@@ -1,7 +1,7 @@
 """Handle tool calls from both native API responses and JSON text fallback."""
 
 from langchain_core.messages import AIMessage, ToolMessage
-from codur.graph.nodes.planning.json_parser import JSONResponseParser
+from codur.graph.planning.json_parser import JSONResponseParser
 
 
 def extract_tool_calls_from_ai_message(message: AIMessage) -> list[dict]:

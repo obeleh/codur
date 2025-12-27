@@ -307,7 +307,7 @@ def list_agents(
     """List available agents and their capabilities."""
     from codur.agents import AgentRegistry
     # Ensure agents are registered
-    import codur.graph.nodes.execution  # noqa: F401
+    import codur.graph.execution  # noqa: F401
 
     cfg = load_config(config)
 

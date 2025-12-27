@@ -3,21 +3,18 @@ Main LangGraph definition for the coding agent
 """
 
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 from codur.graph.state import AgentState
-from codur.graph.nodes import (
-    plan_node,
+from codur.graph.execution import (
     execute_node,
     delegate_node,
-    tool_node,
-    coding_node,
-    explaining_node,
     review_node,
-    should_continue,
-    should_delegate,
 )
-from codur.graph.nodes.planning import (
+from codur.graph.tools import tool_node
+from codur.graph.coding import coding_node
+from codur.graph.explaining import explaining_node
+from codur.graph.routing import should_continue, should_delegate
+from codur.graph.planning import (
     pattern_plan_node,
     llm_pre_plan_node,
     llm_plan_node,
@@ -30,8 +27,6 @@ from codur.constants import (
     REF_AGENT_EXPLAINING,
     ACTION_DELEGATE,
     ACTION_TOOL,
-    ACTION_CONTINUE,
-    ACTION_END,
 )
 from codur.llm import create_llm, create_llm_profile
 from codur.graph.state_operations import get_next_action, get_selected_agent

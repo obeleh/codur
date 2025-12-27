@@ -19,11 +19,12 @@ Phase 1 LLM pre-plan is a separate classifier and does not use strategies.
 3. Implement the `TaskStrategy` protocol from `base.py`:
 
 ```python
-from codur.graph.nodes.planning.strategies.base import TaskStrategy
-from codur.graph.nodes.types import PlanNodeResult
-from codur.graph.nodes.planning.types import ClassificationResult
+from codur.graph.planning.strategies.base import TaskStrategy
+from codur.graph.node_types import PlanNodeResult
+from codur.graph.planning.types import ClassificationResult
 from codur.config import CodurConfig
 from langchain_core.messages import BaseMessage
+
 
 class MyTaskStrategy:
     def get_patterns(self):
@@ -33,13 +34,13 @@ class MyTaskStrategy:
         ...
 
     def execute(
-        self,
-        classification: ClassificationResult,
-        tool_results_present: bool,
-        messages: list[BaseMessage],
-        iterations: int,
-        config: CodurConfig,
-        verbose: bool = False,
+            self,
+            classification: ClassificationResult,
+            tool_results_present: bool,
+            messages: list[BaseMessage],
+            iterations: int,
+            config: CodurConfig,
+            verbose: bool = False,
     ) -> PlanNodeResult | None:
         return None
 

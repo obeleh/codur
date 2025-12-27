@@ -1,15 +1,15 @@
 """Tests for planning strategies."""
 
-import pytest
 from unittest.mock import MagicMock, patch
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 
-from codur.graph.nodes.planning.strategies.web_search import WebSearchStrategy
-from codur.graph.nodes.planning.strategies.greeting import GreetingStrategy
-from codur.graph.nodes.planning.strategies.file_operation import FileOperationStrategy
-from codur.graph.nodes.planning.strategies.code_fix import CodeFixStrategy
-from codur.graph.nodes.planning.types import ClassificationResult, TaskType
-from codur.graph.nodes.planning.strategies import prompt_utils
+from codur.graph.planning.strategies.web_search import WebSearchStrategy
+from codur.graph.planning.strategies.greeting import GreetingStrategy
+from codur.graph.planning.strategies import FileOperationStrategy
+from codur.graph.planning.strategies.code_fix import CodeFixStrategy
+from codur.graph.planning.types import ClassificationResult, TaskType
+from codur.graph.planning.strategies import prompt_utils
+
 
 class TestPlanningStrategies:
     def test_web_search_strategy(self):
@@ -91,8 +91,8 @@ class TestPlanningStrategies:
         assert result["next_action"] == "tool"
         assert result["tool_calls"][0]["tool"] == "list_files"
 
-    @patch("codur.graph.nodes.planning.strategies.discovery.tool_results_include_read_file")
-    @patch("codur.graph.nodes.planning.strategies.discovery.select_file_from_tool_results")
+    @patch("codur.graph.planning.strategies.discovery.tool_results_include_read_file")
+    @patch("codur.graph.planning.strategies.discovery.select_file_from_tool_results")
     def test_code_fix_file_selection(self, mock_select, mock_check_read):
         """Test code fix strategy selecting file from tool results."""
         strategy = CodeFixStrategy()

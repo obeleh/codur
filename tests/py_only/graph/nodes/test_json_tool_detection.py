@@ -1,5 +1,4 @@
-import pytest
-from codur.graph.nodes.tool_detection import create_default_tool_detector
+from codur.graph.tool_detection import create_default_tool_detector
 
 def test_detect_json_tool_calls():
     detector = create_default_tool_detector()

@@ -7,8 +7,8 @@ Each TaskStrategy owns the domain knowledge for one task type:
 """
 
 from typing import Protocol, runtime_checkable
-from codur.graph.nodes.types import PlanNodeResult
-from codur.graph.nodes.planning.types import ClassificationResult, PatternConfig, ScoreContribution
+from codur.graph.node_types import PlanNodeResult
+from codur.graph.planning.types import ClassificationResult, PatternConfig, ScoreContribution
 from codur.config import CodurConfig
 from langchain_core.messages import BaseMessage
 

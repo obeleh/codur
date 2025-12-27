@@ -2,7 +2,7 @@
 
 import pytest
 
-from codur.graph.nodes.planning.injectors.markdown import MarkdownToolInjector
+from codur.graph.planning.injectors import MarkdownToolInjector
 
 
 class TestMarkdownToolInjector:

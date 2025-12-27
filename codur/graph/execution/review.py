@@ -8,7 +8,7 @@ from rich.console import Console
 
 from codur.graph.state import AgentState
 from codur.config import CodurConfig
-from codur.graph.nodes.types import ReviewNodeResult
+from codur.graph.node_types import ReviewNodeResult
 from codur.constants import (
     REF_AGENT_CODING,
     ACTION_CONTINUE,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from codur.graph.nodes.planning.injectors.python import PythonToolInjector
+from codur.graph.planning.injectors.python import PythonToolInjector
 
 
 class TestPythonToolInjector:

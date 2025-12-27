@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 from typing import Optional
-import os
-from pathlib import Path
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from rich.console import Console
 
 from codur.graph.state import AgentState
-from codur.graph.nodes.types import PlanNodeResult
+from codur.graph.node_types import PlanNodeResult
 from codur.constants import GREETING_MAX_WORDS
-from codur.graph.nodes.tool_detection import create_default_tool_detector
+from codur.graph.tool_detection import create_default_tool_detector
 from codur.graph.state_operations import get_iterations, is_verbose
 from codur.utils.path_extraction import find_workspace_match
 

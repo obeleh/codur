@@ -8,7 +8,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage, SystemMessage
 
 from codur.config import CodurConfig
-from codur.graph.nodes.types import PlanNodeResult, PlanningDecision
+from codur.graph.node_types import PlanNodeResult, PlanningDecision
 from codur.graph.state import AgentState
 from codur.utils.llm_calls import invoke_llm
 from codur.utils.validation import require_config

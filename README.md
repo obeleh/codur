@@ -64,8 +64,8 @@ The `challenges/` directory is used for regression testing. See `challenges/READ
 - `AGENTIC_LOGIC.md` - Planning and execution flow details
 - `CODING.md` - Coding agent behavior and tool loop
 - `codur/tools/README.md` - Tool registry and authoring
-- `codur/graph/nodes/planning/injectors/README.md` - Tool injectors
-- `codur/graph/nodes/planning/strategies/README.md` - Planning strategies
+- `codur/graph/planning/injectors/README.md` - Tool injectors
+- `codur/graph/planning/strategies/README.md` - Planning strategies
 
 ## Contributing
 

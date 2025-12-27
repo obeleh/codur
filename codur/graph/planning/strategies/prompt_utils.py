@@ -6,7 +6,7 @@ import json
 import shutil
 
 from codur.config import CodurConfig
-from codur.graph.nodes.planning.prompt_builder import PlanningPromptBuilder
+from codur.graph.planning.prompt_builder import PlanningPromptBuilder
 
 
 def build_base_prompt(config: CodurConfig) -> str:

@@ -2,8 +2,8 @@
 
 from types import SimpleNamespace
 
-from codur.graph.nodes.planning.strategies.complex_refactor import ComplexRefactorStrategy
-from codur.graph.nodes.planning.types import ClassificationResult, TaskType
+from codur.graph.planning.strategies.complex_refactor import ComplexRefactorStrategy
+from codur.graph.planning.types import ClassificationResult, TaskType
 
 
 def test_complex_refactor_prompt_suggests_rope_tools():

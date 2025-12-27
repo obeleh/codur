@@ -1,14 +1,12 @@
 """Tests for the tool injector registry system."""
 
-import pytest
-
-from codur.graph.nodes.planning.injectors import (
+from codur.graph.planning.injectors import (
     get_injector_for_file,
     get_all_injectors,
     inject_followup_tools,
+    PythonToolInjector,
+    MarkdownToolInjector,
 )
-from codur.graph.nodes.planning.injectors.python import PythonToolInjector
-from codur.graph.nodes.planning.injectors.markdown import MarkdownToolInjector
 
 
 class TestInjectorRegistry:

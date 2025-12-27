@@ -1,6 +1,6 @@
 """Tests for the codur-coding system prompt."""
 
-from codur.graph.nodes.coding import CODING_AGENT_SYSTEM_PROMPT
+from codur.graph.coding import CODING_AGENT_SYSTEM_PROMPT
 
 
 def test_coding_system_prompt_includes_tools_section():

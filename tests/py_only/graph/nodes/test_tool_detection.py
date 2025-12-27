@@ -1,4 +1,4 @@
-from codur.graph.nodes.tool_detection import create_default_tool_detector
+from codur.graph.tool_detection import create_default_tool_detector
 
 
 def test_change_intent_reads_file() -> None:

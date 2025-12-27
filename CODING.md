@@ -8,8 +8,8 @@ This document describes the dedicated coding agent (`codur-coding`) and how it u
 
 ## Entry points
 
-- Coding node: `codur/graph/nodes/coding.py`
-- Tool executor: `codur/graph/nodes/tool_executor.py`
+- Coding node: `codur/graph/coding.py`
+- Tool executor: `codur/graph/tool_executor.py`
 - Tool schemas: `codur/tools/schema_generator.py`
 
 ## Execution flow
@@ -60,4 +60,4 @@ The tool executor automatically injects syntax validation after Python code modi
 
 - `AGENTIC_LOGIC.md` for the full planning and execution flow
 - `codur/tools/README.md` for tool registry and tool authoring
-- `codur/graph/nodes/planning/injectors/README.md` for tool injection
+- `codur/graph/planning/injectors/README.md` for tool injection

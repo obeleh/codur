@@ -2,10 +2,10 @@
 
 from langchain_core.messages import BaseMessage
 
-from codur.graph.nodes.types import PlanNodeResult
-from codur.graph.nodes.planning.types import ClassificationResult, PatternConfig, ScoreContribution
+from codur.graph.node_types import PlanNodeResult
+from codur.graph.planning.types import ClassificationResult, PatternConfig, ScoreContribution
 from codur.config import CodurConfig
-from codur.graph.nodes.planning.strategies.prompt_utils import (
+from codur.graph.planning.strategies.prompt_utils import (
     build_base_prompt,
     format_focus_prompt,
     build_example_line,

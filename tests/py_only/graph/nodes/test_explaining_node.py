@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from codur.graph.nodes.explaining import explaining_node, _build_explaining_prompt
+from codur.graph.explaining import explaining_node, _build_explaining_prompt
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
 class TestExplainingNode:
@@ -67,7 +67,7 @@ class TestExplainingNode:
         assert "Expected Output" not in prompt
         assert "Actual file content here" in prompt
 
-    @patch("codur.graph.nodes.explaining.create_and_invoke")
+    @patch("codur.graph.explaining.create_and_invoke")
     def test_explaining_node_execution(self, mock_create_and_invoke):
         """Test that the node executes and returns a result."""
         # Setup mocks

@@ -124,7 +124,7 @@ All nodes receive and return `AgentState` which includes:
 ## Testing
 
 All modules can be tested independently:
-- Import specific functions: `from codur.graph.nodes.execution import delegate_node`
+- Import specific functions: `from codur.graph.execution import delegate_node`
 - AgentExecutor can be mocked for testing tool loops
 - Verification can be tested with mock entry points
 - Repair mutations can be unit tested separately
@@ -133,4 +133,4 @@ All modules can be tested independently:
 
 - `AGENTIC_LOGIC.md` for the full planning and execution flow
 - `CODING.md` for the coding agent tool loop specifics
-- `codur/graph/nodes/planning/` for the planning phase logic
+- `codur/graph/planning/` for the planning phase logic

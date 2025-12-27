@@ -5,15 +5,13 @@ import pytest
 from unittest.mock import MagicMock, patch
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from codur.config import CodurConfig
-from codur.graph.state import AgentState
-from codur.graph.nodes.planning.core import (
+from codur.graph.planning.core import (
     textual_pre_plan,
     llm_pre_plan,
     pattern_plan,
     PlanningOrchestrator,
 )
-from codur.graph.nodes.planning.types import TaskType
+from codur.graph.planning.types import TaskType
 
 
 class TestPlanningNodeWithCodingAgent:
@@ -72,7 +70,7 @@ class TestPlanningNodeWithCodingAgent:
         }
 
         # Mock the quick_classify function to return uncertain classification
-        with patch('codur.graph.nodes.planning.core.quick_classify') as mock_classify:
+        with patch('codur.graph.planning.core.quick_classify') as mock_classify:
             mock_result = MagicMock()
             mock_result.is_confident = False
             mock_result.task_type = TaskType.CODE_FIX
@@ -161,7 +159,7 @@ class TestPlanningNodeAgentSelection:
         }
 
         # Mock the LLM to return a coding agent selection
-        with patch('codur.graph.nodes.planning.core.create_llm_profile') as mock_llm:
+        with patch('codur.graph.planning.core.create_llm_profile') as mock_llm:
             mock_model = MagicMock()
             mock_response = MagicMock()
             mock_response.content = json.dumps({

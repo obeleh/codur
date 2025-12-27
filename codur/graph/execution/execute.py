@@ -2,7 +2,7 @@
 
 from codur.graph.state import AgentState
 from codur.config import CodurConfig
-from codur.graph.nodes.types import ExecuteNodeResult
+from codur.graph.node_types import ExecuteNodeResult
 from .agent_executor import AgentExecutor
 
 

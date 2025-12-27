@@ -4,10 +4,10 @@ import pytest
 from unittest.mock import MagicMock
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from codur.graph.nodes.planning.core import pattern_plan
-from codur.graph.nodes.planning.classifier import quick_classify, text_confidence_backoff
-from codur.graph.nodes.planning.types import TaskType
-from codur.graph.nodes.planning.strategies import ExplanationStrategy
+from codur.graph.planning.core import pattern_plan
+from codur.graph.planning.classifier import quick_classify, text_confidence_backoff
+from codur.graph.planning.types import TaskType
+from codur.graph.planning.strategies import ExplanationStrategy
 
 
 class TestPhase0ExplanationRouting:

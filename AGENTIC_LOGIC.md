@@ -11,7 +11,7 @@ The main graph is defined in `codur/graph/main_graph.py`:
 ## Planning phases
 
 Phase 0: Pattern plan (textual, no LLM)
-- Implemented in `codur/graph/nodes/planning/core.py` as `pattern_plan`.
+- Implemented in `codur/graph/planning/core.py` as `pattern_plan`.
 - Uses quick pattern classification and the non-LLM tool detector.
 - Can short-circuit with a direct response or tool calls.
 - Tool detection from text is gated by `runtime.detect_tool_calls_from_text`.
@@ -23,7 +23,7 @@ Phase 1: LLM pre-plan (textual classification)
 
 Phase 2: LLM planner
 - Full JSON planner that selects action: respond, tool, or delegate.
-- Prompt is built with strategy-specific context from `codur/graph/nodes/planning/strategies/`.
+- Prompt is built with strategy-specific context from `codur/graph/planning/strategies/`.
 - Uses the centralized tool registry to list available tools.
 - Inserts file discovery and read_file steps when the task references code but lacks file context.
 - When delegating to `agent:codur-coding`, it enforces file context by inserting read/list tools.
@@ -32,7 +32,7 @@ Phase 2: LLM planner
 
 Tool detection is still active in two places:
 
-- Phase 0 pattern plan uses `codur/graph/nodes/tool_detection.py` to parse explicit tool calls in the user message (if `runtime.detect_tool_calls_from_text` is true).
+- Phase 0 pattern plan uses `codur/graph/tool_detection.py` to parse explicit tool calls in the user message (if `runtime.detect_tool_calls_from_text` is true).
 - Execution uses the same detector to parse tool calls emitted by agents during tool loops. This is always on for agent execution.
 
 ## Tool registry and schema generation
@@ -45,7 +45,7 @@ Tools are centralized in `codur/tools/__init__.py` and exposed via `codur/tools/
 
 ## Tool execution
 
-All tool execution is centralized in `codur/graph/nodes/tool_executor.py`.
+All tool execution is centralized in `codur/graph/tool_executor.py`.
 
 - A single tool map binds tool names to their implementations.
 - `AgentState` is wrapped and passed to tools so they can access config and message context.
@@ -54,7 +54,7 @@ All tool execution is centralized in `codur/graph/nodes/tool_executor.py`.
 
 ## Tool injectors
 
-Language-specific tool injectors live in `codur/graph/nodes/planning/injectors/`.
+Language-specific tool injectors live in `codur/graph/planning/injectors/`.
 
 - Injectors add followup tools after read_file calls.
 - Current injectors: Python and Markdown.

@@ -1,6 +1,6 @@
 """Tests for classifier file extraction."""
 
-from codur.graph.nodes.planning.classifier import extract_file_paths
+from codur.graph.planning.classifier import extract_file_paths
 
 def test_extract_file_paths_basic():
     text = "Fix the bug in main.py"

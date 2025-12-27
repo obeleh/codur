@@ -1,12 +1,12 @@
 """Code generation strategy."""
 
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage
 
-from codur.graph.nodes.types import PlanNodeResult
-from codur.graph.nodes.planning.types import ClassificationResult, PatternConfig, ScoreContribution
+from codur.graph.node_types import PlanNodeResult
+from codur.graph.planning.types import ClassificationResult, PatternConfig, ScoreContribution
 from codur.config import CodurConfig
-from codur.graph.nodes.planning.strategies.discovery import discover_files_if_needed
-from codur.graph.nodes.planning.strategies.prompt_utils import (
+from codur.graph.planning.strategies.discovery import discover_files_if_needed
+from codur.graph.planning.strategies.prompt_utils import (
     build_base_prompt,
     format_focus_prompt,
     select_example_file,
@@ -15,7 +15,7 @@ from codur.graph.nodes.planning.strategies.prompt_utils import (
     normalize_agent_name,
     format_tool_suggestions,
 )
-from codur.graph.nodes.planning.injectors import get_injector_for_file
+from codur.graph.planning.injectors import get_injector_for_file
 
 # Domain-specific patterns for code generation tasks
 _CODE_GENERATION_PATTERNS = PatternConfig(
