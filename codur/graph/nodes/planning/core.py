@@ -158,6 +158,8 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
 - file_operation: move, copy, delete, rename files
 - code_fix: fix bugs, debug, implement, solve
 - code_generation: write new code, create functions
+- code_validation: validate, lint, or verify code correctness
+- documentation: write or update docs/README/markdown content
 - explanation: explain, describe, summarize code
 - complex_refactor: refactor, redesign, migrate
 - web_search: weather, news, real-time data, search
@@ -191,6 +193,12 @@ User: "What does app.py do?"
 
 User: "Write a sorting function"
 {"task_type": "code_generation", "confidence": 0.8, "detected_files": [], "suggested_action": "delegate", "reasoning": "New code generation request"}
+
+User: "Lint the project"
+{"task_type": "code_validation", "confidence": 0.8, "detected_files": [], "suggested_action": "tool", "reasoning": "Code validation request"}
+
+User: "Update the README with usage instructions"
+{"task_type": "documentation", "confidence": 0.8, "detected_files": ["README.md"], "suggested_action": "tool", "reasoning": "Documentation update request"}
 
 User: "Implement title case in @main.py"
 {"task_type": "code_generation", "confidence": 0.85, "detected_files": ["main.py"], "suggested_action": "delegate", "reasoning": "Code generation request with @file path"}

@@ -1,6 +1,7 @@
 """Tests for tool registry utilities."""
 
-from codur.tools.registry import list_tool_directory, get_tool_help
+from codur.constants import TaskType
+from codur.tools.registry import list_tool_directory, get_tool_help, list_tools_for_tasks
 
 
 def test_list_tool_directory_includes_core_tools():
@@ -29,3 +30,9 @@ def test_get_tool_help_signature_hides_internal_params():
     result = get_tool_help("read_file")
     assert "root" not in result["signature"]
     assert "allow_outside_root" not in result["signature"]
+
+
+def test_list_tools_for_tasks_includes_replace_function_for_code_generation():
+    items = list_tools_for_tasks([TaskType.CODE_GENERATION])
+    names = {item["name"] for item in items}
+    assert "replace_function" in names

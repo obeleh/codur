@@ -2,6 +2,23 @@
 Shared constants for Codur.
 """
 
+from enum import Enum
+
+
+class TaskType(Enum):
+    """Task type classification for routing."""
+
+    GREETING = "greeting"
+    FILE_OPERATION = "file_operation"
+    CODE_FIX = "code_fix"
+    CODE_GENERATION = "code_generation"
+    CODE_VALIDATION = "code_validation"
+    DOCUMENTATION = "documentation"
+    EXPLANATION = "explanation"
+    COMPLEX_REFACTOR = "complex_refactor"
+    WEB_SEARCH = "web_search"
+    UNKNOWN = "unknown"
+
 # General constants
 DEBUG_TRUNCATE_SHORT = 500
 DEBUG_TRUNCATE_LONG = 1000

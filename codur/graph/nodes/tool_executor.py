@@ -147,7 +147,7 @@ def execute_tool_calls(
     config: CodurConfig,
     *,
     augment: bool = True,
-    summary_mode: str = "full",
+    summary_mode: str = "full", # brief|full
 ) -> ToolExecutionResult:
     """Execute tool calls using a shared tool map."""
     root = Path.cwd()

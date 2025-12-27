@@ -76,6 +76,25 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
 - If you need to read a file multiple times in the same conversation, use the results from the first read
 - All tool arguments must match the schema exactly
 - Do NOT attempt to run code locally - use the tools provided
+
+## After Writing Code
+
+When you use write/modify tools (replace_function, write_file, replace_class, etc.):
+- For Python files: Use validate_python_syntax to verify syntax is correct
+- To test execution: Use run_python_file to run the modified code and see output
+- Do NOT re-read the file - these tools provide the verification you need
+- Validation and execution are faster and more efficient than reading the entire file back
+
+Example tool sequence:
+```json
+[
+  {{"tool": "replace_function", "args": {{"path": "main.py", "name": "calculate_total", "new_code": "def calculate_total(items):\\n    return sum(item['price'] for item in items)"}}}},
+  {{"tool": "validate_python_syntax", "args": {{"code": "def calculate_total(items):\\n    return sum(item['price'] for item in items)"}}}},
+  {{"tool": "run_python_file", "args": {{"path": "main.py"}}}}
+]
+```
+
+This validates syntax BEFORE running, catching errors early without re-reading the file.
 """
 
 # Initialize system prompt with tools
@@ -162,7 +181,7 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
     if verbose:
         console.log(f"[cyan]Executing {len(tool_calls)} tool call(s)...[/cyan]")
 
-    execution = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="full")
+    execution = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="brief")
     errors = list(execution.errors)
 
     for item in execution.results:
@@ -211,7 +230,7 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
         # Extract and execute again
         tool_calls = extract_tool_calls_unified(response, used_native)
         if tool_calls:
-            execution = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="full")
+            execution = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="brief")
             errors = list(execution.errors)
             if errors:
                 return {

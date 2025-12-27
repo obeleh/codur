@@ -28,6 +28,30 @@ Tools are plain Python functions. They are discovered via a centralized registry
 
 The coding agent uses tool schemas when the provider supports native tool calling. If native tool calling is not supported, it falls back to JSON tool calls that are parsed from the response text.
 
+## Tool scenarios (TaskType)
+
+Tools can be annotated with `TaskType` to signal when they are appropriate. The enum lives in `codur/constants.py`.
+
+Example:
+
+```python
+from codur.constants import TaskType
+from codur.tools.tool_annotations import tool_scenarios
+
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION)
+def replace_function(...):
+    ...
+```
+
+Filter tools by scenario:
+
+```python
+from codur.constants import TaskType
+from codur.tools.registry import list_tools_for_tasks
+
+tools = list_tools_for_tasks([TaskType.CODE_GENERATION])
+```
+
 ## Example
 
 ```python

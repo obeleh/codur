@@ -8,10 +8,13 @@ from typing import Any
 
 import psutil
 
+from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
 from codur.utils.path_utils import resolve_path
 
 
+@tool_scenarios(TaskType.CODE_VALIDATION, TaskType.EXPLANATION)
 def system_cpu_stats(
     per_cpu: bool = False,
     interval: float = 0.0,
@@ -52,6 +55,7 @@ def system_cpu_stats(
     }
 
 
+@tool_scenarios(TaskType.CODE_VALIDATION, TaskType.EXPLANATION)
 def system_memory_stats(state: AgentState | None = None) -> dict[str, Any]:
     """Return virtual and swap memory usage."""
     try:
@@ -78,6 +82,7 @@ def system_memory_stats(state: AgentState | None = None) -> dict[str, Any]:
     }
 
 
+@tool_scenarios(TaskType.CODE_VALIDATION, TaskType.FILE_OPERATION)
 def system_disk_usage(
     path: str = ".",
     root: str | Path | None = None,
@@ -96,6 +101,7 @@ def system_disk_usage(
     }
 
 
+@tool_scenarios(TaskType.CODE_VALIDATION)
 def system_process_snapshot(
     pid: int | None = None,
     state: AgentState | None = None,
@@ -129,6 +135,7 @@ def system_process_snapshot(
     }
 
 
+@tool_scenarios(TaskType.CODE_VALIDATION)
 def system_processes_top(
     limit: int = 5,
     sort_by: str = "cpu",
@@ -169,6 +176,7 @@ def system_processes_top(
     return entries[:limit]
 
 
+@tool_scenarios(TaskType.CODE_VALIDATION)
 def system_processes_list(
     limit: int = 50,
     detailed: bool = False,

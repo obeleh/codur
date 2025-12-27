@@ -7,9 +7,17 @@ from pathlib import Path
 from typing import Optional
 
 from codur.config import CodurConfig
+from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
 
 
+@tool_scenarios(
+    TaskType.CODE_FIX,
+    TaskType.CODE_GENERATION,
+    TaskType.CODE_VALIDATION,
+    TaskType.COMPLEX_REFACTOR,
+)
 def validate_python_syntax(code: str) -> tuple[bool, Optional[str]]:
     """
     Validate Python syntax using AST parsing.
@@ -35,6 +43,7 @@ def validate_python_syntax(code: str) -> tuple[bool, Optional[str]]:
         return (False, f"Parse error: {str(e)}")
 
 
+@tool_scenarios(TaskType.CODE_VALIDATION, TaskType.CODE_FIX)
 def run_python_file(
     path: str,
     root: str = ".",

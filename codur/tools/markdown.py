@@ -8,12 +8,15 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any
 
+from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.validation import validate_file_access
 
 
+@tool_scenarios(TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def markdown_outline(
     path: str,
     root: str | Path | None = None,
@@ -68,6 +71,7 @@ def markdown_outline(
     return '\n'.join(outline_lines)
 
 
+@tool_scenarios(TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def markdown_extract_sections(
     path: str,
     section_names: List[str],
@@ -146,6 +150,7 @@ def markdown_extract_sections(
     return sections
 
 
+@tool_scenarios(TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def markdown_extract_tables(
     path: str,
     root: str | Path | None = None,

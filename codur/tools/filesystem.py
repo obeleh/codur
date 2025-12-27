@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Iterable
 
 from codur.graph.state import AgentState
+from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS, TaskType
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.ignore_utils import (
     get_config_from_state,
@@ -21,7 +22,7 @@ from codur.utils.ignore_utils import (
     should_respect_gitignore,
 )
 from codur.utils.validation import validate_file_access
-from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS
+from codur.tools.tool_annotations import tool_scenarios
 
 def _filter_dirnames(
     *,
@@ -69,6 +70,14 @@ def _iter_files(root: Path, config: object | None = None) -> Iterable[Path]:
             yield Path(dirpath) / filename
 
 
+@tool_scenarios(
+    TaskType.EXPLANATION,
+    TaskType.CODE_FIX,
+    TaskType.CODE_GENERATION,
+    TaskType.COMPLEX_REFACTOR,
+    TaskType.FILE_OPERATION,
+    TaskType.DOCUMENTATION,
+)
 def read_file(
     path: str,
     root: str | Path | None = None,
@@ -93,6 +102,7 @@ def read_file(
     return data
 
 
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.DOCUMENTATION)
 def write_file(
     path: str,
     content: str,
@@ -109,6 +119,7 @@ def write_file(
     return f"Wrote {len(content)} bytes to {target}"
 
 
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.DOCUMENTATION)
 def append_file(
     path: str,
     content: str,
@@ -123,6 +134,7 @@ def append_file(
     return f"Appended {len(content)} bytes to {target}"
 
 
+@tool_scenarios(TaskType.FILE_OPERATION)
 def delete_file(
     path: str,
     root: str | Path | None = None,
@@ -134,6 +146,7 @@ def delete_file(
     return f"Deleted {target}"
 
 
+@tool_scenarios(TaskType.FILE_OPERATION)
 def copy_file(
     source: str,
     destination: str,
@@ -150,6 +163,7 @@ def copy_file(
     return f"Copied {source_path} to {destination_path}"
 
 
+@tool_scenarios(TaskType.FILE_OPERATION)
 def move_file(
     source: str,
     destination: str,
@@ -166,6 +180,7 @@ def move_file(
     return f"Moved {source_path} to {destination_path}"
 
 
+@tool_scenarios(TaskType.FILE_OPERATION)
 def copy_file_to_dir(
     source: str,
     destination_dir: str,
@@ -183,6 +198,7 @@ def copy_file_to_dir(
     return f"Copied {source_path} to {destination_path}"
 
 
+@tool_scenarios(TaskType.FILE_OPERATION)
 def move_file_to_dir(
     source: str,
     destination_dir: str,
@@ -200,6 +216,7 @@ def move_file_to_dir(
     return f"Moved {source_path} to {destination_path}"
 
 
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def list_files(
     root: str | Path | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
@@ -215,6 +232,7 @@ def list_files(
     return results
 
 
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION)
 def list_dirs(
     root: str | Path | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
@@ -243,6 +261,7 @@ def list_dirs(
     return results
 
 
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def file_tree(
     path: str | None = None,
     root: str | Path | None = None,
@@ -296,6 +315,7 @@ def file_tree(
     return results
 
 
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION)
 def search_files(
     query: str,
     root: str | Path | None = None,
@@ -317,6 +337,7 @@ def search_files(
     return results
 
 
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
 def replace_in_file(
     path: str,
     pattern: str,
@@ -343,6 +364,7 @@ def replace_in_file(
     return {"path": str(target), "replacements": num_replaced}
 
 
+@tool_scenarios(TaskType.EXPLANATION, TaskType.FILE_OPERATION)
 def line_count(
     path: str,
     root: str | Path | None = None,
@@ -365,6 +387,7 @@ def line_count(
     return {"path": str(target), "lines": count}
 
 
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
 def inject_lines(
     path: str,
     line: int,
@@ -396,6 +419,7 @@ def inject_lines(
     return {"path": str(target), "line": line, "inserted_lines": len(insert_lines)}
 
 
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
 def replace_lines(
     path: str,
     start_line: int,

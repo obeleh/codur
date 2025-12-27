@@ -8,7 +8,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
 from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.validation import validate_file_access
@@ -25,6 +27,7 @@ _DEFAULT_EXTENSIONS = {
 }
 
 
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def convert_document(
     input_path: str,
     output_format: str,

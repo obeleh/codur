@@ -3,7 +3,11 @@
 import ast
 from typing import Optional
 
+from codur.constants import TaskType
+from codur.tools.tool_annotations import tool_scenarios
 
+
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
 def find_function_lines(
     file_content: str,
     function_name: str
@@ -34,6 +38,7 @@ def find_function_lines(
     return None
 
 
+@tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def find_class_lines(
     file_content: str,
     class_name: str
@@ -62,6 +67,7 @@ def find_class_lines(
     return None
 
 
+@tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def find_method_lines(
     file_content: str,
     class_name: str,

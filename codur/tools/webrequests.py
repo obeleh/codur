@@ -10,8 +10,9 @@ from typing import Any
 
 import requests
 
-from codur.constants import DEFAULT_MAX_BYTES
+from codur.constants import DEFAULT_MAX_BYTES, TaskType
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
 from codur.utils.text_helpers import truncate_chars
 
 try:
@@ -221,6 +222,7 @@ def _resolve_output_format(requested: str | None) -> str:
     raise ValueError("output_format must be one of: markdown, text")
 
 
+@tool_scenarios(TaskType.WEB_SEARCH)
 def fetch_webpage(
     url: str,
     method: str = "GET",
@@ -290,6 +292,7 @@ def fetch_webpage(
     return result
 
 
+@tool_scenarios(TaskType.WEB_SEARCH)
 def location_lookup(
     ip: str | None = None,
     provider: str = "ipapi",

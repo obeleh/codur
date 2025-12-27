@@ -12,7 +12,9 @@ from rope.refactor.extract import ExtractMethod
 from rope.refactor.move import MoveModule
 from rope.refactor.rename import Rename
 
+from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
 from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.path_utils import resolve_root, resolve_path
 from codur.utils.validation import (
@@ -23,6 +25,7 @@ from codur.utils.validation import (
 )
 
 
+@tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def rope_find_usages(
     path: str,
     line: int | None = None,
@@ -74,6 +77,7 @@ def rope_find_usages(
         project.close()
 
 
+@tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def rope_find_definition(
     path: str,
     line: int | None = None,
@@ -117,6 +121,7 @@ def rope_find_definition(
         project.close()
 
 
+@tool_scenarios(TaskType.COMPLEX_REFACTOR, TaskType.CODE_FIX)
 def rope_rename_symbol(
     path: str,
     new_name: str,
@@ -173,6 +178,7 @@ def rope_rename_symbol(
         project.close()
 
 
+@tool_scenarios(TaskType.COMPLEX_REFACTOR)
 def rope_move_module(
     path: str,
     destination_dir: str,
@@ -210,6 +216,7 @@ def rope_move_module(
         project.close()
 
 
+@tool_scenarios(TaskType.COMPLEX_REFACTOR, TaskType.CODE_FIX)
 def rope_extract_method(
     path: str,
     extracted_name: str,

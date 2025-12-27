@@ -22,12 +22,15 @@ This document explains how Codur works at a high level and how to make changes s
 - Keep all tool execution logic in `codur/graph/nodes/tool_executor.py`.
 - Do not add code that only satisfies the `challenges/` fixtures; changes must generalize.
 - Observability/tracing is deprecated; rely on Rich logging and the TUI debug view.
+- Tools, strategies, and agents should use TaskType annotations when appropriate.
+- Local imports should be avoided
 
 ## Further reading
 
 - `AGENTIC_LOGIC.md` for the full planner and execution flow.
 - `CODING.md` for the coding agent tool loop and guardrails.
+- `codur/graph/nodes/execution/README.md` for execution, delegation, and review nodes.
 - `codur/tools/README.md` for tool registry and schemas.
 - `codur/graph/nodes/planning/injectors/README.md` for language-specific tool injectors.
-- `codur/graph/nodes/planning/strategies/README.md` for planning strategies.
+- `codur/graph/nodes/planning/strategies/README.md` for textual planning strategies.
 - `challenges/README.md` for the validation harness.

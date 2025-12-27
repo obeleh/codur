@@ -15,7 +15,7 @@ from .complex_refactor import ComplexRefactorStrategy
 from .web_search import WebSearchStrategy
 from .unknown import UnknownStrategy
 
-from codur.graph.nodes.planning.types import TaskType
+from codur.constants import TaskType
 
 _STRATEGIES: dict[TaskType, TaskStrategy] = {
     TaskType.GREETING: GreetingStrategy(),

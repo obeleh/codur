@@ -17,8 +17,8 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from codur.config import CodurConfig
 from codur.utils.path_extraction import extract_file_paths
 
+from codur.constants import TaskType
 from codur.graph.nodes.planning.types import (
-    TaskType,
     ClassificationResult,
     ClassificationCandidate,
 )

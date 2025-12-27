@@ -9,7 +9,9 @@ import os
 from pathlib import Path
 from typing import Iterable
 
+from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
 from codur.utils.path_utils import resolve_root
 from codur.utils.ignore_utils import (
     get_config_from_state,
@@ -79,6 +81,7 @@ def _has_main_block(file_path: Path) -> bool:
         return False
 
 
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_VALIDATION)
 def discover_entry_points(
     root: str | Path | None = None,
     state: AgentState | None = None,
@@ -136,6 +139,7 @@ def discover_entry_points(
     return "\n".join(lines)
 
 
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_VALIDATION)
 def get_primary_entry_point(
     root: str | Path | None = None,
     state: AgentState | None = None,

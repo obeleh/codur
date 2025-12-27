@@ -9,6 +9,8 @@ import shutil
 from typing import Any
 
 import codur.tools as tool_module
+from codur.constants import TaskType
+from codur.tools.tool_annotations import tool_scenarios, get_tool_scenarios
 
 
 def _iter_tool_functions() -> dict[str, Any]:
@@ -45,6 +47,7 @@ def _rg_available() -> bool:
     return shutil.which("rg") is not None
 
 
+@tool_scenarios(TaskType.EXPLANATION)
 def list_tool_directory(state: object | None = None) -> list[dict]:
     """
     List available tools with signatures and short summaries.
@@ -59,10 +62,45 @@ def list_tool_directory(state: object | None = None) -> list[dict]:
             "signature": _format_signature(func),
             "summary": _summary(getattr(func, "__doc__", None)),
             "module": getattr(func, "__module__", ""),
+            "scenarios": get_tool_scenarios(func),
         })
     return items
 
 
+@tool_scenarios(TaskType.EXPLANATION)
+def list_tools_for_tasks(
+    task_types: list[TaskType] | TaskType,
+    *,
+    include_unannotated: bool = False,
+    state: object | None = None,
+) -> list[dict]:
+    """List tools that declare compatibility with one or more TaskTypes."""
+    if isinstance(task_types, TaskType):
+        task_set = {task_types}
+    else:
+        task_set = set(task_types)
+    items = []
+    has_rg = _rg_available()
+    for name, func in sorted(_iter_tool_functions().items()):
+        if not has_rg and name == "ripgrep_search":
+            continue
+        scenarios = get_tool_scenarios(func)
+        if scenarios:
+            if not any(task in scenarios for task in task_set):
+                continue
+        elif not include_unannotated:
+            continue
+        items.append({
+            "name": name,
+            "signature": _format_signature(func),
+            "summary": _summary(getattr(func, "__doc__", None)),
+            "module": getattr(func, "__module__", ""),
+            "scenarios": scenarios,
+        })
+    return items
+
+
+@tool_scenarios(TaskType.EXPLANATION)
 def get_tool_help(name: str, state: object | None = None) -> dict:
     """
     Return detailed help for a named tool.

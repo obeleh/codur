@@ -14,7 +14,7 @@ Phase 1 LLM pre-plan is a separate classifier and does not use strategies.
 
 ## Creating a new strategy
 
-1. Add a new `TaskType` in `codur/graph/nodes/planning/types.py` if needed.
+1. Add a new `TaskType` in `codur/constants.py` if needed.
 2. Create a file in this directory (for example, `my_task.py`).
 3. Implement the `TaskStrategy` protocol from `base.py`:
 

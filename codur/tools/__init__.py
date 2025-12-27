@@ -109,6 +109,7 @@ from codur.tools.rope_tools import (
 from codur.tools.registry import (
     list_tool_directory,
     get_tool_help,
+    list_tools_for_tasks,
 )
 from codur.tools.psutil_tools import (
     system_cpu_stats,
@@ -196,6 +197,7 @@ __all__ = [
     "rope_extract_method",
     "list_tool_directory",
     "get_tool_help",
+    "list_tools_for_tasks",
     "system_cpu_stats",
     "system_memory_stats",
     "system_disk_usage",

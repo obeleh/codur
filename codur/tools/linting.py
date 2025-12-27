@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from typing import Iterable
 
+from codur.constants import TaskType
 from codur.utils.ignore_utils import (
     get_config_from_state,
     get_exclude_dirs,
@@ -18,6 +19,7 @@ from codur.utils.ignore_utils import (
     should_respect_gitignore,
 )
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
 from codur.utils.path_utils import resolve_root, resolve_path
 
 
@@ -70,6 +72,7 @@ def _lint_file(path: Path) -> list[dict]:
     return []
 
 
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.COMPLEX_REFACTOR)
 def lint_python_files(
     paths: list[str],
     root: str | Path | None = None,
@@ -89,6 +92,7 @@ def lint_python_files(
     return {"checked": checked, "errors": errors[:max_errors]}
 
 
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.COMPLEX_REFACTOR)
 def lint_python_tree(
     root: str | Path | None = None,
     max_errors: int = 200,

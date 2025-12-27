@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import inspect
 
+from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
 
 try:
     from ddgs import DDGS
@@ -14,6 +16,7 @@ except ImportError:  # pragma: no cover - optional dependency
     DDGS = None
 
 
+@tool_scenarios(TaskType.WEB_SEARCH)
 def duckduckgo_search(
     query: str,
     max_results: int = 5,

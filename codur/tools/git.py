@@ -9,8 +9,9 @@ from pathlib import Path
 import pygit2
 
 from codur.config import CodurConfig
-from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS
+from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS, TaskType
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
 from codur.utils.path_utils import resolve_root, resolve_path
 from codur.utils.text_helpers import truncate_chars
 from codur.utils.validation import require_tool_permission
@@ -98,6 +99,7 @@ def _resolve_signature(
         ) from exc
 
 
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def git_status(
     root: str | Path | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
@@ -162,6 +164,7 @@ def git_status(
     }
 
 
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def git_diff(
     path: str | None = None,
     mode: str = "unstaged",
@@ -205,6 +208,7 @@ def git_diff(
     return truncate_chars(diff_text, max_chars=max_bytes)
 
 
+@tool_scenarios(TaskType.EXPLANATION, TaskType.COMPLEX_REFACTOR)
 def git_log(
     max_count: int = 20,
     root: str | Path | None = None,
@@ -238,6 +242,7 @@ def git_log(
     return commits
 
 
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def git_stage_files(
     paths: list[str],
     root: str | Path | None = None,
@@ -288,6 +293,7 @@ def git_stage_files(
     }
 
 
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def git_stage_all(
     root: str | Path | None = None,
     config: CodurConfig | None = None,
@@ -306,6 +312,7 @@ def git_stage_all(
     return {"staged": True}
 
 
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def git_commit(
     message: str,
     root: str | Path | None = None,

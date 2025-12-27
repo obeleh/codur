@@ -4,7 +4,10 @@ from typing import Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from codur.config import CodurConfig
+from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.tools.tool_annotations import tool_scenarios
+
 def _handoff_to_executor(
     agent: str,
     state: AgentState,
@@ -20,6 +23,12 @@ def _handoff_to_executor(
 
 # TODO: Rename from challenge to task for consistency
 
+@tool_scenarios(
+    TaskType.CODE_FIX,
+    TaskType.CODE_GENERATION,
+    TaskType.COMPLEX_REFACTOR,
+    TaskType.EXPLANATION,
+)
 def agent_call(
     agent: str,
     challenge: str,
@@ -46,6 +55,7 @@ def agent_call(
     return _handoff_to_executor(state=state, agent=agent, config=config)
 
 
+@tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def retry_in_agent(
     agent: str,
     task: str,

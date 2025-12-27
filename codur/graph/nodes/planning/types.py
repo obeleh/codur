@@ -3,21 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Optional, FrozenSet
 
-
-class TaskType(Enum):
-    """Task type classification for routing."""
-
-    GREETING = "greeting"
-    FILE_OPERATION = "file_operation"
-    CODE_FIX = "code_fix"
-    CODE_GENERATION = "code_generation"
-    EXPLANATION = "explanation"
-    COMPLEX_REFACTOR = "complex_refactor"
-    WEB_SEARCH = "web_search"
-    UNKNOWN = "unknown"
+from codur.constants import TaskType
 
 
 @dataclass(frozen=True)
