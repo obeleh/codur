@@ -105,6 +105,9 @@ from codur.tools.code_modification import (
     replace_method,
     replace_file_content,
 )
+from codur.tools.validation import (
+    validate_python_syntax,
+)
 from codur.tools.rope_tools import (
     rope_find_usages,
     rope_find_definition,
@@ -497,6 +500,9 @@ def _build_tool_map(
             state=tool_state,
             **args,
         ),
+        "validate_python_syntax": lambda args: _format_syntax_validation_result(
+            validate_python_syntax(args.get("code", ""))
+        ),
     }
 
 
@@ -524,7 +530,7 @@ def _format_tool_result(item: dict, mode: str) -> str:
 
 
 def _augment_tool_calls(tool_calls: list[dict]) -> list[dict]:
-    """Add python_ast_dependencies when reading Python files."""
+    """Add python_ast_dependencies when reading Python files and validate_python_syntax after code modifications."""
     augmented: list[dict] = []
     existing_deps: set[str] = set()
     for call in tool_calls:
@@ -535,23 +541,42 @@ def _augment_tool_calls(tool_calls: list[dict]) -> list[dict]:
                 if isinstance(path, str):
                     existing_deps.add(_strip_at_prefix(path))
 
+    # Code modification tools that operate on Python files
+    python_code_modification_tools = {
+        "write_file", "replace_function", "replace_class",
+        "replace_method", "replace_file_content", "inject_function"
+    }
+
     for call in tool_calls:
         augmented.append(call)
-        if call.get("tool") != "read_file":
-            continue
+        tool = call.get("tool")
         args = call.get("args", {})
         if not isinstance(args, dict):
             continue
+
         path = args.get("path")
         if not isinstance(path, str):
             continue
         clean_path = _strip_at_prefix(path)
-        if not clean_path.endswith(".py"):
-            continue
-        if clean_path in existing_deps:
-            continue
-        augmented.append({"tool": "python_ast_dependencies", "args": {"path": clean_path}})
-        existing_deps.add(clean_path)
+
+        # Add dependency analysis after reading Python files
+        if tool == "read_file":
+            if not clean_path.endswith(".py"):
+                continue
+            if clean_path in existing_deps:
+                continue
+            augmented.append({"tool": "python_ast_dependencies", "args": {"path": clean_path}})
+            existing_deps.add(clean_path)
+
+        # Add syntax validation after modifying Python files
+        elif tool in python_code_modification_tools:
+            if not clean_path.endswith(".py"):
+                continue
+            # Extract the code to validate - use new_code, content, or code field
+            code_to_validate = args.get("new_code") or args.get("content") or args.get("code", "")
+            if code_to_validate:
+                augmented.append({"tool": "validate_python_syntax", "args": {"code": code_to_validate}})
+
     return augmented
 
 
@@ -580,3 +605,12 @@ def _last_human_message(messages: list) -> Optional[str]:
         if isinstance(msg, HumanMessage):
             return msg.content
     return None
+
+
+def _format_syntax_validation_result(result: tuple[bool, Optional[str]]) -> str:
+    """Format the result of validate_python_syntax for tool output."""
+    is_valid, error_msg = result
+    if is_valid:
+        return "✓ Python syntax is valid"
+    else:
+        return f"✗ Syntax error:\n{error_msg}"
