@@ -38,6 +38,8 @@ def validate_python_syntax(code: str) -> tuple[bool, Optional[str]]:
 def run_python_file(
     path: str,
     root: str = ".",
+    cwd: Optional[str] = None,
+    env: Optional[dict] = None,
     config: Optional[CodurConfig] = None,
     state: Optional[AgentState] = None,
 ) -> str:
@@ -49,18 +51,26 @@ def run_python_file(
     Args:
         path: Path to the Python file to execute (relative to root)
         root: Root directory for relative paths (defaults to current directory)
+        cwd: Working directory for execution (defaults to root)
+        env: Environment variables as a dict (merged with current environment)
         config: Codur configuration object (injected by tool executor)
         state: Current agent state (injected by tool executor)
 
     Returns:
         String with the output from running the file, or error message if execution failed.
 
-    Example:
+    Examples:
         run_python_file("main.py")
         # Returns the output from executing main.py
+
+        run_python_file("main.py", cwd="/tmp", env={"TIMEOUT": "30"})
+        # Executes in /tmp with custom environment variables
     """
-    cwd = Path(root) if root != "." else Path.cwd()
-    file_path = cwd / path
+    root_dir = Path(root) if root != "." else Path.cwd()
+    file_path = root_dir / path
+
+    # Determine execution directory
+    exec_cwd = Path(cwd) if cwd else root_dir
 
     if not file_path.exists():
         return f"Error: File not found: {file_path}"
@@ -71,12 +81,18 @@ def run_python_file(
     execution_timeout = 60
 
     try:
+        # Build environment: start with current environment and merge in custom vars
+        process_env = dict(os.environ)
+        if env:
+            process_env.update(env)
+
         process = subprocess.Popen(
             ["python", str(file_path)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            cwd=str(cwd)
+            cwd=str(exec_cwd),
+            env=process_env
         )
 
         try:
