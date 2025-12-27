@@ -20,6 +20,7 @@ from codur.utils.llm_calls import invoke_llm
 from codur.utils.llm_helpers import invoke_llm_with_fallback
 from codur.utils.tool_helpers import extract_tool_info, validate_tool_call
 from codur.graph.nodes.tool_executor import execute_tool_calls, get_tool_names
+from codur.tools.registry import list_tool_directory
 
 console = Console()
 
@@ -86,27 +87,137 @@ Examples:
   ]
 }
 
-## Available Tools
-
-1. `replace_function(path, function_name, new_code)`: Replace a specific function.
-2. `replace_class(path, class_name, new_code)`: Replace a specific class.
-3. `replace_method(path, class_name, method_name, new_code)`: Replace a specific method in a class.
-4. `replace_file_content(path, new_code)`: Replace the entire file content (use if others don't apply).
-5. `inject_function(path, new_code, function_name?)`: Insert a new top-level function (optional name check).
-6. `rope_find_usages(path, line|offset, column?)`: Find symbol usages using rope.
-7. `rope_find_definition(path, line|offset, column?)`: Find the definition location using rope.
-8. `rope_rename_symbol(path, new_name, line|offset, column?, symbol?)`: Rename a symbol using rope.
-9. `rope_move_module(path, destination_dir)`: Move a module file and update imports using rope.
-10. `rope_extract_method(path, extracted_name, start/end offsets)`: Extract a method using rope.
+{tools_section}
 
 **Important**:
 - `new_code` must be complete, valid Python code (including indentation).
-- `path` should match the file path in the request
 - You can include multiple tool calls in the list if needed.
 - Prefer targeted edits (replace_function, replace_class, replace_method, replace_lines) over replace_file_content for tests.
+- Tool names must be used EXACTLY as listed above (e.g., "replace_function", NOT "repo_browser.replace_function" or any other prefix).
 
 You MUST return a valid JSON object!
 """
+
+
+def _parse_signature_to_args(signature: str) -> dict[str, str]:
+    """Parse function signature into a JSON-friendly args dict."""
+    # Extract parameters from signature like "(path: str, new_code: str, ...)"
+    # Remove the parentheses and return type
+    sig = signature.strip()
+    if sig.startswith("(") and ")" in sig:
+        params_str = sig[1:sig.index(")")]
+    else:
+        return {}
+
+    args = {}
+    if not params_str.strip():
+        return args
+
+    # Split by comma, but be careful with nested types like list[str]
+    params = []
+    current = []
+    depth = 0
+    for char in params_str + ",":
+        if char in "[<":
+            depth += 1
+        elif char in "]>":
+            depth -= 1
+        if char == "," and depth == 0:
+            params.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+
+    for param in params:
+        if not param:
+            continue
+        # Parse "name: type = default" or "name: type"
+        if ":" in param:
+            name, rest = param.split(":", 1)
+            name = name.strip()
+            type_info = rest.split("=")[0].strip()
+
+            # Check if optional (has default or ends with | None)
+            is_optional = "=" in rest or "None" in type_info
+
+            # Simplify type info
+            if "|" in type_info:
+                type_info = type_info.split("|")[0].strip()
+            type_info = type_info.replace("'", "").replace('"', "")
+
+            if is_optional:
+                args[name] = f"{type_info} (optional)"
+            else:
+                args[name] = type_info
+
+    return args
+
+
+def _build_tools_section() -> str:
+    """Build the tools section dynamically from the tool registry in JSON format."""
+    tools = list_tool_directory()
+
+    # Filter for code modification tools (most relevant for coding agent)
+    code_mod_tools = [
+        t for t in tools
+        if isinstance(t, dict)
+        and "name" in t
+        and any(keyword in t["name"] for keyword in ["replace", "inject", "rope"])
+    ]
+
+    # Also include other useful tools
+    other_tools = [
+        t for t in tools
+        if isinstance(t, dict)
+        and "name" in t
+        and t not in code_mod_tools
+        and any(keyword in t["name"] for keyword in ["read", "write", "find", "validate"])
+    ]
+
+    lines = ["## Available Tools", ""]
+
+    if code_mod_tools:
+        lines.append("**Code Modification Tools:**")
+        lines.append("")
+        for i, tool in enumerate(code_mod_tools[:10], 1):  # Limit to top 10
+            name = tool["name"]
+            sig = tool.get("signature", "")
+            summary = tool.get("summary", "")
+            args = _parse_signature_to_args(sig)
+
+            # Build compact single-line JSON
+            args_json = ", ".join([f'"{k}": "{v}"' for k, v in args.items()])
+            json_example = f'{{"tool": "{name}", "args": {{{args_json}}}}}'
+
+            lines.append(f'{i}. **{name}**: {summary}')
+            lines.append(f'   {json_example}')
+            lines.append("")
+
+    if other_tools[:3]:  # Limit to top 3 useful tools
+        lines.append("**Other Useful Tools:**")
+        lines.append("")
+        for tool in other_tools[:3]:
+            name = tool["name"]
+            sig = tool.get("signature", "")
+            summary = tool.get("summary", "")
+            args = _parse_signature_to_args(sig)
+
+            # Build compact single-line JSON
+            args_json = ", ".join([f'"{k}": "{v}"' for k, v in args.items()])
+            json_example = f'{{"tool": "{name}", "args": {{{args_json}}}}}'
+
+            lines.append(f'- **{name}**: {summary}')
+            lines.append(f'  {json_example}')
+            lines.append("")
+
+    return "\n".join(lines) if lines else "## Available Tools\n\nNo tools available."
+
+
+def _build_system_prompt() -> str:
+    """Build the complete system prompt with dynamically discovered tools."""
+    tools_section = _build_tools_section()
+    print("tools section", tools_section)
+    return CODING_AGENT_SYSTEM_PROMPT.replace("{tools_section}", tools_section)
 
 
 def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
@@ -131,9 +242,10 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
     if verbose:
         console.print(f"[dim]Constructed prompt:\n{prompt}[/dim]")
 
-    # Use built-in system prompt
+    # Use built-in system prompt with dynamic tools
+    system_prompt = _build_system_prompt()
     messages = [
-        SystemMessage(content=CODING_AGENT_SYSTEM_PROMPT),
+        SystemMessage(content=system_prompt),
         HumanMessage(content=prompt),
     ]
 
@@ -181,7 +293,7 @@ def coding_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult:
             console.print(f"[dim]{prompt}[/dim]")
             
         messages_for_retry = [
-            SystemMessage(content=CODING_AGENT_SYSTEM_PROMPT),
+            SystemMessage(content=system_prompt),
             retry_message,
             HumanMessage(content=prompt),
         ]
