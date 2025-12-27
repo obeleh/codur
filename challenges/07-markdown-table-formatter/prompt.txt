@@ -10,4 +10,4 @@ Your implementation must:
 4. Reformat the table with correct padding (1 space on each side of content) and alignment.
 5. Ensure the separator row uses dashes to match the column width and preserves the colons for alignment.
 
-Run `python main.py` to test your solution.
+Run `python main.py` to test your solution. Compare the output against @expected.txt
