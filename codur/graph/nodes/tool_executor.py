@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Any, Callable
 import re
 
 from langchain_core.messages import HumanMessage
@@ -14,110 +14,18 @@ from codur.config import CodurConfig
 from codur.graph.state import AgentState, AgentStateData
 from codur.graph.state_operations import get_messages
 from codur.utils.path_utils import resolve_path
-from codur.tools.filesystem import (
-    read_file,
-    write_file,
-    append_file,
-    delete_file,
-    copy_file,
-    move_file,
-    copy_file_to_dir,
-    move_file_to_dir,
-    list_files,
-    list_dirs,
-    file_tree,
-    search_files,
-    replace_in_file,
-    inject_lines,
-    replace_lines,
-    line_count,
-)
-from codur.tools.ripgrep import (
-    grep_files,
-    ripgrep_search,
-)
-from codur.tools.structured import (
-    read_json,
-    write_json,
-    set_json_value,
-    read_yaml,
-    write_yaml,
-    set_yaml_value,
-    read_ini,
-    write_ini,
-    set_ini_value,
-)
-from codur.tools.linting import (
-    lint_python_files,
-    lint_python_tree,
-)
-from codur.tools.mcp_tools import (
-    list_mcp_tools,
-    call_mcp_tool,
-    list_mcp_resources,
-    list_mcp_resource_templates,
-    read_mcp_resource,
-)
-from codur.tools.registry import (
-    list_tool_directory,
-    get_tool_help,
-)
-from codur.tools.git import (
-    git_status,
-    git_diff,
-    git_log,
-    git_stage_files,
-    git_stage_all,
-    git_commit,
-)
-from codur.tools.webrequests import (
-    fetch_webpage,
-    location_lookup,
-)
-from codur.tools.duckduckgo import (
-    duckduckgo_search,
-)
-from codur.tools.pandoc import (
-    convert_document,
-)
-from codur.tools.python_ast import (
-    python_ast_graph,
-    python_ast_outline,
-    python_ast_dependencies,
-    python_ast_dependencies_multifile,
-)
-from codur.tools.project_analysis import (
-    python_dependency_graph,
-    code_quality,
-)
-from codur.tools.psutil_tools import (
-    system_cpu_stats,
-    system_memory_stats,
-    system_disk_usage,
-    system_process_snapshot,
-    system_processes_top,
-    system_processes_list,
-)
-from codur.tools.code_modification import (
-    inject_function,
-    replace_function,
-    replace_class,
-    replace_method,
-    replace_file_content,
-)
-from codur.tools.validation import (
-    validate_python_syntax,
-    run_python_file,
-)
-from codur.tools.rope_tools import (
-    rope_find_usages,
-    rope_find_definition,
-    rope_rename_symbol,
-    rope_move_module,
-    rope_extract_method,
-)
 
 console = Console()
+
+
+def _format_syntax_validation_result(result: tuple[bool, Optional[str]]) -> str:
+    """Format the result of validate_python_syntax for tool output."""
+    is_valid, error_msg = result
+    if is_valid:
+        return "✓ Python syntax is valid"
+    else:
+        return f"✗ Syntax error:\n{error_msg}"
+
 
 _TEST_OVERWRITE_VERBS = {
     "overwrite",
@@ -313,6 +221,38 @@ def get_tool_names(state: AgentState, config: CodurConfig) -> set[str]:
     return set(tool_map.keys())
 
 
+# Tool metadata for dynamic wiring
+_UTILITY_TOOLS = {
+    "find_function_lines", "find_class_lines", "find_method_lines",
+    "markdown_outline", "markdown_extract_sections", "markdown_extract_tables",
+    "discover_entry_points", "get_primary_entry_point",
+}
+
+_GUARDED_TOOLS = {"write_file", "replace_file_content"}
+_OUTPUT_FORMATTERS = {"validate_python_syntax": _format_syntax_validation_result}
+_CONFIG_TOOLS = {"agent_call", "retry_in_agent"}
+
+# Tools that need root + allow_outside_root context
+_FILESYSTEM_CONTEXT_TOOLS = {
+    "read_file", "write_file", "append_file", "delete_file",
+    "copy_file", "move_file", "copy_file_to_dir", "move_file_to_dir",
+    "file_tree", "replace_in_file", "inject_lines", "replace_lines",
+    "line_count", "inject_function", "replace_function", "replace_class",
+    "replace_method", "replace_file_content", "read_json", "write_json",
+    "set_json_value", "read_yaml", "write_yaml", "set_yaml_value",
+    "read_ini", "write_ini", "set_ini_value", "lint_python_files",
+    "lint_python_tree", "system_disk_usage", "git_stage_files",
+    "convert_document", "python_ast_graph", "python_ast_outline",
+    "python_ast_dependencies", "python_ast_dependencies_multifile",
+    "python_dependency_graph", "code_quality", "rope_find_usages",
+    "rope_find_definition", "rope_rename_symbol", "rope_move_module",
+    "rope_extract_method"
+}
+
+# Tools that need search_files context
+_SEARCH_CONTEXT_TOOLS = {"search_files", "grep_files", "list_files", "list_dirs"}
+
+
 def _build_tool_map(
     root: Path,
     allow_outside_root: bool,
@@ -320,192 +260,87 @@ def _build_tool_map(
     last_human_msg: Optional[str],
     config: CodurConfig,
 ) -> dict:
+    """Build tool map dynamically from tool registry."""
+    from codur.tools import __all__ as tool_names
+
+    # Late imports to avoid circular dependencies
     from codur.tools.agents import agent_call, retry_in_agent
 
-    def _guarded_write_file(args: dict) -> str:
-        _guard_test_file_overwrite(
-            args.get("path"),
-            root,
-            allow_outside_root,
-            last_human_msg,
-        )
-        return write_file(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args)
+    tool_map = {}
 
-    def _guarded_replace_file_content(args: dict) -> str:
-        _guard_test_file_overwrite(
-            args.get("path"),
-            root,
-            allow_outside_root,
-            last_human_msg,
-        )
-        return replace_file_content(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args)
+    # Import tools dynamically
+    import codur.tools as tools_module
 
-    return {
-        "read_file": lambda args: read_file(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "write_file": _guarded_write_file,
-        "append_file": lambda args: append_file(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "delete_file": lambda args: delete_file(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "copy_file": lambda args: copy_file(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "move_file": lambda args: move_file(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "copy_file_to_dir": lambda args: copy_file_to_dir(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "move_file_to_dir": lambda args: move_file_to_dir(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "retry_in_agent": lambda args: retry_in_agent(
-            task=args.get("task") or (last_human_msg or ""),
-            agent=args.get("agent", ""),
-            state=tool_state,
-            config=config,
-            reason=args.get("reason"),
-        ),
-        "list_files": lambda args: list_files(root=root, state=tool_state, **args),
-        "list_dirs": lambda args: list_dirs(root=root, state=tool_state, **args),
-        "file_tree": lambda args: file_tree(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "search_files": lambda args: search_files(root=root, state=tool_state, **args),
-        "grep_files": lambda args: grep_files(root=root, state=tool_state, **args),
-        "ripgrep_search": lambda args: ripgrep_search(root=root, state=tool_state, **args),
-        "replace_in_file": lambda args: replace_in_file(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "inject_lines": lambda args: inject_lines(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "replace_lines": lambda args: replace_lines(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "line_count": lambda args: line_count(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "inject_function": lambda args: inject_function(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "replace_function": lambda args: replace_function(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "replace_class": lambda args: replace_class(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "replace_method": lambda args: replace_method(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "replace_file_content": _guarded_replace_file_content,
-        "read_json": lambda args: read_json(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "write_json": lambda args: write_json(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "set_json_value": lambda args: set_json_value(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "read_yaml": lambda args: read_yaml(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "write_yaml": lambda args: write_yaml(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "set_yaml_value": lambda args: set_yaml_value(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "read_ini": lambda args: read_ini(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "write_ini": lambda args: write_ini(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "set_ini_value": lambda args: set_ini_value(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args),
-        "lint_python_files": lambda args: lint_python_files(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "lint_python_tree": lambda args: lint_python_tree(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "list_mcp_tools": lambda args: list_mcp_tools(state=tool_state, **args),
-        "call_mcp_tool": lambda args: call_mcp_tool(state=tool_state, **args),
-        "list_mcp_resources": lambda args: list_mcp_resources(state=tool_state, **args),
-        "list_mcp_resource_templates": lambda args: list_mcp_resource_templates(state=tool_state, **args),
-        "read_mcp_resource": lambda args: read_mcp_resource(state=tool_state, **args),
-        "list_tool_directory": lambda args: list_tool_directory(state=tool_state, **args),
-        "get_tool_help": lambda args: get_tool_help(state=tool_state, **args),
-        "git_status": lambda args: git_status(root=root, state=tool_state, **args),
-        "git_diff": lambda args: git_diff(root=root, state=tool_state, **args),
-        "git_log": lambda args: git_log(root=root, state=tool_state, **args),
-        "git_stage_files": lambda args: git_stage_files(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "git_stage_all": lambda args: git_stage_all(root=root, state=tool_state, **args),
-        "git_commit": lambda args: git_commit(root=root, state=tool_state, **args),
-        "fetch_webpage": lambda args: fetch_webpage(state=tool_state, **args),
-        "location_lookup": lambda args: location_lookup(state=tool_state, **args),
-        "duckduckgo_search": lambda args: duckduckgo_search(state=tool_state, **args),
-        "convert_document": lambda args: convert_document(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "python_ast_graph": lambda args: python_ast_graph(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "python_ast_outline": lambda args: python_ast_outline(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "python_ast_dependencies": lambda args: python_ast_dependencies(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "python_ast_dependencies_multifile": lambda args: python_ast_dependencies_multifile(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "python_dependency_graph": lambda args: python_dependency_graph(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "code_quality": lambda args: code_quality(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "rope_find_usages": lambda args: rope_find_usages(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "rope_find_definition": lambda args: rope_find_definition(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "rope_rename_symbol": lambda args: rope_rename_symbol(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "rope_move_module": lambda args: rope_move_module(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "rope_extract_method": lambda args: rope_extract_method(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "system_cpu_stats": lambda args: system_cpu_stats(state=tool_state, **args),
-        "system_memory_stats": lambda args: system_memory_stats(state=tool_state, **args),
-        "system_disk_usage": lambda args: system_disk_usage(
-            root=root,
-            allow_outside_root=allow_outside_root,
-            state=tool_state,
-            **args,
-        ),
-        "system_process_snapshot": lambda args: system_process_snapshot(state=tool_state, **args),
-        "system_processes_top": lambda args: system_processes_top(state=tool_state, **args),
-        "system_processes_list": lambda args: system_processes_list(state=tool_state, **args),
-        "agent_call": lambda args: agent_call(
-            config=config,
-            state=tool_state,
-            **args,
-        ),
-        "validate_python_syntax": lambda args: _format_syntax_validation_result(
-            validate_python_syntax(args.get("code", ""))
-        ),
-        "run_python_file": lambda args: run_python_file(state=tool_state, **args),
-    }
+    for tool_name in tool_names:
+        # Skip utility functions that aren't meant for direct LLM invocation
+        if tool_name in _UTILITY_TOOLS:
+            continue
+
+        # Get the tool function
+        tool_func = getattr(tools_module, tool_name, None)
+        if not callable(tool_func):
+            continue
+
+        # Handle special cases
+        if tool_name in _GUARDED_TOOLS:
+            # Create guarded wrapper for write_file and replace_file_content
+            if tool_name == "write_file":
+                def _guarded_write_file(args: dict, tf=tool_func) -> str:
+                    _guard_test_file_overwrite(
+                        args.get("path"),
+                        root,
+                        allow_outside_root,
+                        last_human_msg,
+                    )
+                    return tf(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args)
+                tool_map[tool_name] = _guarded_write_file
+            elif tool_name == "replace_file_content":
+                def _guarded_replace_file_content(args: dict, tf=tool_func) -> str:
+                    _guard_test_file_overwrite(
+                        args.get("path"),
+                        root,
+                        allow_outside_root,
+                        last_human_msg,
+                    )
+                    return tf(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args)
+                tool_map[tool_name] = _guarded_replace_file_content
+
+        elif tool_name in _OUTPUT_FORMATTERS:
+            # Format output for specific tools
+            formatter = _OUTPUT_FORMATTERS[tool_name]
+            tool_map[tool_name] = lambda args, tf=tool_func, fmt=formatter: fmt(tf(args.get("code", "")))
+
+        elif tool_name in _CONFIG_TOOLS:
+            # Tools that need config parameter
+            if tool_name == "agent_call":
+                tool_map[tool_name] = lambda args, tf=tool_func: tf(config=config, state=tool_state, **args)
+            elif tool_name == "retry_in_agent":
+                tool_map[tool_name] = lambda args, tf=tool_func: tf(
+                    task=args.get("task") or (last_human_msg or ""),
+                    agent=args.get("agent", ""),
+                    state=tool_state,
+                    config=config,
+                    reason=args.get("reason"),
+                )
+
+        elif tool_name in _FILESYSTEM_CONTEXT_TOOLS:
+            # Tools that need filesystem context
+            tool_map[tool_name] = lambda args, tf=tool_func: tf(
+                root=root,
+                allow_outside_root=allow_outside_root,
+                state=tool_state,
+                **args
+            )
+
+        elif tool_name in _SEARCH_CONTEXT_TOOLS:
+            # Tools that need search context
+            tool_map[tool_name] = lambda args, tf=tool_func: tf(root=root, state=tool_state, **args)
+
+        else:
+            # Default: just inject state
+            tool_map[tool_name] = lambda args, tf=tool_func: tf(state=tool_state, **args)
+
+    return tool_map
 
 
 def _format_summary(results: list[dict], errors: list[str], mode: str) -> str:
@@ -607,12 +442,3 @@ def _last_human_message(messages: list) -> Optional[str]:
         if isinstance(msg, HumanMessage):
             return msg.content
     return None
-
-
-def _format_syntax_validation_result(result: tuple[bool, Optional[str]]) -> str:
-    """Format the result of validate_python_syntax for tool output."""
-    is_valid, error_msg = result
-    if is_valid:
-        return "✓ Python syntax is valid"
-    else:
-        return f"✗ Syntax error:\n{error_msg}"
