@@ -41,6 +41,7 @@ Note on multi-file reads:
 Python (`.py`, `.pyi`)
 - Followup tools: `python_ast_dependencies` or `python_ast_dependencies_multifile`
 - Planning tools: `python_ast_outline`, `python_ast_graph`, `python_dependency_graph`
+- Automatic validation: Code modification tools (`write_file`, `replace_function`, `replace_class`, etc.) validate Python syntax before making changes and report errors if syntax is invalid. The `validate_python_syntax` tool is also available for explicit validation.
 
 Markdown (`.md`, `.markdown`)
 - Followup tools: `markdown_outline`
