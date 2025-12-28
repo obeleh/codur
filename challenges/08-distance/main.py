@@ -28,32 +28,7 @@ def edit_distance(s1, s2, memo=None):
     Returns:
         Minimum edit distance
     """
-    if memo is None:
-        memo = {}
 
-    # Create a cache key from the indices
-    key = (len(s1), len(s2))
-    if key in memo:
-        return memo[key]
-
-    # Base cases
-    if len(s1) == 0:
-        result = len(s2)
-    elif len(s2) == 0:
-        result = len(s1)
-    # Recursive case: BUG - comparison and recursion have errors
-    elif s1[0] == s2[0]:
-        # Characters match: don't count as an edit
-        result = edit_distance(s1[1:], s2[1:], memo)
-    else:
-        # Characters don't match: try all three operations
-        insert = edit_distance(s1, s2[1:], memo)
-        delete = edit_distance(s1[1:], s2, memo)
-        replace = edit_distance(s1[1:], s2[1:], memo)
-        result = 1 + min(insert, delete)  # BUG: Missing 'replace' in min() call
-
-    memo[key] = result
-    return result
 
 def main():
     """Test edit distance with various string pairs."""
