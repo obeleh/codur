@@ -89,66 +89,6 @@ def create_and_invoke(
     )
 
 
-def invoke_llm_with_fallback(
-    config: CodurConfig,
-    messages: list[BaseMessage],
-    profile_name: str | None = None,
-    fallback_profile: str | None = None,
-    fallback_model: str | None = None,
-    json_mode: bool = False,
-    temperature: float | None = None,
-    invoked_by: str = "unknown",
-    fallback_invoked_by: str | None = None,
-    state: "AgentState | None" = None,
-) -> tuple[BaseChatModel, BaseMessage]:
-    """Create and invoke an LLM with fallback on JSON validation errors."""
-    llm = _create_llm(
-        config,
-        profile_name=profile_name,
-        json_mode=json_mode,
-        temperature=temperature,
-    )
-    try:
-        response = invoke_llm(
-            llm,
-            messages,
-            invoked_by=invoked_by,
-            state=state,
-            config=config,
-        )
-        return llm, response
-    except Exception as exc:
-        if not _is_json_validation_error(exc):
-            raise
-
-    resolved_fallback_profile = fallback_profile
-    if resolved_fallback_profile is None:
-        resolved_fallback_profile = _profile_for_model(config, fallback_model)
-    if resolved_fallback_profile is None:
-        resolved_fallback_profile = config.llm.default_profile
-    if not resolved_fallback_profile:
-        raise ValueError("No fallback LLM profile configured (llm.default_profile)")
-
-    fallback_label = fallback_profile or fallback_model or resolved_fallback_profile
-    console.log(
-        f"[yellow]JSON validation failed, trying fallback: {fallback_label}[/yellow]"
-    )
-    fallback_llm = _create_llm(
-        config,
-        profile_name=resolved_fallback_profile,
-        json_mode=json_mode,
-        temperature=temperature,
-    )
-    response = invoke_llm(
-        fallback_llm,
-        messages,
-        invoked_by=fallback_invoked_by or f"{invoked_by}.fallback",
-        state=state,
-        config=config,
-    )
-    return fallback_llm, response
-
-
 def create_and_invoke_with_tool_support(
     config: CodurConfig,
     messages: list[BaseMessage],
