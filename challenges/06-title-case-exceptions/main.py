@@ -20,8 +20,8 @@ def title_case(sentence: str) -> str:
     7. Capitalize all other words.
     8. Join the processed words back into a sentence with single spaces.
     """
-    # TODO: implement
-    raise NotImplementedError
+    # TODO: implement this function
+    raise NotImplementedError("Implement the title_case function according to the specified rules.")
 
 def _run_tests() -> None:
     cases = [

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
-from codur.graph.state_operations import is_verbose
+from codur.graph.state_operations import is_verbose, add_message
 from codur.graph.tool_executor import execute_tool_calls, ToolExecutionResult
 from codur.llm import create_llm, create_llm_profile
 from codur.utils.llm_calls import invoke_llm
@@ -151,6 +152,8 @@ def create_and_invoke_with_tool_support(
             config=config,
         )
         tool_calls = extract_tool_calls_from_ai_message(response)
+        tool_calls_str = json.dumps(_list_or_single(tool_calls))
+        add_message(state, AIMessage(content=tool_calls_str))
     else:
         if verbose:
             console.log("[bold cyan]LLM with json fallback tools...[/bold cyan]")
@@ -181,7 +184,11 @@ def create_and_invoke_with_tool_support(
             config=config,
         )
         tool_calls = extract_tool_calls_from_json_text(response)
+        add_message(state, AIMessage(content=response.content))
+
     execution_result = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="brief")
+    tool_result_json = json.dumps(_list_or_single(execution_result.results))
+    add_message(state, SystemMessage(content=tool_result_json))
     return response, execution_result
 
 
@@ -195,3 +202,9 @@ def _build_tool_descriptions_for_prompt(tool_schemas: list[dict]) -> str:
         args_str = ", ".join([f'"{k}": "{v.get("type", "string")}"' for k, v in params.items()])
         lines.append(f'{{"tool": "{name}", "args": {{{args_str}}}}}  # {desc}')
     return "\n".join(lines)
+
+def _list_or_single(items: list):
+    """Format list as comma-separated or single item."""
+    if len(items) == 1:
+        return items[0]
+    return items
