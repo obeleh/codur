@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Any, Callable, List
 import re
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, BaseMessage, SystemMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
@@ -99,6 +100,7 @@ class ToolExecutionResult:
     results: list[dict]
     errors: list[str]
     summary: str
+    messages: list[BaseMessage]
     error_details: Optional[str] = None
 
 
@@ -142,16 +144,19 @@ def _inject_missing_required_params(tool_calls: list[dict], state: AgentState) -
                 console.log(f"[red]✗ {tool_name} missing required 'path' and none could be inferred[/red]")
 
 
+# also called by create_and_invoke_with_tool_support
 def execute_tool_calls(
     tool_calls: list[dict],
     state: AgentState,
     config: CodurConfig,
     *,
     augment: bool = True,
-    summary_mode: str = "full", # brief|full
+    summary_mode: str = "brief", # brief|full
 ) -> ToolExecutionResult:
     if is_verbose(state):
         console.log(f"[cyan]Executing {len(tool_calls)} tool call(s)...[/cyan]")
+
+    print("summary_mode:", summary_mode)
 
     """Execute tool calls using a shared tool map."""
     root = Path.cwd()
@@ -212,11 +217,15 @@ def execute_tool_calls(
             errors.append(f"{tool_name} failed: {exc}")
         i += 1
 
+    tool_result_json = json.dumps(_list_or_single(results))
+    tool_call_messages = [SystemMessage(content=tool_result_json)]
+
     summary = _format_summary(results, errors, summary_mode)
     return ToolExecutionResult(
         results=results,
         errors=errors,
         summary=summary,
+        messages=tool_call_messages,
         error_details="\n".join(error_details) if error_details else None,
     )
 
@@ -448,3 +457,9 @@ def _last_human_message(messages: list) -> Optional[str]:
         if isinstance(msg, HumanMessage):
             return msg.content
     return None
+
+def _list_or_single(items: list):
+    """Format list as comma-separated or single item."""
+    if len(items) == 1:
+        return items[0]
+    return items

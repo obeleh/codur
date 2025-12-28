@@ -189,8 +189,7 @@ def create_and_invoke_with_tool_support(
         new_messages.append(AIMessage(content=response.content))
 
     execution_result = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="brief")
-    tool_result_json = json.dumps(_list_or_single(execution_result.results))
-    new_messages.append(SystemMessage(content=tool_result_json))
+    new_messages.extend(execution_result.messages)
     return new_messages, execution_result
 
 def _build_tool_descriptions_for_prompt(tool_schemas: list[dict]) -> str:
@@ -203,9 +202,3 @@ def _build_tool_descriptions_for_prompt(tool_schemas: list[dict]) -> str:
         args_str = ", ".join([f'"{k}": "{v.get("type", "string")}"' for k, v in params.items()])
         lines.append(f'{{"tool": "{name}", "args": {{{args_str}}}}}  # {desc}')
     return "\n".join(lines)
-
-def _list_or_single(items: list):
-    """Format list as comma-separated or single item."""
-    if len(items) == 1:
-        return items[0]
-    return items

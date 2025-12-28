@@ -3,7 +3,7 @@
 import traceback
 from typing import Optional
 
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from rich.console import Console
 
 from codur.graph.state import AgentState
@@ -68,15 +68,17 @@ class AgentExecutor:
         task = last_message.content if hasattr(last_message, "content") else str(last_message)
 
         try:
+            messages_out = None
             if self.agent_name.startswith("llm:"):
+                # TODO: extract messages_out from llm profile execution
                 result = self._execute_llm_profile(task)
             else:
-                result = self._execute_agent(task)
+                result, messages_out = self._execute_agent(task)
 
             if is_verbose(self.state):
                 console.print("[green]✓ Execution completed successfully[/green]")
 
-            return {
+            dct = {
                 "agent_outcome": {
                     "agent": self.agent_name,
                     "result": result,
@@ -84,6 +86,10 @@ class AgentExecutor:
                 },
                 "llm_calls": get_llm_calls(self.state),
             }
+            if messages_out:
+                assert isinstance(messages_out, list)
+                dct["messages"] = messages_out
+            return dct
         except Exception as exc:
             if isinstance(exc, LLMCallLimitExceeded):
                 raise
@@ -117,10 +123,11 @@ class AgentExecutor:
             console.print(f"[dim]LLM response preview: {result[:300]}...[/dim]")
         return result
 
-    def _execute_agent(self, task: str) -> str:
+    def _execute_agent(self, task: str) -> tuple[list[BaseMessage], str]:
         agent_config = self.config.agents.configs.get(self.resolved_agent)
         if agent_config and getattr(agent_config, "type", None) == "llm":
-            return self._execute_llm_agent(agent_config, task)
+            # TODO: extract messages_out from LLM agent execution
+            return [], self._execute_llm_agent(agent_config, task)
         return self._execute_registered_agent(task)
 
     def _execute_llm_agent(self, agent_config, task: str) -> str:
@@ -145,7 +152,7 @@ class AgentExecutor:
             console.print(f"[dim]LLM response preview: {result[:300]}...[/dim]")
         return result
 
-    def _execute_registered_agent(self, task: str) -> str:
+    def _execute_registered_agent(self, task: str) -> tuple[list[BaseMessage], str]:
         agent_class = AgentRegistry.get(self.resolved_agent)
         if is_verbose(self.state):
             console.print(f"[dim]Using agent class: {agent_class.__name__ if agent_class else 'None'}[/dim]")
@@ -158,7 +165,7 @@ class AgentExecutor:
         # Wrap agent in tool-using loop for iterative execution
         return self._execute_agent_with_tools(agent, task)
 
-    def _execute_agent_with_tools(self, agent, task: str, max_tool_iterations: int = 5) -> str:
+    def _execute_agent_with_tools(self, agent, task: str, max_tool_iterations: int = 5) -> tuple[list[BaseMessage], str]:
         """Execute agent with automatic tool call detection and execution.
 
         This implements a tool-using loop where:
@@ -201,15 +208,14 @@ class AgentExecutor:
             if is_verbose(self.state):
                 console.print(f"[yellow]Detected {len(tool_calls)} tool call(s), executing...[/yellow]")
 
-            tool_results = self._execute_tool_calls(tool_calls)
-            messages.append(AIMessage(content=result))
-            messages.append(SystemMessage(content=f"Tool results:\n{tool_results}"))
+            execution = execute_tool_calls(tool_calls, self.state, self.config, augment=False, summary_mode="full")
+            messages.extend(execution.messages)
 
             tool_iteration += 1
 
         if is_verbose(self.state):
             console.print(f"[yellow]Max tool iterations ({max_tool_iterations}) reached[/yellow]")
-        return result
+        return messages, result
 
     def _build_prompt_with_tool_results(self, original_task: str, messages: list) -> str:
         """Build a prompt that includes tool results for the agent to continue."""
@@ -223,7 +229,3 @@ class AgentExecutor:
             return f"{original_task}\n\n{chr(10).join(tool_results)}\n\nContinue fixing the implementation based on the tool results."
         return original_task
 
-    def _execute_tool_calls(self, tool_calls: list[dict]) -> str:
-        """Execute detected tool calls and return results."""
-        execution = execute_tool_calls(tool_calls, self.state, self.config, augment=False, summary_mode="full")
-        return execution.summary

@@ -32,6 +32,6 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
             "result": summary,
             "status": "success" if not execution.errors else "error",
         },
-        "messages": [SystemMessage(content=f"Tool results:\n{summary}")],
+        "messages": execution.messages,
         "llm_calls": get_llm_calls(state),
     }
