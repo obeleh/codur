@@ -67,6 +67,7 @@ def _run_prompt(
     raw: bool,
     max_llm_calls: int | None,
     fail_early: bool,
+    dump_messages: str | None = None,
 ) -> None:
     if not raw:
         console.print(Panel.fit(
@@ -91,6 +92,13 @@ def _run_prompt(
             "llm_calls": 0,
             "max_llm_calls": cfg.runtime.max_llm_calls,
         }, cfg.runtime.max_runtime_s)
+
+        if dump_messages:
+            with open(dump_messages, "w", encoding="utf-8") as f:
+                for message in result.get("messages", []):
+                    f.write(f"{message.__class__.__name__}:\n")
+                    f.write(f"{message.content}\n\n")
+                    f.write("-" * 40 + "\n\n")
 
         selected_agent = result.get("selected_agent")
         if raw:
@@ -144,9 +152,14 @@ def main_callback(
         "--fail-early",
         help="Enable early failure helpers for tests",
     ),
+    dump_messages: Optional[str] = typer.Option(
+        None,
+        "--dump-messages",
+        help="Dump all messages to a file",
+    ),
 ):
     if command:
-        _run_prompt(command, config, verbose, raw, max_llm_calls, fail_early)
+        _run_prompt(command, config, verbose, raw, max_llm_calls, fail_early, dump_messages)
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         console.print(ctx.get_help())
@@ -183,6 +196,11 @@ def run(
         "--fail-early",
         help="Enable early failure helpers for tests",
     ),
+    dump_messages: Optional[str] = typer.Option(
+        None,
+        "--dump-messages",
+        help="Dump all messages to a file",
+    ),
 ):
     """
     Run a coding task through the agent orchestrator.
@@ -191,7 +209,7 @@ def run(
         codur run "Create a Python function to calculate fibonacci numbers"
         codur run "Refactor the authentication module" --verbose
     """
-    _run_prompt(prompt, config, verbose, raw, max_llm_calls, fail_early)
+    _run_prompt(prompt, config, verbose, raw, max_llm_calls, fail_early, dump_messages)
 
 
 @app.command()
