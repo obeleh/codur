@@ -1,4 +1,6 @@
 """Dedicated coding node for the codur-coding agent."""
+import json
+
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
 from rich.console import Console
 
@@ -11,6 +13,7 @@ from codur.graph.state_operations import (
     get_llm_calls,
     get_messages,
     is_verbose, increment_iterations,
+    add_message,
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.utils.llm_helpers import create_and_invoke_with_tool_support
@@ -195,6 +198,10 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
         }
 
     if recursion_depth < 3:
+        # Add AI response and execution results to messages before re-invoking
+        add_message(state, AIMessage(content=response.content))
+        tool_result_json = json.dumps(execution_result.results)
+        add_message(state, SystemMessage(content=f"Tool execution results:\n{tool_result_json}"))
         return coding_node(state, config, recursion_depth + 1)
 
     return {
