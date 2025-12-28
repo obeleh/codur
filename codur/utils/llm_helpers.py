@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
@@ -164,7 +164,6 @@ def create_and_invoke_with_tool_support(
         )
 
         # Prepend system message
-        from langchain_core.messages import SystemMessage
         enhanced_messages = [SystemMessage(content=system_message_content)] + list(messages)
 
         # Create LLM with json_mode
