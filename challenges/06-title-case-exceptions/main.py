@@ -6,7 +6,7 @@ MINOR_WORDS = {
 }
 
 def title_case(sentence: str) -> str:
-    """
+        """
     Convert a sentence to title case with these rules:
 
     1. Trim leading/trailing whitespace and collapse internal whitespace.
@@ -20,36 +20,8 @@ def title_case(sentence: str) -> str:
     7. Capitalize all other words.
     8. Join the processed words back into a sentence with single spaces.
     """
-    # Step 1: trim and collapse whitespace
-    words = sentence.strip().split()
-    if not words:
-        return ""
-
-    def process_word(word: str, is_first: bool, is_last: bool) -> str:
-        # Preserve all-caps words (length >=2)
-        if word.isupper() and len(word) >= 2:
-            return word
-        # Handle hyphenated words
-        if "-" in word:
-            parts = word.split("-")
-            new_parts = []
-            for idx, part in enumerate(parts):
-                part_is_first = is_first and idx == 0
-                part_is_last = is_last and idx == len(parts) - 1
-                new_parts.append(process_word(part, part_is_first, part_is_last))
-            return "-".join(new_parts)
-        # Minor word handling
-        lowered = word.lower()
-        if lowered in MINOR_WORDS and not (is_first or is_last):
-            return lowered
-        # Capitalize first letter, rest lower
-        return word.capitalize()
-
-    processed = []
-    last_index = len(words) - 1
-    for i, w in enumerate(words):
-        processed.append(process_word(w, i == 0, i == last_index))
-    return " ".join(processed)
+    # TODO: implement
+    raise NotImplementedError
 
 def _run_tests() -> None:
     cases = [
