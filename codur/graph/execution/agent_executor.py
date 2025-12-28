@@ -12,8 +12,8 @@ from codur.utils.llm_helpers import create_and_invoke
 from codur.agents import AgentRegistry
 from codur.graph.node_types import ExecuteNodeResult
 from codur.graph.utils import (
-    _resolve_agent_profile,
-    _resolve_agent_reference,
+    resolve_agent_profile,
+    resolve_agent_reference,
 )
 from codur.utils.config_helpers import get_default_agent
 from codur.utils.validation import require_config
@@ -47,8 +47,8 @@ class AgentExecutor:
             self.agent_name = agent_name
         else:
             self.agent_name = state["agent_outcome"].get("agent", self.default_agent)
-            self.agent_name, self.profile_override = _resolve_agent_profile(config, self.agent_name)
-        self.resolved_agent = _resolve_agent_reference(self.agent_name)
+            self.agent_name, self.profile_override = resolve_agent_profile(config, self.agent_name)
+        self.resolved_agent = resolve_agent_reference(self.agent_name)
 
     def execute(self) -> ExecuteNodeResult:
         if is_verbose(self.state):

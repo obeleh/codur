@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Any, Callable
+from typing import Optional, Any, Callable, List
 import re
 
 from langchain_core.messages import HumanMessage
@@ -12,7 +12,7 @@ from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState, AgentStateData
-from codur.graph.state_operations import get_messages
+from codur.graph.state_operations import get_messages, is_verbose
 from codur.utils.path_utils import resolve_path
 
 console = Console()
@@ -99,6 +99,7 @@ class ToolExecutionResult:
     results: list[dict]
     errors: list[str]
     summary: str
+    error_details: Optional[str] = None
 
 
 def _inject_missing_required_params(tool_calls: list[dict], state: AgentState) -> None:
@@ -149,6 +150,9 @@ def execute_tool_calls(
     augment: bool = True,
     summary_mode: str = "full", # brief|full
 ) -> ToolExecutionResult:
+    if is_verbose(state):
+        console.log(f"[cyan]Executing {len(tool_calls)} tool call(s)...[/cyan]")
+
     """Execute tool calls using a shared tool map."""
     root = Path.cwd()
     allow_outside_root = config.runtime.allow_outside_workspace
@@ -163,6 +167,7 @@ def execute_tool_calls(
 
     results = []
     errors = []
+    error_details = []
     last_read_file_output = None
     has_multifile_call = any(call.get("tool") == "python_ast_dependencies_multifile" for call in tool_calls)
 
@@ -208,7 +213,12 @@ def execute_tool_calls(
         i += 1
 
     summary = _format_summary(results, errors, summary_mode)
-    return ToolExecutionResult(results=results, errors=errors, summary=summary)
+    return ToolExecutionResult(
+        results=results,
+        errors=errors,
+        summary=summary,
+        error_details="\n".join(error_details) if error_details else None,
+    )
 
 
 def get_tool_names(state: AgentState, config: CodurConfig) -> set[str]:
@@ -262,10 +272,6 @@ def _build_tool_map(
 ) -> dict:
     """Build tool map dynamically from tool registry."""
     from codur.tools import __all__ as tool_names
-
-    # Late imports to avoid circular dependencies
-    from codur.tools.agents import agent_call, retry_in_agent
-
     tool_map = {}
 
     # Import tools dynamically

@@ -67,7 +67,3 @@ class TaskStrategy(Protocol):
     ) -> str:
         """Build a context-aware prompt for LLM planning."""
         ...
-
-
-# Backward compatibility alias
-Phase1Strategy = TaskStrategy

@@ -11,7 +11,7 @@ from codur.graph.execution import (
     review_node,
 )
 from codur.graph.tools import tool_node
-from codur.graph.coding import coding_node
+from codur.graph.coding_agent import coding_node
 from codur.graph.explaining import explaining_node
 from codur.graph.routing import should_continue, should_delegate
 from codur.graph.planning import (

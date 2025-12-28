@@ -1,7 +1,6 @@
 """Handle tool calls from both native API responses and JSON text fallback."""
 
 from langchain_core.messages import AIMessage, ToolMessage
-from codur.graph.planning.json_parser import JSONResponseParser
 
 
 def extract_tool_calls_from_ai_message(message: AIMessage) -> list[dict]:
@@ -65,6 +64,8 @@ def extract_tool_calls_from_json_text(message: AIMessage) -> list[dict]:
     Returns:
         List of tool calls in internal format
     """
+    from codur.graph.planning.json_parser import JSONResponseParser
+
     parser = JSONResponseParser()
     data = parser.parse(message.content)
 
@@ -76,29 +77,6 @@ def extract_tool_calls_from_json_text(message: AIMessage) -> list[dict]:
         return []
 
     return tool_calls
-
-
-def extract_tool_calls_unified(message: AIMessage, used_native: bool) -> list[dict]:
-    """
-    Extract tool calls from either native API or JSON text fallback.
-
-    Args:
-        message: AIMessage from LLM
-        used_native: True if native tool calling was used, False for JSON fallback
-
-    Returns:
-        List of tool calls in internal format
-
-    Example usage:
-        response, used_native = create_and_invoke_with_tool_support(config, messages, schemas)
-        tool_calls = extract_tool_calls_unified(response, used_native)
-        if tool_calls:
-            execute_tool_calls(tool_calls, state, config)
-    """
-    if used_native:
-        return extract_tool_calls_from_ai_message(message)
-    else:
-        return extract_tool_calls_from_json_text(message)
 
 
 def create_tool_messages(results: list[dict], tool_call_ids: list[str]) -> list[ToolMessage]:

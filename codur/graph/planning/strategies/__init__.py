@@ -5,7 +5,7 @@ Each strategy owns the domain knowledge for one TaskType:
 - Prompt building for LLM planning (Phase 2)
 """
 
-from .base import TaskStrategy, Phase1Strategy  # Phase1Strategy for backward compat
+from .base import TaskStrategy
 from .greeting import GreetingStrategy
 from .file_operation import FileOperationStrategy
 from .code_fix import CodeFixStrategy

@@ -9,8 +9,11 @@ from langchain_core.messages import BaseMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
+from codur.graph.state_operations import is_verbose
+from codur.graph.tool_executor import execute_tool_calls, ToolExecutionResult
 from codur.llm import create_llm, create_llm_profile
 from codur.utils.llm_calls import invoke_llm
+from codur.utils.tool_response_handler import extract_tool_calls_from_ai_message, extract_tool_calls_from_json_text
 
 if TYPE_CHECKING:
     from codur.graph.state import AgentState
@@ -154,7 +157,7 @@ def create_and_invoke_with_tool_support(
     temperature: float | None = None,
     invoked_by: str = "unknown",
     state: "AgentState | None" = None,
-) -> tuple[BaseMessage, bool]:
+) -> tuple[BaseMessage, ToolExecutionResult]:
     """
     Invoke LLM with tools if supported, else JSON fallback.
 
@@ -170,33 +173,6 @@ def create_and_invoke_with_tool_support(
         temperature: Override temperature
         invoked_by: Caller identifier for logging
         state: Agent state
-
-    Returns:
-        Tuple of (response_message, used_native_tools)
-        - response_message: BaseMessage from LLM
-        - used_native_tools: True if native API used, False if JSON fallback
-
-    Example usage:
-        from codur.tools.schema_generator import get_function_schemas
-        from codur.utils.tool_response_handler import extract_tool_calls_unified
-
-        # Get tool schemas
-        schemas = get_function_schemas()
-
-        # Invoke with tool support
-        response, used_native = create_and_invoke_with_tool_support(
-            config, messages, schemas,
-            profile_name="groq-qwen3-32b",
-            invoked_by="coding.primary",
-            state=state
-        )
-
-        # Extract tool calls (works for both native and JSON)
-        tool_calls = extract_tool_calls_unified(response, used_native)
-
-        # Execute tools
-        if tool_calls:
-            execution = execute_tool_calls(tool_calls, state, config)
     """
     from codur.providers.base import ProviderRegistry
     from codur.llm import create_llm_with_tools
@@ -213,8 +189,13 @@ def create_and_invoke_with_tool_support(
     provider_name = profile.provider
     provider_class = ProviderRegistry.get(provider_name)
 
+    verbose = is_verbose(state)
+
     # Check if provider supports native tool calling
     if provider_class.supports_native_tools():
+        if verbose:
+            console.log("[bold cyan]LLM with native tools...[/bold cyan]")
+
         # Native path: bind tools and invoke
         llm = create_llm_with_tools(
             config,
@@ -229,9 +210,11 @@ def create_and_invoke_with_tool_support(
             state=state,
             config=config,
         )
-        return response, True  # Used native tools
-
+        tool_calls = extract_tool_calls_from_ai_message(response)
     else:
+        if verbose:
+            console.log("[bold cyan]LLM with json fallback tools...[/bold cyan]")
+
         # JSON fallback path: inject tools in prompt, use json_mode
         # Build tool descriptions for prompt
         tool_descriptions = _build_tool_descriptions_for_prompt(tool_schemas)
@@ -258,7 +241,9 @@ def create_and_invoke_with_tool_support(
             state=state,
             config=config,
         )
-        return response, False  # Used JSON fallback
+        tool_calls = extract_tool_calls_from_json_text(response)
+    execution_result = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="brief")
+    return response, execution_result
 
 
 def _build_tool_descriptions_for_prompt(tool_schemas: list[dict]) -> str:

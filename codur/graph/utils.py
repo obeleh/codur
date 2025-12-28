@@ -7,14 +7,14 @@ from codur.config import CodurConfig
 from codur.llm import create_llm_profile
 
 
-def _resolve_agent_reference(raw_agent: str) -> str:
+def resolve_agent_reference(raw_agent: str) -> str:
     """Extract the actual agent name from agent reference format (e.g., 'agent:ollama' -> 'ollama')."""
     if raw_agent.startswith("agent:"):
         return raw_agent.split(":", 1)[1]
     return raw_agent
 
 
-def _resolve_agent_profile(config: CodurConfig, agent_name: str) -> tuple[str, Optional[dict]]:
+def resolve_agent_profile(config: CodurConfig, agent_name: str) -> tuple[str, Optional[dict]]:
     """Resolve agent profile configuration from config.
 
     Args:
@@ -58,10 +58,6 @@ def normalize_messages(messages: Any) -> list[BaseMessage]:
             continue
         normalized.append(HumanMessage(content=str(message)))
     return normalized
-
-
-# Backward compatibility alias
-_normalize_messages = normalize_messages
 
 
 def get_first_human_message(messages: list[BaseMessage]) -> Optional[str]:

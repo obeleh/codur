@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING, Optional
 
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from codur.graph.utils import normalize_messages
 
-from codur.graph.utils import normalize_messages as _normalize_messages
 
 if TYPE_CHECKING:
     # Avoid circular imports for type checking
@@ -36,7 +36,7 @@ def add_message(state: "AgentState", message: BaseMessage) -> None:
 def get_messages(state: "AgentState") -> list[BaseMessage]:
     """Get normalized messages from state."""
     messages = state.get("messages", [])
-    return _normalize_messages(messages)
+    return normalize_messages(messages)
 
 def get_last_human_message(state: "AgentState") -> Optional[BaseMessage]:
     """Get the last human message from state, if any."""
