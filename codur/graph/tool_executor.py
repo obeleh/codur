@@ -156,8 +156,6 @@ def execute_tool_calls(
     if is_verbose(state):
         console.log(f"[cyan]Executing {len(tool_calls)} tool call(s)...[/cyan]")
 
-    print("summary_mode:", summary_mode)
-
     """Execute tool calls using a shared tool map."""
     root = Path.cwd()
     allow_outside_root = config.runtime.allow_outside_workspace
@@ -378,6 +376,10 @@ def _format_tool_result(item: dict, mode: str) -> str:
     if mode == "brief" and tool == "write_file":
         path = args.get("path", "unknown")
         return f"write_file: {path} -> {output}"
+    if mode == "brief" and tool == "replace_function":
+        func_name = args.get("function_name", "unknown")
+        path = args.get("path", "unknown")
+        return f"replace_function: {func_name} in {path}"
     return f"{tool}: {output}"
 
 

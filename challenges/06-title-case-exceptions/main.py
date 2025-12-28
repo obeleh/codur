@@ -6,7 +6,7 @@ MINOR_WORDS = {
 }
 
 def title_case(sentence: str) -> str:
-        """
+    """
     Convert a sentence to title case with these rules:
 
     1. Trim leading/trailing whitespace and collapse internal whitespace.

@@ -84,13 +84,11 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 "Do NOT read more files - proceed directly to fixing the code based on what you've learned."
             ))
 
-            current_messages = get_messages(state)
-
             return {
                 "final_response": result,
                 "next_action": ACTION_CONTINUE,
                 "selected_agent": REF_AGENT_CODING,
-                "messages": current_messages + [impl_instruction],
+                "messages": [impl_instruction],
             }
 
     if is_verbose(state):
