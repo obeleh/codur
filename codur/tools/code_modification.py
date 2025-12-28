@@ -59,7 +59,6 @@ def replace_function(
         return f"Invalid Python syntax in replacement code:\n{error_msg}\n\nCode attempted:\n{new_code}"
 
     try:
-        print(f"Replacing function '{function_name}' in {path} with root={root}")
         # Read current content to find lines
         content = read_file(path=path, root=root, allow_outside_root=allow_outside_root, state=state)
         

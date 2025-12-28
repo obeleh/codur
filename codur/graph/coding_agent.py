@@ -99,26 +99,10 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
 - You MUST return valid tool calls - do NOT create fake tool names or prefixes
 - If you need to read a file multiple times in the same conversation, use the results from the first read
 - All tool arguments must match the schema exactly
-- Do NOT attempt to run code locally - use the tools provided
-
-## After Writing Code
-
-When you use write/modify tools (replace_function, write_file, replace_class, etc.):
-- For Python files: Use validate_python_syntax to verify syntax is correct
-- To test execution: Use run_python_file to run the modified code and see output
-- Do NOT re-read the file - these tools provide the verification you need
-- Validation and execution are faster and more efficient than reading the entire file back
-
-Example tool sequence:
-```json
-[
-  {{"tool": "replace_function", "args": {{"path": "main.py", "name": "calculate_total", "new_code": "def calculate_total(items):\\n    return sum(item['price'] for item in items)"}}}},
-  {{"tool": "validate_python_syntax", "args": {{"code": "def calculate_total(items):\\n    return sum(item['price'] for item in items)"}}}},
-  {{"tool": "run_python_file", "args": {{"path": "main.py"}}}}
-]
-```
-
-This validates syntax BEFORE running, catching errors early without re-reading the file.
+- After Writing Code (replace_function, write_file, replace_class, etc.):
+    - For Python files: Use validate_python_syntax to verify syntax is correct
+    - To test execution: Use run_python_file to run the modified code and see output
+    - Validation and execution are faster and more efficient than reading the entire file back
 """
 
 # Initialize system prompt with tools

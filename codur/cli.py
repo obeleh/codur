@@ -96,9 +96,8 @@ def _run_prompt(
         if dump_messages:
             with open(dump_messages, "w", encoding="utf-8") as f:
                 for message in result.get("messages", []):
-                    f.write(f"{message.__class__.__name__}:\n")
+                    f.write("-" * 20 + f"{message.__class__.__name__}" + "-" * 20 + "\n\n")
                     f.write(f"{message.content}\n\n")
-                    f.write("-" * 40 + "\n\n")
 
         selected_agent = result.get("selected_agent")
         if raw:

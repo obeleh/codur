@@ -34,7 +34,7 @@ From the repo root:
 
 ```bash
 cd challenges/01-fix-off-by-onerror
-python -m codur.cli --command "$(cat prompt.txt)" --max-llm-calls 10 --raw --config ../../codur.yaml --verbose --fail-early
+python -m codur.cli --command "$(cat prompt.txt)" --max-llm-calls 10 --raw --config ../../codur.yaml --verbose --fail-early --dump-messages "messages.txt"
 python main.py
 ```
 
