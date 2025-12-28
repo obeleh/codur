@@ -12,8 +12,7 @@ from codur.graph.state_operations import (
     get_iterations,
     get_llm_calls,
     get_messages,
-    is_verbose, increment_iterations,
-    add_message,
+    is_verbose, increment_iterations, add_messages,
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.utils.llm_helpers import create_and_invoke_with_tool_support
@@ -157,7 +156,7 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
     ]
 
     try:
-        response, execution_result = create_and_invoke_with_tool_support(
+        new_messages, execution_result = create_and_invoke_with_tool_support(
             config,
             messages,
             tool_schemas,
@@ -174,7 +173,7 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
         # Try fallback model
         fallback_profile = config.agents.preferences.fallback_model
         if fallback_profile:
-            response, execution_result = create_and_invoke_with_tool_support(
+            new_messages, execution_result = create_and_invoke_with_tool_support(
                 config,
                 messages,
                 tool_schemas,
@@ -191,22 +190,29 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
         return {
             "agent_outcome": {
                 "agent": agent_name,
-                "result": _unify_result_message(response.content),
+                "result": "no tool calls made",
                 "status": "success",
             },
+            "messages": new_messages,
             "llm_calls": get_llm_calls(state),
         }
 
     if recursion_depth < 3:
-        return coding_node(state, config, recursion_depth + 1)
+        # inject messages into state for next iteration
+        # unfortunately mutations to state do not persist across agent nodes
+        add_messages(state, new_messages)
+        nested_outcome = coding_node(state, config, recursion_depth + 1)
+        nested_outcome["messages"] = new_messages + nested_outcome["messages"]
+        return nested_outcome
 
     return {
         "agent_outcome": {
             "agent": agent_name,
-            "result": _unify_result_message(response.content),
+            "result": "tool calls executed",
             "status": "success",
         },
         "llm_calls": get_llm_calls(state),
+        "messages": new_messages,
     }
 
 

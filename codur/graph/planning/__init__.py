@@ -1,6 +1,6 @@
 """Planning node package."""
 
-from .core import PlanningOrchestrator, pattern_plan, textual_pre_plan, llm_pre_plan
+from .core import PlanningOrchestrator, pattern_plan, pattern_plan, llm_pre_plan
 
 
 def plan_node(state, llm, config):
@@ -15,7 +15,7 @@ def pattern_plan_node(state, config):
 
 def textual_pre_plan_node(state, config):
     """Deprecated: use pattern_plan_node instead."""
-    return textual_pre_plan(state, config)
+    return pattern_plan(state, config)
 
 
 def llm_pre_plan_node(state, config):
@@ -36,6 +36,6 @@ __all__ = [
     "llm_plan_node",
     "PlanningOrchestrator",
     "pattern_plan",
-    "textual_pre_plan",
+    "pattern_plan",
     "llm_pre_plan",
 ]

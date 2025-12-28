@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from codur.graph.planning.core import (
-    textual_pre_plan,
+    pattern_plan,
     llm_pre_plan,
     pattern_plan,
     PlanningOrchestrator,
@@ -38,7 +38,7 @@ class TestPlanningNodeWithCodingAgent:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
 
         assert result is not None
         assert result["next_action"] == "continue_to_llm_pre_plan"
@@ -53,7 +53,7 @@ class TestPlanningNodeWithCodingAgent:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
 
         # Should either resolve or continue to llm-pre-plan
         assert result is not None
@@ -113,7 +113,7 @@ class TestPlanningNodeCodeFixDetection:
                 "verbose": False,
             }
 
-            result = textual_pre_plan(state, config)
+            result = pattern_plan(state, config)
             assert result is not None
             # Either resolves or continues to next phase
             assert "next_action" in result
@@ -129,7 +129,7 @@ class TestPlanningNodeCodeFixDetection:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
 
 
@@ -199,7 +199,7 @@ class TestPlanningNodeWithLineBasedEditing:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
 
     def test_plan_routes_full_file_implementation_to_coding_agent(self, config):
@@ -212,7 +212,7 @@ class TestPlanningNodeWithLineBasedEditing:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
 
     def test_plan_handles_verification_error_on_retry(self, config):
@@ -230,7 +230,7 @@ class TestPlanningNodeWithLineBasedEditing:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
 
 
@@ -259,7 +259,7 @@ class TestPlanningNodeRetryBehavior:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
         # Iteration count should be preserved or incremented
         assert "iterations" in result
@@ -278,7 +278,7 @@ class TestPlanningNodeRetryBehavior:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
 
 
@@ -301,7 +301,7 @@ class TestPlanningNodeMessageHandling:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
 
     def test_plan_handles_mixed_message_types(self, config):
@@ -316,7 +316,7 @@ class TestPlanningNodeMessageHandling:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
 
     def test_plan_extracts_challenge_from_first_human_message(self, config):
@@ -331,7 +331,7 @@ class TestPlanningNodeMessageHandling:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
 
 
@@ -415,7 +415,7 @@ class TestPlanningNodeEdgeCases:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
 
     def test_plan_with_multiline_task_description(self, config):
@@ -434,7 +434,7 @@ class TestPlanningNodeEdgeCases:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None
 
     def test_plan_with_special_characters_in_task(self, config):
@@ -449,5 +449,5 @@ class TestPlanningNodeEdgeCases:
             "verbose": False,
         }
 
-        result = textual_pre_plan(state, config)
+        result = pattern_plan(state, config)
         assert result is not None

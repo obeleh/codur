@@ -33,6 +33,11 @@ def add_message(state: "AgentState", message: BaseMessage) -> None:
     messages = list(state.get("messages", []))
     state["messages"] = messages + [message]
 
+def add_messages(state: "AgentState", new_messages: list[BaseMessage]) -> None:
+    """Add multiple messages to the state's message history."""
+    messages = list(state.get("messages", []))
+    state["messages"] = messages + new_messages
+
 def get_messages(state: "AgentState") -> list[BaseMessage]:
     """Get normalized messages from state."""
     messages = state.get("messages", [])

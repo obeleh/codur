@@ -10,11 +10,11 @@ from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
-from codur.graph.state_operations import is_verbose, add_message
+from codur.graph.state_operations import is_verbose, get_messages
 from codur.graph.tool_executor import execute_tool_calls, ToolExecutionResult
 from codur.llm import create_llm, create_llm_profile
 from codur.utils.llm_calls import invoke_llm
-from codur.utils.tool_response_handler import extract_tool_calls_from_ai_message, extract_tool_calls_from_json_text
+from codur.utils.tool_response_handler import deserialize_tool_calls, extract_tool_calls_from_json_text
 
 if TYPE_CHECKING:
     from codur.graph.state import AgentState
@@ -92,13 +92,13 @@ def create_and_invoke(
 
 def create_and_invoke_with_tool_support(
     config: CodurConfig,
-    messages: list[BaseMessage],
+    new_messages: list[BaseMessage],
     tool_schemas: list[dict],
     profile_name: str | None = None,
     temperature: float | None = None,
     invoked_by: str = "unknown",
     state: "AgentState | None" = None,
-) -> tuple[BaseMessage, ToolExecutionResult]:
+) -> tuple[list[BaseMessage], ToolExecutionResult]:
     """
     Invoke LLM with tools if supported, else JSON fallback.
 
@@ -108,7 +108,7 @@ def create_and_invoke_with_tool_support(
 
     Args:
         config: Codur configuration
-        messages: Conversation messages
+        new_messages: Conversation messages
         tool_schemas: Tool schemas to bind
         profile_name: Profile name from config
         temperature: Override temperature
@@ -144,16 +144,17 @@ def create_and_invoke_with_tool_support(
             tool_schemas,
             temperature=temperature,
         )
+        messages_for_llm = get_messages(state) + new_messages
         response = invoke_llm(
             llm,
-            messages,
+            messages_for_llm,
             invoked_by=invoked_by,
             state=state,
             config=config,
         )
-        tool_calls = extract_tool_calls_from_ai_message(response)
-        tool_calls_str = json.dumps(_list_or_single(tool_calls))
-        add_message(state, AIMessage(content=tool_calls_str))
+        response_dict = deserialize_tool_calls(response)
+        tool_calls = response_dict["tool_calls"]
+        new_messages.append(AIMessage(content=json.dumps(response_dict)))
     else:
         if verbose:
             console.log("[bold cyan]LLM with json fallback tools...[/bold cyan]")
@@ -167,7 +168,8 @@ def create_and_invoke_with_tool_support(
         )
 
         # Prepend system message
-        enhanced_messages = [SystemMessage(content=system_message_content)] + list(messages)
+        new_messages = [SystemMessage(content=system_message_content)] + list(new_messages)
+        messages_for_llm = get_messages(state) + new_messages
 
         # Create LLM with json_mode
         llm = _create_llm(
@@ -178,19 +180,18 @@ def create_and_invoke_with_tool_support(
         )
         response = invoke_llm(
             llm,
-            enhanced_messages,
+            messages_for_llm,
             invoked_by=f"{invoked_by}.json_fallback",
             state=state,
             config=config,
         )
         tool_calls = extract_tool_calls_from_json_text(response)
-        add_message(state, AIMessage(content=response.content))
+        new_messages.append(AIMessage(content=response.content))
 
     execution_result = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="brief")
     tool_result_json = json.dumps(_list_or_single(execution_result.results))
-    add_message(state, SystemMessage(content=tool_result_json))
-    return response, execution_result
-
+    new_messages.append(SystemMessage(content=tool_result_json))
+    return new_messages, execution_result
 
 def _build_tool_descriptions_for_prompt(tool_schemas: list[dict]) -> str:
     """Build tool descriptions for prompt injection (JSON fallback)."""

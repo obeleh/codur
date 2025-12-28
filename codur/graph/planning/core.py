@@ -108,12 +108,6 @@ def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
     }
 
 
-# Keep old function names for backward compatibility
-def textual_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
-    """Deprecated: use pattern_plan instead."""
-    return pattern_plan(state, config)
-
-
 def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
     """Phase 1: LLM-based quick classification (experimental, gated by config).
 

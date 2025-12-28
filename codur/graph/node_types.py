@@ -23,6 +23,7 @@ class PlanNodeResult(TypedDict):
     tool_calls: NotRequired[list[ToolCall]]
     llm_debug: NotRequired[Dict[str, Any]]
     llm_calls: NotRequired[int]
+    messages: NotRequired[list[BaseMessage]]
 
 
 class DelegateNodeResult(TypedDict):
@@ -37,6 +38,7 @@ class ToolNodeResult(TypedDict):
 
 class ExecuteNodeResult(TypedDict):
     agent_outcome: AgentOutcome
+    messages: list[BaseMessage]
     llm_calls: NotRequired[int]
 
 

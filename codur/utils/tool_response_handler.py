@@ -3,7 +3,7 @@
 from langchain_core.messages import AIMessage, ToolMessage
 
 
-def extract_tool_calls_from_ai_message(message: AIMessage) -> list[dict]:
+def deserialize_tool_calls(message: AIMessage) -> dict:
     """
     Convert AIMessage.tool_calls to internal format.
 
@@ -34,18 +34,21 @@ def extract_tool_calls_from_ai_message(message: AIMessage) -> list[dict]:
     Returns:
         List of tool calls in internal format ({"tool": name, "args": dict, "id": str})
     """
+    content = getattr(message, "content")
     if not hasattr(message, 'tool_calls') or not message.tool_calls:
-        return []
+        return {"content": content, "tool_calls": []}
 
     internal_format = []
     for tool_call in message.tool_calls:
-        internal_format.append({
+        dct = {
             "tool": tool_call["name"],
             "args": tool_call.get("args", {}),
-            "id": tool_call.get("id", ""),
-        })
+        }
+        if "id" in tool_call:
+            dct["id"] = tool_call["id"]
+        internal_format.append(dct)
 
-    return internal_format
+    return {"content": content, "tool_calls": internal_format}
 
 
 def extract_tool_calls_from_json_text(message: AIMessage) -> list[dict]:
