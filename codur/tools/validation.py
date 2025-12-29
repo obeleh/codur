@@ -1,15 +1,20 @@
 """Python syntax validation utilities and code execution verification."""
 
 import ast
-import subprocess
 import os
+import subprocess
 from pathlib import Path
 from typing import Optional
 
 from codur.config import CodurConfig
-from codur.constants import TaskType
+from codur.constants import DEFAULT_MAX_BYTES, TaskType
 from codur.graph.state import AgentState
 from codur.tools.tool_annotations import tool_scenarios
+from codur.utils.config_helpers import get_cli_timeout
+from codur.utils.ignore_utils import get_config_from_state
+from codur.utils.path_utils import resolve_path, resolve_root
+from codur.utils.text_helpers import truncate_chars
+from codur.utils.validation import require_directory_exists
 
 
 @tool_scenarios(
@@ -126,3 +131,98 @@ def run_python_file(
 
     except Exception as e:
         return f"Error: {str(e)}"
+
+
+@tool_scenarios(TaskType.CODE_VALIDATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+def run_pytest(
+    paths: list[str] | None = None,
+    keyword: str | None = None,
+    markers: str | None = None,
+    extra_args: list[str] | None = None,
+    root: str | Path | None = None,
+    cwd: str | None = None,
+    env: dict | None = None,
+    timeout: int | None = None,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> dict:
+    """Run pytest and return the results."""
+    root_path = resolve_root(root)
+    exec_cwd = (
+        resolve_path(cwd, root_path, allow_outside_root=allow_outside_root)
+        if cwd
+        else root_path
+    )
+    require_directory_exists(exec_cwd, context="pytest cwd")
+
+    cmd: list[str] = ["pytest"]
+    if keyword:
+        cmd += ["-k", keyword]
+    if markers:
+        cmd += ["-m", markers]
+    if extra_args:
+        cmd.extend(extra_args)
+
+    resolved_paths: list[str] = []
+    if paths:
+        for raw_path in paths:
+            target = resolve_path(raw_path, root_path, allow_outside_root=allow_outside_root)
+            if not target.exists():
+                raise ValueError(f"Path does not exist: {raw_path}")
+            resolved_paths.append(str(target))
+        cmd.extend(resolved_paths)
+
+    process_env = dict(os.environ)
+    if env:
+        process_env.update(env)
+
+    config = get_config_from_state(state)
+    effective_timeout = int(timeout) if timeout is not None else get_cli_timeout(config)
+    max_output_chars = (
+        int(getattr(getattr(config, "tools", None), "default_max_bytes", DEFAULT_MAX_BYTES))
+        if config is not None
+        else DEFAULT_MAX_BYTES
+    )
+
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(exec_cwd),
+            env=process_env,
+        )
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "exit_code": 127,
+            "error": "pytest not found on PATH",
+            "command": " ".join(cmd),
+            "cwd": str(exec_cwd),
+        }
+
+    try:
+        stdout, stderr = process.communicate(timeout=effective_timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+        return {
+            "success": False,
+            "exit_code": None,
+            "error": f"Execution timed out after {effective_timeout} seconds",
+            "command": " ".join(cmd),
+            "cwd": str(exec_cwd),
+        }
+
+    stdout = truncate_chars(stdout or "", max_output_chars).strip()
+    stderr = truncate_chars(stderr or "", max_output_chars).strip()
+    return {
+        "success": process.returncode == 0,
+        "exit_code": process.returncode,
+        "command": " ".join(cmd),
+        "cwd": str(exec_cwd),
+        "paths": resolved_paths,
+        "stdout": stdout,
+        "stderr": stderr,
+    }

@@ -1,7 +1,14 @@
 """Tests for Python syntax validation utilities."""
 
+from __future__ import annotations
+
+from pathlib import Path
+import subprocess
+from unittest import mock
+
 import pytest
-from codur.tools.validation import validate_python_syntax
+
+from codur.tools.validation import run_pytest, validate_python_syntax
 
 
 class TestValidatePythonSyntax:
@@ -109,3 +116,40 @@ words =
         is_valid, error = validate_python_syntax(code)
         assert is_valid is False
         assert error is not None
+
+
+class TestRunPytest:
+    """Tests for run_pytest function."""
+
+    def test_missing_pytest_binary(self, tmp_path: Path):
+        """Return error when pytest is not available."""
+        with mock.patch("subprocess.Popen", side_effect=FileNotFoundError):
+            result = run_pytest(root=tmp_path)
+        assert result["success"] is False
+        assert result["exit_code"] == 127
+        assert "pytest not found" in result["error"]
+
+    def test_timeout(self, tmp_path: Path):
+        """Return timeout error when pytest runs too long."""
+        process = mock.Mock()
+        process.communicate.side_effect = subprocess.TimeoutExpired(cmd=["pytest"], timeout=1)
+        process.returncode = None
+        process.kill = mock.Mock()
+        process.wait = mock.Mock()
+
+        with mock.patch("subprocess.Popen", return_value=process):
+            result = run_pytest(root=tmp_path, timeout=1)
+        assert result["success"] is False
+        assert "timed out" in result["error"]
+
+    def test_successful_run(self, tmp_path: Path):
+        """Return stdout/stderr and success flag."""
+        process = mock.Mock()
+        process.communicate.return_value = ("ok\n", "")
+        process.returncode = 0
+
+        with mock.patch("subprocess.Popen", return_value=process):
+            result = run_pytest(root=tmp_path, paths=["."])
+        assert result["success"] is True
+        assert result["exit_code"] == 0
+        assert result["stdout"] == "ok"

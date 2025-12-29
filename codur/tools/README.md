@@ -57,6 +57,14 @@ tools = list_tools_for_tasks([TaskType.CODE_GENERATION])
 
 The coding agent uses TaskType categories to build a readable tool list for its system prompt. Unannotated tools may still be included as a fallback, but explicit TaskType annotations are preferred.
 
+## Usage examples
+
+Run pytest with optional filters:
+
+```python
+run_pytest(paths=["tests"], keyword="api", markers="slow")
+```
+
 ## Authoring guidance for LLMs
 
 When adding a new tool, think in terms of safety, generality, and clarity:

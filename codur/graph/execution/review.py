@@ -76,19 +76,9 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                     "delegating to codur-coding[/dim]"
                 )
 
-            # Add explicit implementation instruction to prevent investigation loop
-            impl_instruction = SystemMessage(content=(
-                "You have gathered sufficient context from reading files. "
-                "Now IMPLEMENT the solution using code modification tools "
-                "(replace_function, replace_class, write_file, etc.). "
-                "Do NOT read more files - proceed directly to fixing the code based on what you've learned."
-            ))
-
             return {
                 "final_response": result,
                 "next_action": ACTION_CONTINUE,
-                "selected_agent": REF_AGENT_CODING,
-                "messages": [impl_instruction],
             }
 
     if is_verbose(state):

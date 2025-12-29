@@ -258,7 +258,7 @@ _FILESYSTEM_CONTEXT_TOOLS = {
     "replace_method", "replace_file_content", "read_json", "write_json",
     "set_json_value", "read_yaml", "write_yaml", "set_yaml_value",
     "read_ini", "write_ini", "set_ini_value", "lint_python_files",
-    "lint_python_tree", "system_disk_usage", "git_stage_files",
+    "lint_python_tree", "run_pytest", "system_disk_usage", "git_stage_files",
     "convert_document", "python_ast_graph", "python_ast_outline",
     "python_ast_dependencies", "python_ast_dependencies_multifile",
     "python_dependency_graph", "code_quality", "rope_find_usages",

@@ -86,6 +86,7 @@ from codur.tools.project_analysis import (
 from codur.tools.validation import (
     validate_python_syntax,
     run_python_file,
+    run_pytest,
 )
 from codur.tools.ast_utils import (
     find_function_lines,
@@ -182,6 +183,7 @@ __all__ = [
     "code_quality",
     "validate_python_syntax",
     "run_python_file",
+    "run_pytest",
     "find_function_lines",
     "find_class_lines",
     "find_method_lines",

@@ -41,3 +41,6 @@ htmlcov/
 checkpoints/
 *.db
 .env
+
+
+/challenges/*/messages.txt
