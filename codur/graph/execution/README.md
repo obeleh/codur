@@ -13,9 +13,13 @@ The execution module is organized into focused, single-responsibility modules:
 - **`review.py`** - Verifies fix results, routes retries, and decides on next actions
 - **`agent_executor.py`** - Core execution engine with tool-loop support
 
+### Agent Nodes
+
+- **`verification_agent.py`** - LLM-based verification agent that infers verification strategies
+- **`coding_agent.py`** (in `codur/graph/`) - Specialized coding implementation agent
+
 ### Supporting Logic
 
-- **`verification.py`** - Runs tests and validates outputs against expected results
 - **`repair.py`** - Last-resort mutation-based repair for common coding errors
 
 ## Execution Flow
@@ -74,11 +78,16 @@ delegate_node → execute_node → [agent execution] → review_node
   - Repeated error → END
   - Verification failed → retry or route back to planning
 
-### `_verify_fix` (in verification.py)
-- Runs Python entry point (main.py or app.py)
-- Streaming verification with early exit on mismatch
-- Compares output against expected.txt if available
-- Returns: `{"success": bool, "message": str, ...diagnostic_info}`
+### `verification_agent_node` (in verification_agent.py)
+- LLM-based intelligent verification agent
+- Dynamically infers verification strategy from context:
+  - Test-based (runs pytest when tests exist)
+  - Execution-based (runs entry points and compares output)
+  - Static analysis (validates syntax, code quality)
+  - Hybrid (combines multiple approaches)
+- Uses existing tools: `discover_entry_points`, `run_python_file`, `run_pytest`, etc.
+- No hardcoded patterns (no main.py/app.py assumptions, no expected.txt hardcoding)
+- Returns: `ExecuteNodeResult` with `verification_details` containing pass/fail, reasoning, and suggestions
 
 ### `_attempt_local_repair` (in repair.py)
 - Last-resort mutation-based repair
@@ -120,6 +129,77 @@ All nodes receive and return `AgentState` which includes:
 3. **Streaming Verification**: Early exit on output mismatch saves time
 4. **Local Repair as Last Resort**: Attempts simple fixes before giving up
 5. **Error Tracking**: Detects when agent is stuck and exits early
+
+## Building Agent System Prompts
+
+When creating new agent nodes (like `verification_agent.py` or `coding_agent.py`), follow these patterns:
+
+### Dynamic Tool Discovery with TaskTypes
+
+**REQUIRED**: System prompts MUST build tool lists dynamically based on TaskType annotations, not hardcoded tool names.
+
+**Pattern to follow** (see `verification_agent.py:34-107` or `coding_agent.py:35-84`):
+
+```python
+def _get_system_prompt_with_tools():
+    """Build system prompt with available tools listed."""
+    from codur.tools.registry import list_tools_for_tasks
+    from codur.constants import TaskType
+
+    # 1. Define relevant TaskTypes for this agent
+    task_types = [
+        TaskType.CODE_VALIDATION,
+        TaskType.FILE_OPERATION,
+        TaskType.EXPLANATION,
+    ]
+
+    # 2. Get tools from registry
+    tools = list_tools_for_tasks(task_types, include_unannotated=False)
+
+    # 3. Optional: Whitelist specific tools if needed
+    allowed_tools = {'discover_entry_points', 'run_pytest', ...}
+    filtered_tools = [t for t in tools if t['name'] in allowed_tools]
+
+    # 4. Categorize tools by TaskType scenarios for readability
+    for tool in filtered_tools:
+        name = tool['name']
+        scenarios = tool.get('scenarios', [])
+
+        if TaskType.CODE_VALIDATION in scenarios:
+            validation_tools.append(name)
+        elif TaskType.FILE_OPERATION in scenarios:
+            file_tools.append(name)
+        # ...
+
+    # 5. Build tools section dynamically
+    tools_section = f"""
+## Available Tools
+**Validation**: {', '.join(sorted(validation_tools))}
+**File Operations**: {', '.join(sorted(file_tools))}
+"""
+
+    # 6. Return complete system prompt with tools_section
+    return f"""You are [Agent Name]...
+{tools_section}
+..."""
+
+# Initialize system prompt
+AGENT_SYSTEM_PROMPT = _get_system_prompt_with_tools()
+```
+
+**Benefits**:
+- Tools automatically update when registry changes
+- TaskType annotations ensure correct tool categorization
+- No hardcoded tool lists to maintain
+- Consistent with tool registry system
+
+**Anti-pattern** (DO NOT do this):
+```python
+# ❌ BAD: Hardcoded tool list
+SYSTEM_PROMPT = """
+Available tools: run_python_file, run_pytest, read_file
+"""
+```
 
 ## Testing
 

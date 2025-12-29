@@ -27,10 +27,35 @@ from codur.graph.state_operations import (
 )
 from codur.tools.project_discovery import get_primary_entry_point
 from codur.utils.text_helpers import truncate_lines
-from .verification import _verify_fix
+from .verification_agent import verification_agent_node
 from .repair import _attempt_local_repair
 
 console = Console()
+
+
+def _convert_agent_outcome_to_legacy_format(agent_outcome) -> dict:
+    """Convert verification agent outcome to legacy format for backward compatibility.
+
+    This adapter ensures backward compatibility with existing review.py logic.
+
+    Args:
+        agent_outcome: Result from verification_agent_node (ExecuteNodeResult)
+
+    Returns:
+        Legacy format dict with "success", "message", etc.
+    """
+    details = agent_outcome["agent_outcome"].get("verification_details", {})
+
+    return {
+        "success": details.get("passed", False),
+        "message": details.get("reasoning", "No verification result"),
+        "expected_output": details.get("expected"),
+        "actual_output": details.get("actual"),
+        "expected_truncated": truncate_lines(details.get("expected", "")) if details.get("expected") else None,
+        "actual_truncated": truncate_lines(details.get("actual", "")) if details.get("actual") else None,
+        "suggestions": details.get("suggestions"),
+        "raw_response": details.get("raw_response", ""),
+    }
 
 
 def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> ReviewNodeResult:
@@ -109,7 +134,8 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
 
     # Try verification if it's a fix task (but not a tool result) and we haven't exceeded iterations
     if is_fix_task and not is_tool_result and iterations < max_iterations - 1:  # Leave room for one more attempt
-        verification_result = _verify_fix(state, config)
+        verification_outcome = verification_agent_node(state, config)
+        verification_result = _convert_agent_outcome_to_legacy_format(verification_outcome)
 
         if verification_result["success"]:
             if is_verbose(state):
@@ -200,6 +226,10 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                             error_parts.append(f"\n[Current {entry_point_name} is {len(impl_content)} chars - impl too large to display, check what's wrong with current code]")
                     except Exception as read_err:
                         pass
+
+            # Add suggestions from verification agent if available
+            if verification_result.get("suggestions"):
+                error_parts.append(f"\n=== Verification Agent Suggestions ===\n{verification_result['suggestions']}")
 
             error_parts.append("\n=== Action ===\nAnalyze the output mismatch and fix the implementation to match expected output.")
 

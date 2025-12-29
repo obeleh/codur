@@ -14,7 +14,7 @@ from typing import Iterator
 
 from codur.constants import DEFAULT_MAX_RESULTS, TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
 from codur.utils.ignore_utils import (
     get_config_from_state,
     get_exclude_dirs,
@@ -125,6 +125,7 @@ def _is_excluded_module(name: str, excludes: list[str] | None) -> bool:
     return False
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def python_dependency_graph(
     root: str | Path | None = None,
@@ -744,6 +745,7 @@ def _build_prospector_args(
     return args
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.COMPLEX_REFACTOR)
 def code_quality(
     root: str | Path | None = None,

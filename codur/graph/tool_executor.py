@@ -15,6 +15,7 @@ from codur.config import CodurConfig
 from codur.graph.state import AgentState, AgentStateData
 from codur.graph.state_operations import get_messages, is_verbose
 from codur.utils.path_utils import resolve_path
+from codur.tools.tool_annotations import ToolContext, ToolGuard, get_tool_contexts, get_tool_guards
 
 console = Console()
 
@@ -245,29 +246,7 @@ _UTILITY_TOOLS = {
     "discover_entry_points", "get_primary_entry_point",
 }
 
-_GUARDED_TOOLS = {"write_file", "replace_file_content"}
 _OUTPUT_FORMATTERS = {"validate_python_syntax": _format_syntax_validation_result}
-_CONFIG_TOOLS = {"agent_call", "retry_in_agent"}
-
-# Tools that need root + allow_outside_root context
-_FILESYSTEM_CONTEXT_TOOLS = {
-    "read_file", "write_file", "append_file", "delete_file",
-    "copy_file", "move_file", "copy_file_to_dir", "move_file_to_dir",
-    "file_tree", "replace_in_file", "inject_lines", "replace_lines",
-    "line_count", "inject_function", "replace_function", "replace_class",
-    "replace_method", "replace_file_content", "read_json", "write_json",
-    "set_json_value", "read_yaml", "write_yaml", "set_yaml_value",
-    "read_ini", "write_ini", "set_ini_value", "lint_python_files",
-    "lint_python_tree", "run_pytest", "system_disk_usage", "git_stage_files",
-    "convert_document", "python_ast_graph", "python_ast_outline",
-    "python_ast_dependencies", "python_ast_dependencies_multifile",
-    "python_dependency_graph", "code_quality", "rope_find_usages",
-    "rope_find_definition", "rope_rename_symbol", "rope_move_module",
-    "rope_extract_method"
-}
-
-# Tools that need search_files context
-_SEARCH_CONTEXT_TOOLS = {"search_files", "grep_files", "list_files", "list_dirs"}
 
 
 def _build_tool_map(
@@ -294,64 +273,57 @@ def _build_tool_map(
         if not callable(tool_func):
             continue
 
-        # Handle special cases
-        if tool_name in _GUARDED_TOOLS:
-            # Create guarded wrapper for write_file and replace_file_content
-            if tool_name == "write_file":
-                def _guarded_write_file(args: dict, tf=tool_func) -> str:
-                    _guard_test_file_overwrite(
-                        args.get("path"),
-                        root,
-                        allow_outside_root,
-                        last_human_msg,
-                    )
-                    return tf(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args)
-                tool_map[tool_name] = _guarded_write_file
-            elif tool_name == "replace_file_content":
-                def _guarded_replace_file_content(args: dict, tf=tool_func) -> str:
-                    _guard_test_file_overwrite(
-                        args.get("path"),
-                        root,
-                        allow_outside_root,
-                        last_human_msg,
-                    )
-                    return tf(root=root, allow_outside_root=allow_outside_root, state=tool_state, **args)
-                tool_map[tool_name] = _guarded_replace_file_content
+        contexts = set(get_tool_contexts(tool_func))
+        guards = set(get_tool_guards(tool_func))
 
-        elif tool_name in _OUTPUT_FORMATTERS:
+        # Handle special cases
+        if tool_name in _OUTPUT_FORMATTERS:
             # Format output for specific tools
             formatter = _OUTPUT_FORMATTERS[tool_name]
             tool_map[tool_name] = lambda args, tf=tool_func, fmt=formatter: fmt(tf(args.get("code", "")))
 
-        elif tool_name in _CONFIG_TOOLS:
-            # Tools that need config parameter
-            if tool_name == "agent_call":
-                tool_map[tool_name] = lambda args, tf=tool_func: tf(config=config, state=tool_state, **args)
-            elif tool_name == "retry_in_agent":
-                tool_map[tool_name] = lambda args, tf=tool_func: tf(
-                    task=args.get("task") or (last_human_msg or ""),
-                    agent=args.get("agent", ""),
-                    state=tool_state,
-                    config=config,
-                    reason=args.get("reason"),
-                )
-
-        elif tool_name in _FILESYSTEM_CONTEXT_TOOLS:
-            # Tools that need filesystem context
-            tool_map[tool_name] = lambda args, tf=tool_func: tf(
-                root=root,
-                allow_outside_root=allow_outside_root,
-                state=tool_state,
-                **args
-            )
-
-        elif tool_name in _SEARCH_CONTEXT_TOOLS:
-            # Tools that need search context
-            tool_map[tool_name] = lambda args, tf=tool_func: tf(root=root, state=tool_state, **args)
-
         else:
-            # Default: just inject state
-            tool_map[tool_name] = lambda args, tf=tool_func: tf(state=tool_state, **args)
+            def _invoke_with_context(
+                args: dict,
+                tf=tool_func,
+                tool_name=tool_name,
+                contexts=contexts,
+            ):
+                if ToolContext.CONFIG in contexts:
+                    if tool_name == "agent_call":
+                        return tf(config=config, state=tool_state, **args)
+                    if tool_name == "retry_in_agent":
+                        return tf(
+                            task=args.get("task") or (last_human_msg or ""),
+                            agent=args.get("agent", ""),
+                            state=tool_state,
+                            config=config,
+                            reason=args.get("reason"),
+                        )
+                    return tf(config=config, state=tool_state, **args)
+                if ToolContext.FILESYSTEM in contexts:
+                    return tf(
+                        root=root,
+                        allow_outside_root=allow_outside_root,
+                        state=tool_state,
+                        **args
+                    )
+                if ToolContext.SEARCH in contexts:
+                    return tf(root=root, state=tool_state, **args)
+                return tf(state=tool_state, **args)
+
+            if ToolGuard.TEST_OVERWRITE in guards:
+                def _guarded(args: dict, invoke=_invoke_with_context) -> str:
+                    _guard_test_file_overwrite(
+                        args.get("path"),
+                        root,
+                        allow_outside_root,
+                        last_human_msg,
+                    )
+                    return invoke(args)
+                tool_map[tool_name] = _guarded
+            else:
+                tool_map[tool_name] = _invoke_with_context
 
     return tool_map
 

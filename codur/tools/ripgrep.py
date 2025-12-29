@@ -15,7 +15,7 @@ from ripgrepy import Ripgrepy, RipGrepNotFound
 
 from codur.constants import DEFAULT_MAX_RESULTS, TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
 from codur.utils.ignore_utils import get_config_from_state, get_exclude_dirs, should_respect_gitignore
 from codur.utils.path_utils import resolve_root
 
@@ -219,6 +219,7 @@ def ripgrep_search(
     return _parse_ripgrep_json(output, root_path, max_results)
 
 
+@tool_contexts(ToolContext.SEARCH)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def grep_files(
     pattern: str,

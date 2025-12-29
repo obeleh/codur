@@ -13,7 +13,7 @@ import yaml
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.validation import validate_file_access
@@ -37,6 +37,7 @@ def _set_nested_value(data: Any, key_path: str | list[str], value: Any) -> Any:
     return data
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.FILE_OPERATION)
 def read_json(
     path: str,
@@ -56,6 +57,7 @@ def read_json(
         return json.load(handle)
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
 def write_json(
     path: str,
@@ -74,6 +76,7 @@ def write_json(
     return f"Wrote JSON to {target}"
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def set_json_value(
     path: str,
@@ -100,6 +103,7 @@ def set_json_value(
     return {"path": str(target), "updated": True}
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.FILE_OPERATION)
 def read_yaml(
     path: str,
@@ -119,6 +123,7 @@ def read_yaml(
         return yaml.safe_load(handle)
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
 def write_yaml(
     path: str,
@@ -135,6 +140,7 @@ def write_yaml(
     return f"Wrote YAML to {target}"
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def set_yaml_value(
     path: str,
@@ -160,6 +166,7 @@ def set_yaml_value(
     return {"path": str(target), "updated": True}
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.FILE_OPERATION)
 def read_ini(
     path: str,
@@ -183,6 +190,7 @@ def read_ini(
     return data
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
 def write_ini(
     path: str,
@@ -201,6 +209,7 @@ def write_ini(
     return f"Wrote INI to {target}"
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def set_ini_value(
     path: str,

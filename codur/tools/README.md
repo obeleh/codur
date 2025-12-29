@@ -57,6 +57,20 @@ tools = list_tools_for_tasks([TaskType.CODE_GENERATION])
 
 The coding agent uses TaskType categories to build a readable tool list for its system prompt. Unannotated tools may still be included as a fallback, but explicit TaskType annotations are preferred.
 
+## Tool execution context
+
+Tools can declare how the executor should inject context (filesystem, search, or config):
+
+```python
+from codur.tools.tool_annotations import ToolContext, tool_contexts
+
+@tool_contexts(ToolContext.FILESYSTEM)
+def read_file(...):
+    ...
+```
+
+Use `ToolContext.FILESYSTEM` for tools that need `root` and `allow_outside_root`, `ToolContext.SEARCH` for tools that only need `root`, and `ToolContext.CONFIG` for tools that require `config` injection.
+
 ## Usage examples
 
 Run pytest with optional filters:

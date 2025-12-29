@@ -14,7 +14,7 @@ from rope.refactor.rename import Rename
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
 from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.path_utils import resolve_root, resolve_path
 from codur.utils.validation import (
@@ -25,6 +25,7 @@ from codur.utils.validation import (
 )
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def rope_find_usages(
     path: str,
@@ -77,6 +78,7 @@ def rope_find_usages(
         project.close()
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def rope_find_definition(
     path: str,
@@ -121,6 +123,7 @@ def rope_find_definition(
         project.close()
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.COMPLEX_REFACTOR, TaskType.CODE_FIX)
 def rope_rename_symbol(
     path: str,
@@ -178,6 +181,7 @@ def rope_rename_symbol(
         project.close()
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.COMPLEX_REFACTOR)
 def rope_move_module(
     path: str,
@@ -216,6 +220,7 @@ def rope_move_module(
         project.close()
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.COMPLEX_REFACTOR, TaskType.CODE_FIX)
 def rope_extract_method(
     path: str,

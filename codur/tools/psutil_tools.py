@@ -10,7 +10,7 @@ import psutil
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
 from codur.utils.path_utils import resolve_path
 
 
@@ -82,6 +82,7 @@ def system_memory_stats(state: AgentState | None = None) -> dict[str, Any]:
     }
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_VALIDATION, TaskType.FILE_OPERATION)
 def system_disk_usage(
     path: str = ".",

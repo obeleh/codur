@@ -6,7 +6,7 @@ import ast
 from pathlib import Path
 from codur.constants import DEFAULT_MAX_RESULTS, TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
 from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.validation import validate_file_access
@@ -40,6 +40,7 @@ def _node_location(node: ast.AST) -> dict:
         info["end_col_offset"] = getattr(node, "end_col_offset")
     return info
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def python_ast_graph(
     path: str,
@@ -123,6 +124,7 @@ def _safe_unparse(node: ast.AST) -> str:
             return node.__class__.__name__
     return ast.dump(node, include_attributes=False)
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def python_ast_outline(
     path: str,
@@ -190,6 +192,7 @@ def python_ast_outline(
         "definitions": results,
     }
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def python_ast_dependencies(
     path: str,
@@ -271,6 +274,7 @@ def python_ast_dependencies(
     return sorted(list(dependencies))
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def python_ast_dependencies_multifile(
     paths: list[str] | str | Path,

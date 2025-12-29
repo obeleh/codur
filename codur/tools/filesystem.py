@@ -22,7 +22,7 @@ from codur.utils.ignore_utils import (
     should_respect_gitignore,
 )
 from codur.utils.validation import validate_file_access
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolContext, ToolGuard, tool_contexts, tool_guards, tool_scenarios
 
 def _filter_dirnames(
     *,
@@ -70,6 +70,7 @@ def _iter_files(root: Path, config: object | None = None) -> Iterable[Path]:
             yield Path(dirpath) / filename
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(
     TaskType.EXPLANATION,
     TaskType.CODE_FIX,
@@ -102,6 +103,8 @@ def read_file(
     return data
 
 
+@tool_guards(ToolGuard.TEST_OVERWRITE)
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.DOCUMENTATION)
 def write_file(
     path: str,
@@ -119,6 +122,7 @@ def write_file(
     return f"Wrote {len(content)} bytes to {target}"
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.DOCUMENTATION)
 def append_file(
     path: str,
@@ -134,6 +138,7 @@ def append_file(
     return f"Appended {len(content)} bytes to {target}"
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
 def delete_file(
     path: str,
@@ -146,6 +151,7 @@ def delete_file(
     return f"Deleted {target}"
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
 def copy_file(
     source: str,
@@ -163,6 +169,7 @@ def copy_file(
     return f"Copied {source_path} to {destination_path}"
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
 def move_file(
     source: str,
@@ -180,6 +187,7 @@ def move_file(
     return f"Moved {source_path} to {destination_path}"
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
 def copy_file_to_dir(
     source: str,
@@ -198,6 +206,7 @@ def copy_file_to_dir(
     return f"Copied {source_path} to {destination_path}"
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
 def move_file_to_dir(
     source: str,
@@ -216,6 +225,7 @@ def move_file_to_dir(
     return f"Moved {source_path} to {destination_path}"
 
 
+@tool_contexts(ToolContext.SEARCH)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def list_files(
     root: str | Path | None = None,
@@ -232,6 +242,7 @@ def list_files(
     return results
 
 
+@tool_contexts(ToolContext.SEARCH)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION)
 def list_dirs(
     root: str | Path | None = None,
@@ -261,6 +272,7 @@ def list_dirs(
     return results
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def file_tree(
     path: str | None = None,
@@ -315,6 +327,7 @@ def file_tree(
     return results
 
 
+@tool_contexts(ToolContext.SEARCH)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION)
 def search_files(
     query: str,
@@ -337,6 +350,7 @@ def search_files(
     return results
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
 def replace_in_file(
     path: str,
@@ -364,6 +378,7 @@ def replace_in_file(
     return {"path": str(target), "replacements": num_replaced}
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.FILE_OPERATION)
 def line_count(
     path: str,
@@ -387,6 +402,7 @@ def line_count(
     return {"path": str(target), "lines": count}
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
 def inject_lines(
     path: str,
@@ -419,6 +435,7 @@ def inject_lines(
     return {"path": str(target), "line": line, "inserted_lines": len(insert_lines)}
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
 def replace_lines(
     path: str,

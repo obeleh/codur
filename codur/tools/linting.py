@@ -19,7 +19,7 @@ from codur.utils.ignore_utils import (
     should_respect_gitignore,
 )
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
 from codur.utils.path_utils import resolve_root, resolve_path
 
 
@@ -72,6 +72,7 @@ def _lint_file(path: Path) -> list[dict]:
     return []
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.COMPLEX_REFACTOR)
 def lint_python_files(
     paths: list[str],
@@ -92,6 +93,7 @@ def lint_python_files(
     return {"checked": checked, "errors": errors[:max_errors]}
 
 
+@tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.COMPLEX_REFACTOR)
 def lint_python_tree(
     root: str | Path | None = None,

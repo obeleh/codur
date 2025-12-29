@@ -6,7 +6,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from codur.config import CodurConfig
 from codur.constants import TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
 
 def _handoff_to_executor(
     agent: str,
@@ -29,6 +29,7 @@ def _handoff_to_executor(
     TaskType.COMPLEX_REFACTOR,
     TaskType.EXPLANATION,
 )
+@tool_contexts(ToolContext.CONFIG)
 def agent_call(
     agent: str,
     challenge: str,
@@ -55,6 +56,7 @@ def agent_call(
 
 
 @tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_contexts(ToolContext.CONFIG)
 def retry_in_agent(
     agent: str,
     task: str,
