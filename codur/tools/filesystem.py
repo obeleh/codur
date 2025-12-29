@@ -244,10 +244,15 @@ def move_file_to_dir(
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def list_files(
     path: str | Path | None = None,
+    root: str | Path | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
     state: AgentState | None = None,
 ) -> list[str]:
-    root_path = resolve_root(path)
+    if path and root:
+        raise ValueError("Specify either 'path' or 'root', not both.")
+    if path:
+        root = path
+    root_path = resolve_root(root)
     config = get_config_from_state(state)
     results: list[str] = []
     for file_path in _iter_files(root_path, config):
