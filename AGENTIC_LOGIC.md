@@ -41,6 +41,8 @@ Tools are centralized in `codur/tools/__init__.py` and exposed via `codur/tools/
 
 - `list_tool_directory` and `get_tool_help` provide introspection.
 - `codur/tools/schema_generator.py` turns tool signatures into JSON schemas.
+- The coding agent builds a tool list for its system prompt via `list_tools_for_tasks`, using `TaskType` categories and fallback heuristics for unannotated tools.
+- Full tool schemas from `get_function_schemas` are still provided to the LLM; the prompt list is for readability only.
 - The coding agent prefers native tool calling with schemas; JSON fallback is used only when the provider does not support native tools.
 
 ## Tool execution
@@ -64,6 +66,8 @@ Language-specific tool injectors live in `codur/graph/planning/injectors/`.
 ## Agents
 
 - `codur-coding` is a dedicated coding node with a tool-driven loop.
+- It uses `create_and_invoke_with_tool_support` to pick native tool calling vs JSON fallback based on provider capabilities.
+- It can retry with a configured fallback profile and loops tool execution up to 4 rounds (initial + 3 retries).
 - `codur-explaining` is a dedicated explanation node.
 - Other agents are configured via `codur.yaml` and loaded through `AgentRegistry`.
 - Tools can call agents directly via `agent_call` and `retry_in_agent`.
@@ -96,6 +100,11 @@ Groq is the default planner provider, but the system is configuration driven:
 - Agents can be LLM profiles or tool-based (Codex, Claude Code, MCP).
 - Fallback profiles are supported for planning.
 
+## LLM invocation and limits
+
+- Each `invoke_llm` call increments `llm_calls` in `AgentState` and enforces `max_llm_calls` from state or config.
+- `model_agent_instructions` injects system messages when `invoked_by` matches configured patterns (including `"all"`).
+
 ## Observability
 
 Observability and tracing hooks are deprecated. Current visibility is provided by Rich logging and the TUI debug panel.
@@ -103,3 +112,7 @@ Observability and tracing hooks are deprecated. Current visibility is provided b
 ## Desired tool metadata
 
 Tools currently lack metadata that indicates when they are appropriate. Adding registry-level metadata or tags is a desired improvement.
+
+## See also
+
+- `codur/tools/README.md` for tool registry details and authoring guidance

@@ -2,6 +2,8 @@
 
 Tools are plain Python functions. They are discovered via a centralized registry, turned into schemas for tool calling, and executed through a single tool executor.
 
+This document also covers TaskType scoping and guidance for authoring new tools.
+
 ## How tools are discovered
 
 - Export tools in `codur/tools/__init__.py` and add them to `__all__`.
@@ -10,7 +12,8 @@ Tools are plain Python functions. They are discovered via a centralized registry
 
 ## How tools execute
 
-- `codur/graph/nodes/tool_executor.py` owns the execution map.
+- `codur/graph/tool_executor.py` owns the execution map.
+- Tool execution is centralized so path safety and state propagation are consistent.
 - Tools receive `root`, `allow_outside_root`, and `state` so they can respect workspace boundaries and config.
 - Path safety uses `resolve_path` and `validate_file_access`, plus gitignore and secret guards.
 
@@ -19,7 +22,7 @@ Tools are plain Python functions. They are discovered via a centralized registry
 1. Create a module in `codur/tools/` with the tool function.
 2. Use centralized helpers like `resolve_path`, `resolve_root`, and `validate_file_access`.
 3. Export the tool in `codur/tools/__init__.py` and add it to `__all__`.
-4. Register the tool in the executor map inside `codur/graph/nodes/tool_executor.py`.
+4. Register the tool in the executor map inside `codur/graph/tool_executor.py`.
 5. Keep the first docstring line short; it is used for summaries.
 6. Return JSON-serializable output and keep responses small.
 7. Add tests when the tool affects core behavior.
@@ -28,7 +31,7 @@ Tools are plain Python functions. They are discovered via a centralized registry
 
 The coding agent uses tool schemas when the provider supports native tool calling. If native tool calling is not supported, it falls back to JSON tool calls that are parsed from the response text.
 
-## Tool scenarios (TaskType)
+## Task-specific tools (TaskType)
 
 Tools can be annotated with `TaskType` to signal when they are appropriate. The enum lives in `codur/constants.py`.
 
@@ -51,6 +54,41 @@ from codur.tools.registry import list_tools_for_tasks
 
 tools = list_tools_for_tasks([TaskType.CODE_GENERATION])
 ```
+
+The coding agent uses TaskType categories to build a readable tool list for its system prompt. Unannotated tools may still be included as a fallback, but explicit TaskType annotations are preferred.
+
+## Authoring guidance for LLMs
+
+When adding a new tool, think in terms of safety, generality, and clarity:
+
+1. **Scope and generality**
+   - The tool must work across arbitrary Python projects.
+   - Do not hardcode challenge-specific filenames or behavior.
+   - Prefer centralized helpers in `codur/utils` over ad-hoc local logic.
+
+2. **Registry + executor wiring**
+   - Add the tool to `codur/tools/__init__.py` and `__all__`.
+   - Ensure `codur/graph/tool_executor.py` includes it in the execution map.
+   - Add TaskType annotations so it is discoverable for the correct tasks.
+
+3. **Schema and parameters**
+   - Keep parameters minimal, explicit, and JSON-serializable.
+   - Any file-modification tool should accept a `path` parameter.
+   - Be precise in docstrings: they become part of the tool schema.
+
+4. **Validation and guardrails**
+   - Respect workspace and secret path guards via existing utilities.
+   - Prefer read or preview operations when possible; avoid destructive actions.
+   - For Python edits, consider whether `validate_python_syntax` should be used or injected.
+
+5. **State and context**
+   - Tools receive `AgentState` via the executor for consistent context.
+   - Avoid local imports; use shared modules from `codur/utils`.
+   - Emit helpful error messages to guide retries and debugging.
+
+6. **Testing and documentation**
+   - Add tests for tools that change core behavior.
+   - Update related docs (`AGENTIC_LOGIC.md`, `CODING.md`) if behavior changes.
 
 ## Example
 
@@ -81,3 +119,8 @@ def example_tool(
 
 - Tools can call agents through `agent_call` or `retry_in_agent`.
 - Prefer centralized utilities over local ad-hoc helpers.
+
+## See also
+
+- `AGENTIC_LOGIC.md` for the full planning and execution flow
+- `CODING.md` for how the coding agent uses tools

@@ -104,7 +104,7 @@ All nodes receive and return `AgentState` which includes:
 - Error tracking
 
 ### Tool Execution
-- AgentExecutor uses centralized `execute_tool_calls` from `tool_executor.py`
+- AgentExecutor uses centralized `execute_tool_calls` from `codur/graph/tool_executor.py`
 - Tool detection via `_TOOL_DETECTOR` for JSON and plain-text tool calls
 - Tool results are fed back to agents for continuation
 
@@ -133,4 +133,5 @@ All modules can be tested independently:
 
 - `AGENTIC_LOGIC.md` for the full planning and execution flow
 - `CODING.md` for the coding agent tool loop specifics
+- `codur/tools/README.md` for tool registry and authoring
 - `codur/graph/planning/` for the planning phase logic

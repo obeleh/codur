@@ -8,27 +8,32 @@ This document describes the dedicated coding agent (`codur-coding`) and how it u
 
 ## Entry points
 
-- Coding node: `codur/graph/coding.py`
+- Coding node: `codur/graph/coding_agent.py`
 - Tool executor: `codur/graph/tool_executor.py`
 - Tool schemas: `codur/tools/schema_generator.py`
+
+## Tool registry overview
+
+- Tools are registered via `codur/tools/__init__.py` and discovered by `codur/tools/registry.py`.
+- Schemas are derived from tool signatures and docstrings and passed to the coding agent.
+- For full registry and authoring details, see `codur/tools/README.md`.
 
 ## Execution flow
 
 1. Build a structured prompt from `AgentState` messages.
 2. Load tool schemas from the centralized tool registry.
-3. Invoke the LLM with native tool calling when supported.
+3. Invoke the LLM via `create_and_invoke_with_tool_support`, selecting native tool calling or JSON fallback by provider capability.
 4. Parse tool calls (native API or JSON fallback).
 5. Execute tool calls via the centralized tool executor.
 6. Feed tool results back into the LLM and repeat until no more tool calls.
 
-The tool loop is capped (default 5 iterations) to avoid runaway calls.
+The tool loop is capped at 4 tool-execution rounds (initial + 3 retries) to avoid runaway calls.
 
 ## Tool calling behavior
 
 - Preferred path: native tool calling with schemas.
 - Fallback path: JSON tool calls in the response text when the provider does not support native tools.
 - Tool calls are executed by `execute_tool_calls`, which handles path safety and state propagation.
-- The coding node avoids re-reading files by explicitly tracking and warning on read_file repeats.
 
 ## Automatic validation
 
