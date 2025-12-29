@@ -2,12 +2,14 @@
 
 
 def calculate_subtotal(items: list[tuple[str, float]]) -> float:
-    """Return the subtotal for a list of (name, price) items."""
+    """Return the subtotal for a list of (name, price) items.
+
+    The function sums the price of each item and returns the total.
+    """
     total = 0.0
     for _, price in items:
         total += price
     return total
-
 
 def apply_discount(subtotal: float, code: str) -> float:
     """Apply a percentage discount based on a coupon code.

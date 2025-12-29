@@ -39,13 +39,16 @@ def _get_system_prompt_with_tools():
     from codur.constants import TaskType
 
     # Get verification-relevant tools
+    # Match the include_unannotated setting with what verification_agent_node uses
     verification_task_types = [
         TaskType.CODE_VALIDATION,
         TaskType.RESULT_VERIFICATION,  # Includes build_verification_response
         TaskType.FILE_OPERATION,
         TaskType.EXPLANATION,
     ]
-    tools = list_tools_for_tasks(verification_task_types, include_unannotated=False)
+    # CRITICAL: Must match include_unannotated=True in verification_agent_node
+    # Otherwise system prompt lists different tools than actual tool_schemas
+    tools = list_tools_for_tasks(verification_task_types, include_unannotated=True)
 
     # Categorize tools by TaskType for readability
     discovery_tools = []
@@ -143,6 +146,18 @@ Do:
 2. **Choose Strategy**: Which verification method(s) are most appropriate?
 3. **Execute Verification**: Run the necessary tools to gather evidence
 4. **Make Decision**: Based on evidence, explicitly state PASS or FAIL with reasoning
+
+Dont:
+1. You have not been given access to modify files. Focus solely on verification.
+2. Do NOT invent or call tools not listed above.
+
+## Critical Rule: No Duplicate Tool Calls
+
+⚠️ IMPORTANT: If you see a tool in the "Previous Tool Execution Results" section above,
+DO NOT CALL IT AGAIN. You already have its results. Use the existing results to make
+your final decision instead of repeating the tool call.
+
+Calling the same tool twice wastes time and tokens. Analyze what you already know.
 
 ## Final Step: Report Your Decision
 
@@ -277,7 +292,7 @@ def verification_agent_node(
             messages,
             tool_schemas,
             profile_name=config.llm.default_profile,
-            temperature=0.0,  # Low temperature for consistent verification
+            temperature=0.1,  # Low temperature for consistent verification
             invoked_by="verification.primary",
             state=state,
         )
