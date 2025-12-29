@@ -157,9 +157,14 @@ def function_to_json_schema(func: callable) -> dict:
         # Extract description from docstring
         param_desc = _extract_param_description(func, param_name)
 
-        # Build property schema
+        # Build property schema (allow null for Optional)
+        json_type: str | list[str]
+        if is_optional:
+            json_type = [param_type, "null"]
+        else:
+            json_type = param_type
         properties[param_name] = {
-            "type": param_type,
+            "type": json_type,
             "description": param_desc or f"Parameter {param_name}"
         }
 
