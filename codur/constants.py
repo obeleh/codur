@@ -16,9 +16,10 @@ class TaskType(Enum):
     RESULT_VERIFICATION = "result_verification"  # For verification agent response tools (build_verification_response)
     DOCUMENTATION = "documentation"
     EXPLANATION = "explanation"
-    COMPLEX_REFACTOR = "complex_refactor"
+    REFACTOR = "complex"
     WEB_SEARCH = "web_search"
     UNKNOWN = "unknown"
+    CODE_ANALYSIS = "code_analysis"
 
 # General constants
 DEBUG_TRUNCATE_SHORT = 500

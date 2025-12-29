@@ -105,7 +105,7 @@ def _resolve_signature(
         ) from exc
 
 
-@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def git_status(
     root: str | Path | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
@@ -170,7 +170,7 @@ def git_status(
     }
 
 
-@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def git_diff(
     path: str | None = None,
     mode: str = "unstaged",
@@ -214,7 +214,7 @@ def git_diff(
     return truncate_chars(diff_text, max_chars=max_bytes)
 
 
-@tool_scenarios(TaskType.EXPLANATION, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.EXPLANATION, TaskType.REFACTOR)
 def git_log(
     max_count: int = 20,
     root: str | Path | None = None,
@@ -250,7 +250,7 @@ def git_log(
 
 @tool_side_effects(ToolSideEffect.STATE_CHANGE)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def git_stage_files(
     paths: list[str],
     root: str | Path | None = None,
@@ -302,7 +302,7 @@ def git_stage_files(
 
 
 @tool_side_effects(ToolSideEffect.STATE_CHANGE)
-@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def git_stage_all(
     root: str | Path | None = None,
     config: CodurConfig | None = None,
@@ -322,7 +322,7 @@ def git_stage_all(
 
 
 @tool_side_effects(ToolSideEffect.STATE_CHANGE)
-@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def git_commit(
     message: str,
     root: str | Path | None = None,

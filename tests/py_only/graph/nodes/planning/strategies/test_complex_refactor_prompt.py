@@ -9,7 +9,7 @@ from codur.graph.planning.types import ClassificationResult, TaskType
 def test_complex_refactor_prompt_suggests_rope_tools():
     strategy = ComplexRefactorStrategy()
     classification = ClassificationResult(
-        task_type=TaskType.COMPLEX_REFACTOR,
+        task_type=TaskType.REFACTOR,
         confidence=0.9,
         detected_files=["app.py", "utils.py"],
         detected_action=None,

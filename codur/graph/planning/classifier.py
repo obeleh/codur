@@ -46,7 +46,7 @@ _STRATEGIES = {
     TaskType.CODE_FIX: CodeFixStrategy(),
     TaskType.CODE_GENERATION: CodeGenerationStrategy(),
     TaskType.EXPLANATION: ExplanationStrategy(),
-    TaskType.COMPLEX_REFACTOR: ComplexRefactorStrategy(),
+    TaskType.REFACTOR: ComplexRefactorStrategy(),
     TaskType.WEB_SEARCH: WebSearchStrategy(),
     TaskType.UNKNOWN: UnknownStrategy(),
 }
@@ -160,7 +160,7 @@ def quick_classify(messages: list[BaseMessage], config: CodurConfig) -> Classifi
     priority = {
         TaskType.CODE_FIX: 6,
         TaskType.CODE_GENERATION: 5,
-        TaskType.COMPLEX_REFACTOR: 4,
+        TaskType.REFACTOR: 4,
         TaskType.EXPLANATION: 3,
         TaskType.FILE_OPERATION: 2,
         TaskType.WEB_SEARCH: 1,

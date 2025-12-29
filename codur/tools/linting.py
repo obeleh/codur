@@ -73,7 +73,7 @@ def _lint_file(path: Path) -> list[dict]:
 
 
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.REFACTOR)
 def lint_python_files(
     paths: list[str],
     root: str | Path | None = None,
@@ -94,7 +94,7 @@ def lint_python_files(
 
 
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.REFACTOR)
 def lint_python_tree(
     root: str | Path | None = None,
     max_errors: int = 200,

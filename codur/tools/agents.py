@@ -32,7 +32,7 @@ def _handoff_to_executor(
 @tool_scenarios(
     TaskType.CODE_FIX,
     TaskType.CODE_GENERATION,
-    TaskType.COMPLEX_REFACTOR,
+    TaskType.REFACTOR,
     TaskType.EXPLANATION,
 )
 @tool_side_effects(ToolSideEffect.CODE_EXECUTION)
@@ -62,7 +62,7 @@ def agent_call(
     return _handoff_to_executor(state=state, agent=agent, config=config)
 
 
-@tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.REFACTOR)
 @tool_side_effects(ToolSideEffect.CODE_EXECUTION)
 @tool_contexts(ToolContext.CONFIG)
 def retry_in_agent(

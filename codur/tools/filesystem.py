@@ -83,7 +83,7 @@ def _iter_files(root: Path, config: object | None = None) -> Iterable[Path]:
     TaskType.EXPLANATION,
     TaskType.CODE_FIX,
     TaskType.CODE_GENERATION,
-    TaskType.COMPLEX_REFACTOR,
+    TaskType.REFACTOR,
     TaskType.FILE_OPERATION,
     TaskType.DOCUMENTATION,
 )
@@ -372,7 +372,7 @@ def search_files(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR, TaskType.DOCUMENTATION)
 def replace_in_file(
     path: str,
     pattern: str,
@@ -425,7 +425,7 @@ def line_count(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR, TaskType.DOCUMENTATION)
 def inject_lines(
     path: str,
     line: int,
@@ -459,7 +459,7 @@ def inject_lines(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR, TaskType.DOCUMENTATION)
 def replace_lines(
     path: str,
     start_line: int,

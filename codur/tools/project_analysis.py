@@ -126,7 +126,7 @@ def _is_excluded_module(name: str, excludes: list[str] | None) -> bool:
 
 
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def python_dependency_graph(
     root: str | Path | None = None,
     paths: list[str] | None = None,
@@ -746,7 +746,7 @@ def _build_prospector_args(
 
 
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_VALIDATION, TaskType.REFACTOR)
 def code_quality(
     root: str | Path | None = None,
     paths: list[str] | None = None,

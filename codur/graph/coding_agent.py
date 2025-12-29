@@ -43,7 +43,7 @@ def _get_system_prompt_with_tools():
         TaskType.CODE_GENERATION,
         TaskType.CODE_VALIDATION,
         TaskType.FILE_OPERATION,
-        TaskType.COMPLEX_REFACTOR,
+        TaskType.REFACTOR,
     ]
     tools = list_tools_for_tasks(coding_task_types, include_unannotated=True)
 
@@ -51,6 +51,7 @@ def _get_system_prompt_with_tools():
     file_operation_tools = []
     code_analysis_tools = []
     validation_tools = []
+    other_tools = []
 
     for tool in tools:
         name = tool['name']
@@ -60,24 +61,20 @@ def _get_system_prompt_with_tools():
             file_operation_tools.append(name)
         elif TaskType.CODE_VALIDATION in scenarios:
             validation_tools.append(name)
-        elif TaskType.CODE_FIX in scenarios or TaskType.CODE_GENERATION in scenarios:
+        elif TaskType.CODE_FIX in scenarios or TaskType.CODE_GENERATION in scenarios or TaskType.REFACTOR in scenarios:
             code_analysis_tools.append(name)
         else:
-            # Fallback categorization for unannotated tools
-            # TODO: add annotations to these tools
-            if any(x in name for x in ['python_ast', 'function', 'class', 'method', 'rope']):
-                code_analysis_tools.append(name)
-            elif any(x in name for x in ['read', 'write', 'file', 'replace', 'inject']):
-                file_operation_tools.append(name)
+            other_tools.append(name)
 
     tools_section = f"""
 ## Available Tools
 
 You have access to the following tools. Call them directly - they will be executed automatically.
 
-**File Operations**: {', '.join(sorted(file_operation_tools)[:15])}{"..." if len(file_operation_tools) > 15 else ""}
+**File Operations**: {', '.join(sorted(file_operation_tools))}
 **Code Analysis & Modification**: {', '.join(sorted(code_analysis_tools))}
-**Validation & Testing**: {', '.join(sorted(validation_tools)[:15])}{"..." if len(validation_tools) > 15 else ""}
+**Validation & Testing**: {', '.join(sorted(validation_tools))}
+**Other Tools**: {', '.join(sorted(other_tools)) if other_tools else 'None'}
 
 **CRITICAL**: Only use tools from this list. Do NOT invent or create new tools.
 All code modification tools (replace_function, write_file, etc.) require a 'path' parameter.

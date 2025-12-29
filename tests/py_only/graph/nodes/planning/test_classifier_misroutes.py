@@ -70,13 +70,13 @@ from codur.graph.planning.types import TaskType
         ),
         pytest.param(
             "Move the logic from app.py into utils.py",
-            TaskType.COMPLEX_REFACTOR,
+            TaskType.REFACTOR,
             None,
             id="move-logic-refactor",
         ),
         pytest.param(
             "Copy the validation rules from a.py to b.py",
-            TaskType.COMPLEX_REFACTOR,
+            TaskType.REFACTOR,
             None,
             id="copy-logic-refactor",
         ),

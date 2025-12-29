@@ -65,7 +65,7 @@ def read_json(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR)
 def write_json(
     path: str,
     data: Any,
@@ -85,7 +85,7 @@ def write_json(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def set_json_value(
     path: str,
     key_path: str | list[str],
@@ -133,7 +133,7 @@ def read_yaml(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR)
 def write_yaml(
     path: str,
     data: Any,
@@ -151,7 +151,7 @@ def write_yaml(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def set_yaml_value(
     path: str,
     key_path: str | list[str],
@@ -202,7 +202,7 @@ def read_ini(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR)
 def write_ini(
     path: str,
     data: dict[str, dict[str, Any]],
@@ -222,7 +222,7 @@ def write_ini(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def set_ini_value(
     path: str,
     section: str,

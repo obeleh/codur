@@ -41,7 +41,7 @@ def _node_location(node: ast.AST) -> dict:
     return info
 
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR, TaskType.CODE_ANALYSIS)
 def python_ast_graph(
     path: str,
     root: str | Path | None = None,
@@ -125,7 +125,7 @@ def _safe_unparse(node: ast.AST) -> str:
     return ast.dump(node, include_attributes=False)
 
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR, TaskType.CODE_ANALYSIS)
 def python_ast_outline(
     path: str,
     root: str | Path | None = None,
@@ -193,7 +193,7 @@ def python_ast_outline(
     }
 
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR, TaskType.CODE_ANALYSIS)
 def python_ast_dependencies(
     path: str,
     root: str | Path | None = None,
@@ -275,7 +275,7 @@ def python_ast_dependencies(
 
 
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR, TaskType.CODE_ANALYSIS)
 def python_ast_dependencies_multifile(
     paths: list[str] | str | Path,
     root: str | Path | None = None,

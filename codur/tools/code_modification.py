@@ -38,7 +38,7 @@ def _validate_with_dedent(code: str) -> tuple[bool, Optional[str]]:
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR)
 def replace_function(
     path: str,
     function_name: str,
@@ -98,7 +98,7 @@ def replace_function(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.REFACTOR)
 def replace_class(
     path: str,
     class_name: str,
@@ -154,7 +154,7 @@ def replace_class(
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.REFACTOR)
 def replace_method(
     path: str,
     class_name: str,
@@ -213,7 +213,7 @@ def replace_method(
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_guards(ToolGuard.TEST_OVERWRITE)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR)
 def replace_file_content(
     path: str,
     new_code: str,

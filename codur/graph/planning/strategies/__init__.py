@@ -23,7 +23,7 @@ _STRATEGIES: dict[TaskType, TaskStrategy] = {
     TaskType.CODE_FIX: CodeFixStrategy(),
     TaskType.CODE_GENERATION: CodeGenerationStrategy(),
     TaskType.EXPLANATION: ExplanationStrategy(),
-    TaskType.COMPLEX_REFACTOR: ComplexRefactorStrategy(),
+    TaskType.REFACTOR: ComplexRefactorStrategy(),
     TaskType.WEB_SEARCH: WebSearchStrategy(),
     TaskType.UNKNOWN: UnknownStrategy(),
 }

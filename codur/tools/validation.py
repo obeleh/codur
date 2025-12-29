@@ -27,7 +27,7 @@ from codur.utils.validation import require_directory_exists
     TaskType.CODE_FIX,
     TaskType.CODE_GENERATION,
     TaskType.CODE_VALIDATION,
-    TaskType.COMPLEX_REFACTOR,
+    TaskType.REFACTOR,
 )
 def validate_python_syntax(code: str) -> tuple[bool, Optional[str]]:
     """
@@ -153,7 +153,7 @@ def run_python_file(
 
 @tool_side_effects(ToolSideEffect.CODE_EXECUTION)
 @tool_contexts(ToolContext.FILESYSTEM)
-@tool_scenarios(TaskType.CODE_VALIDATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.CODE_VALIDATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def run_pytest(
     path: str | None = None,
     paths: list[str] | None = None,

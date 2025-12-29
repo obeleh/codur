@@ -181,7 +181,7 @@ def _python_grep_files(
     return results
 
 
-@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def ripgrep_search(
     pattern: str,
     root: str | Path | None = None,
@@ -220,7 +220,7 @@ def ripgrep_search(
 
 
 @tool_contexts(ToolContext.SEARCH)
-@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def grep_files(
     pattern: str,
     root: str | Path | None = None,
