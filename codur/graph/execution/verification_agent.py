@@ -230,7 +230,8 @@ def verification_agent_node(
     verbose = is_verbose(state)
 
     if verbose:
-        console.print("[bold cyan]Running verification agent...[/bold cyan]")
+        depth_info = f" (recursion depth: {recursion_depth})" if recursion_depth > 0 else ""
+        console.print(f"[bold cyan]Running verification agent{depth_info}...[/bold cyan]")
 
     # Build verification prompt with original request context
     prompt = _build_verification_prompt(get_messages(state))
@@ -342,12 +343,16 @@ def _build_verification_prompt(messages) -> str:
     - Original user request (first HumanMessage)
     - Implementation history (AIMessages, SystemMessages with code changes)
     - Any prior verification attempts
+    - Tool execution results (ToolMessages from recursive calls)
     """
+    from langchain_core.messages import ToolMessage
+
     normalized = normalize_messages(messages)
 
     original_request = None
     implementation_summary = []
     prior_verifications = []
+    tool_results = []
 
     for msg in normalized:
         if isinstance(msg, HumanMessage) and original_request is None:
@@ -360,6 +365,10 @@ def _build_verification_prompt(messages) -> str:
         elif isinstance(msg, SystemMessage):
             if "Verification failed" in msg.content or "VERIFICATION:" in msg.content:
                 prior_verifications.append(msg.content)
+        elif isinstance(msg, ToolMessage):
+            # Include tool execution results so agent knows what was already executed
+            tool_name = msg.name or "unknown_tool"
+            tool_results.append(f"**{tool_name}**: {msg.content[:200]}")
 
     if original_request is None:
         original_request = normalized[-1].content if normalized else "No original request found in message history"
@@ -375,6 +384,16 @@ def _build_verification_prompt(messages) -> str:
         "Use the appropriate verification strategy based on project context.",
         "",
     ]
+
+    if tool_results:
+        prompt_parts.extend([
+            "## Previous Tool Execution Results",
+            "These tools were already executed in previous attempts. You already have this information:",
+            *tool_results,
+            "",
+            "IMPORTANT: Do NOT call the same tools again. Use these results to analyze and make your final decision.",
+            "",
+        ])
 
     if prior_verifications:
         prompt_parts.extend([

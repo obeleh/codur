@@ -7,7 +7,7 @@ from unittest import mock
 import pytest
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, ToolMessage
 
-from codur.graph.execution.verification_agent import _parse_verification_result
+from codur.graph.execution.verification_agent import _parse_verification_result, _build_verification_prompt
 
 
 class TestParseVerificationResult:
@@ -226,6 +226,87 @@ Let me know if you need more details.
         assert result["passed"] is False
         assert result["reasoning"] == "Missing edge case handling"
         assert result["suggestions"] == "Add null check"
+
+
+class TestBuildVerificationPrompt:
+    """Tests for _build_verification_prompt function.
+
+    Ensures tool results are included in the prompt so agent doesn't
+    repeat the same tool calls in recursive invocations.
+    """
+
+    def test_prompt_includes_tool_results(self):
+        """Test: Prompt includes ToolMessage results from previous executions.
+
+        This is critical to prevent agent from calling the same tool twice.
+        The agent needs to see tool results in the PROMPT TEXT, not just
+        in the message list.
+        """
+        messages = [
+            HumanMessage(content="Verify this implementation"),
+            AIMessage(
+                content="Running tool",
+                tool_calls=[{"id": "1", "name": "run_python_file", "args": {"path": "main.py"}}]
+            ),
+            ToolMessage(
+                content="Output: success\nExit code: 0",
+                tool_call_id="1",
+                name="run_python_file"
+            ),
+        ]
+
+        prompt = _build_verification_prompt(messages)
+
+        # Tool results should be in the prompt text
+        assert "run_python_file" in prompt, "Tool name should be in prompt"
+        assert "Output: success" in prompt or "success" in prompt, "Tool results should be in prompt"
+        assert "Do NOT call the same tools again" in prompt, "Should warn against repeating tools"
+
+    def test_prompt_without_tool_results(self):
+        """Test: Prompt works fine without tool results (first call)."""
+        messages = [
+            HumanMessage(content="Verify this implementation"),
+        ]
+
+        prompt = _build_verification_prompt(messages)
+
+        # Should have instructions but no tool results section
+        assert "Verify that the current implementation" in prompt
+        assert "## Your Task" in prompt
+        # Should NOT have the previous results section
+        assert "## Previous Tool Execution Results" not in prompt
+
+    def test_multiple_tool_results_in_prompt(self):
+        """Test: Prompt includes multiple tool results."""
+        messages = [
+            HumanMessage(content="Verify this"),
+            # First tool
+            AIMessage(content="Running discovery", tool_calls=[
+                {"id": "1", "name": "discover_entry_points", "args": {}}
+            ]),
+            ToolMessage(
+                content="Found: main.py, test_main.py",
+                tool_call_id="1",
+                name="discover_entry_points"
+            ),
+            # Second tool
+            AIMessage(content="Running tests", tool_calls=[
+                {"id": "2", "name": "run_pytest", "args": {}}
+            ]),
+            ToolMessage(
+                content="Tests passed: 5/5",
+                tool_call_id="2",
+                name="run_pytest"
+            ),
+        ]
+
+        prompt = _build_verification_prompt(messages)
+
+        # Both tool results should be in prompt
+        assert "discover_entry_points" in prompt
+        assert "run_pytest" in prompt
+        assert "Found:" in prompt or "main.py" in prompt
+        assert "Tests passed" in prompt
 
 
 class TestVerificationAgentFailureScenarios:
