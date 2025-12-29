@@ -15,7 +15,10 @@ from codur.graph.state_operations import (
     is_verbose, increment_iterations, add_messages,
 )
 from codur.tools.schema_generator import get_function_schemas
-from codur.utils.llm_helpers import create_and_invoke_with_tool_support
+from codur.utils.llm_helpers import (
+    ShortenableSystemMessage,
+    create_and_invoke_with_tool_support,
+)
 
 """
 NOTE:
@@ -107,6 +110,9 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
 
 # Initialize system prompt with tools
 CODING_AGENT_SYSTEM_PROMPT = _get_system_prompt_with_tools()
+CODING_AGENT_SYSTEM_PROMPT_SUMMARY = (
+    "Coding agent system prompt: solve coding requests with correct, efficient, and robust implementations."
+)
 
 
 def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> ExecuteNodeResult:
@@ -135,7 +141,10 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
     # Simplified system prompt (no tool injection)
     system_prompt = CODING_AGENT_SYSTEM_PROMPT
     messages = [
-        SystemMessage(content=system_prompt),
+        ShortenableSystemMessage(
+            content=system_prompt,
+            short_content=CODING_AGENT_SYSTEM_PROMPT_SUMMARY,
+        ),
         HumanMessage(content=prompt),
     ]
 

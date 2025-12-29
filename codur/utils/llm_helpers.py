@@ -22,6 +22,31 @@ if TYPE_CHECKING:
 console = Console()
 
 
+class ShortenableSystemMessage(SystemMessage):
+    """System message with a shorter summary for LLM calls."""
+
+    short_content: str | None = None
+
+
+def message_shortening_pipeline(messages: list[BaseMessage]) -> list[BaseMessage]:
+    """Return messages optimized for LLM calls, shortening selected system messages."""
+    shortened: list[BaseMessage] = []
+    last_shortenable_index = None
+    for idx, message in enumerate(messages):
+        if isinstance(message, ShortenableSystemMessage):
+            last_shortenable_index = idx
+    for idx, message in enumerate(messages):
+        if (
+            isinstance(message, ShortenableSystemMessage)
+            and message.short_content
+            and idx != last_shortenable_index
+        ):
+            shortened.append(SystemMessage(content=message.short_content))
+        else:
+            shortened.append(message)
+    return shortened
+
+
 def _profile_for_model(config: CodurConfig, model: str | None) -> str | None:
     if not model:
         return None
@@ -144,7 +169,7 @@ def create_and_invoke_with_tool_support(
             tool_schemas,
             temperature=temperature,
         )
-        messages_for_llm = get_messages(state) + new_messages
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages)
         response = invoke_llm(
             llm,
             messages_for_llm,
@@ -169,7 +194,7 @@ def create_and_invoke_with_tool_support(
 
         # Prepend system message
         new_messages = [SystemMessage(content=system_message_content)] + list(new_messages)
-        messages_for_llm = get_messages(state) + new_messages
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages)
 
         # Create LLM with json_mode
         llm = _create_llm(

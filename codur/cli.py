@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from codur.graph.main_graph import create_agent_graph
 from codur.config import load_config, save_config
 from langchain_core.messages import HumanMessage
+from codur.utils.llm_helpers import message_shortening_pipeline
 from codur.model_registry import (
     list_groq_models,
     list_openai_models,
@@ -94,8 +95,9 @@ def _run_prompt(
         }, cfg.runtime.max_runtime_s)
 
         if dump_messages:
+            messages_to_dump = message_shortening_pipeline(result.get("messages", []))
             with open(dump_messages, "w", encoding="utf-8") as f:
-                for message in result.get("messages", []):
+                for message in messages_to_dump:
                     f.write("-" * 20 + f"{message.__class__.__name__}" + "-" * 20 + "\n\n")
                     f.write(f"{message.content}\n\n")
 
