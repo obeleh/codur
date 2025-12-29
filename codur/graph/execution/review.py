@@ -111,7 +111,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             if is_verbose(state):
                 console.print(f"[green]✓ Verification passed![/green]")
                 result = verification_outcome["agent_outcome"]["result"]
-                console.print(f"[dim]{verification_outcome}[/dim]")
+                console.print(f"[dim]{verification_outcome['agent_outcome']['result']}[/dim]")
             return {
                 "final_response": result,
                 "next_action": ACTION_END,

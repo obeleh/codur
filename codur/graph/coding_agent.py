@@ -138,14 +138,17 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
 
     # Simplified system prompt (no tool injection)
     system_prompt = CODING_AGENT_SYSTEM_PROMPT
-    new_messages = [
-        ShortenableSystemMessage(
-            content=system_prompt,
-            short_content=CODING_AGENT_SYSTEM_PROMPT_SUMMARY,
-            long_form_visible_for_agent_name="coding",
-        ),
-        HumanMessage(content=prompt),
-    ]
+    if recursion_depth == 0:
+        new_messages = [
+            ShortenableSystemMessage(
+                content=system_prompt,
+                short_content=CODING_AGENT_SYSTEM_PROMPT_SUMMARY,
+                long_form_visible_for_agent_name="coding",
+            ),
+            HumanMessage(content=prompt),
+        ]
+    else:
+        new_messages = []
 
     try:
         new_messages, execution_result = create_and_invoke_with_tool_support(

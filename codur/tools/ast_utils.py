@@ -4,13 +4,15 @@ import ast
 from typing import Optional
 
 from codur.constants import TaskType
+from codur.graph.state import AgentState
 from codur.tools.tool_annotations import tool_scenarios
 
 
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR)
 def find_function_lines(
     file_content: str,
-    function_name: str
+    function_name: str,
+    state: AgentState | None = None
 ) -> Optional[tuple[int, int]]:
     """
     Find line range of a function definition in Python code.
@@ -41,7 +43,8 @@ def find_function_lines(
 @tool_scenarios(TaskType.CODE_FIX, TaskType.REFACTOR)
 def find_class_lines(
     file_content: str,
-    class_name: str
+    class_name: str,
+    state: AgentState | None = None
 ) -> Optional[tuple[int, int]]:
     """
     Find line range of a class definition in Python code.
@@ -71,7 +74,8 @@ def find_class_lines(
 def find_method_lines(
     file_content: str,
     class_name: str,
-    method_name: str
+    method_name: str,
+    state: AgentState | None = None
 ) -> Optional[tuple[int, int]]:
     """
     Find line range of a method within a class.

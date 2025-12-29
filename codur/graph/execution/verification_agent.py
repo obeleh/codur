@@ -110,28 +110,6 @@ Your mission: Determine if the implemented code satisfies the user's original re
 3. **Explicit Success Criteria**: Extract what "success" means from the original request
 4. **Evidence-Based Decisions**: Run tools to gather evidence, then make a clear pass/fail determination
 
-## Available Verification Strategies
-
-1. **Test-Based Verification** (Preferred when tests exist)
-   - Use list_files find test files (test_*.py, *_test.py)
-   - Use run_pytest to execute tests with appropriate filters
-   - Best for: Projects with test suites, TDD challenges, library implementations
-
-2. **Execution-Based Verification** (When output is specified or describable)
-   - Use discover_entry_points or get_primary_entry_point to find executable files
-   - Use run_python_file to execute and capture output
-   - Use read_file to check expected output files if they exist
-   - Best for: CLI tools, scripts with specified output, algorithm challenges
-
-3. **Static Analysis Verification** (For code quality tasks)
-   - Use validate_python_syntax for syntax correctness
-   - Use code_quality for linting/style requirements
-   - Best for: Refactoring tasks, style compliance, structural requirements
-
-4. **Hybrid Verification** (Combine multiple strategies)
-   - Run tests AND check output
-   - Validate syntax AND run execution
-   - Best for: Complex requirements with multiple success criteria
 {tools_section}
 
 ## Your Task
@@ -150,14 +128,9 @@ Do:
 Dont:
 1. You have not been given access to modify files. Focus solely on verification.
 2. Do NOT invent or call tools not listed above.
+3. Do not rerun tools that have already been executed - use existing results.
 
 ## Critical Rule: No Duplicate Tool Calls
-
-⚠️ IMPORTANT: If you see a tool in the "Previous Tool Execution Results" section above,
-DO NOT CALL IT AGAIN. You already have its results. Use the existing results to make
-your final decision instead of repeating the tool call.
-
-Calling the same tool twice wastes time and tokens. Analyze what you already know.
 
 ## Final Step: Report Your Decision
 
@@ -270,14 +243,17 @@ def verification_agent_node(
         include_unannotated=True,  # Include tools without side effect annotations
     )
 
-    new_messages = [
-        ShortenableSystemMessage(
-            content=VERIFICATION_AGENT_SYSTEM_PROMPT,
-            short_content=VERIFICATION_AGENT_SYSTEM_PROMPT_SUMMARY,
-            long_form_visible_for_agent_name="verification",
-        ),
-        HumanMessage(content=prompt),
-    ]
+    if recursion_depth == 0:
+        new_messages = [
+            ShortenableSystemMessage(
+                content=VERIFICATION_AGENT_SYSTEM_PROMPT,
+                short_content=VERIFICATION_AGENT_SYSTEM_PROMPT_SUMMARY,
+                long_form_visible_for_agent_name="verification",
+            ),
+            HumanMessage(content=prompt),
+        ]
+    else:
+        new_messages = []
 
     try:
         new_messages, execution_result = create_and_invoke_with_tool_support(
@@ -347,75 +323,22 @@ def _build_verification_prompt(messages) -> str:
     - Any prior verification attempts
     - Tool execution results (ToolMessages from recursive calls)
     """
-    from langchain_core.messages import ToolMessage
 
     normalized = normalize_messages(messages)
 
     original_request = None
-    implementation_summary = []
-    prior_verifications = []
     tool_results = []
 
     for msg in normalized:
         if isinstance(msg, HumanMessage) and original_request is None:
             original_request = msg.content
-        elif isinstance(msg, AIMessage):
-            # Check if this message contains implementation work
-            content_lower = msg.content.lower()
-            if any(indicator in content_lower for indicator in ['write_file', 'replace_function', 'tool calls', 'implementation']):
-                implementation_summary.append("Code implementation work completed")
-        elif isinstance(msg, SystemMessage):
-            if "Verification failed" in msg.content or "VERIFICATION:" in msg.content:
-                prior_verifications.append(msg.content)
-        elif isinstance(msg, ToolMessage):
-            # Include tool execution results so agent knows what was already executed
-            tool_name = msg.name or "unknown_tool"
-            tool_results.append(f"**{tool_name}**: {msg.content[:200]}")
 
     if original_request is None:
         original_request = normalized[-1].content if normalized else "No original request found in message history"
 
-    prompt_parts = [
-        "# Verification Task",
-        "",
-        "## Original User Request",
-        original_request,
-        "",
-        "## Your Task",
-        "Verify that the current implementation satisfies the original user request.",
-        "Use the appropriate verification strategy based on project context.",
-        "",
-    ]
-
-    if tool_results:
-        prompt_parts.extend([
-            "## Previous Tool Execution Results",
-            "These tools were already executed in previous attempts. You already have this information:",
-            *tool_results,
-            "",
-            "IMPORTANT: Do NOT call the same tools again. Use these results to analyze and make your final decision.",
-            "",
-        ])
-
-    if prior_verifications:
-        prompt_parts.extend([
-            "## Prior Verification Attempts",
-            "Previous verifications have been attempted. Review them to understand what was already checked:",
-            *prior_verifications[-2:],  # Only include last 2 to avoid context bloat
-            "",
-        ])
-
-    prompt_parts.extend([
-        "## Instructions",
-        "1. Use discovery tools to understand project structure (list files, entry points)",
-        "2. Infer what 'success' means from the original request",
-        "3. Choose and execute appropriate verification strategy",
-        "4. Make explicit PASS/FAIL decision with evidence",
-        "",
-        "Start by discovering the project structure, then choose your verification approach.",
-    ])
-
-    return "\n".join(prompt_parts)
+    return f"""## Original User Request
+        {original_request}
+    """
 
 
 def _parse_verification_result(messages, execution_result) -> dict:

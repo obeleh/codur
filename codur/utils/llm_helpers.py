@@ -45,8 +45,8 @@ def message_shortening_pipeline(messages: list[BaseMessage], only_for_agent: str
 
     for idx, message in enumerate(messages):
         if isinstance(message, ShortenableSystemMessage):
-            # Rule 1: If only_for_agent matches, shorten it
-            if only_for_agent and message.long_form_visible_for_agent_name == only_for_agent:
+            # Rule 1: If the message was meant for another agent, shorten it
+            if only_for_agent and message.long_form_visible_for_agent_name != only_for_agent:
                 short_msg = SystemMessage(content=message.short_content)
                 shortened.append(short_msg)
                 continue
