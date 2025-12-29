@@ -97,7 +97,7 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
 ## Important Notes
 
 - You MUST return valid tool calls - do NOT create fake tool names or prefixes
-- If you need to read a file multiple times in the same conversation, use the results from the first read
+- You can read multiple files in one call using read_files, write_files
 - All tool arguments must match the schema exactly
 - After Writing Code (replace_function, write_file, replace_class, etc.):
     - For Python files: Use validate_python_syntax to verify syntax is correct
