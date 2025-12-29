@@ -10,14 +10,12 @@ from codur.graph.state import AgentState
 from codur.config import CodurConfig
 from codur.graph.node_types import ReviewNodeResult
 from codur.constants import (
-    REF_AGENT_CODING,
     ACTION_CONTINUE,
     ACTION_END,
 )
 from codur.graph.state_operations import (
     is_verbose,
     get_messages,
-    prune_messages,
     get_iterations,
     get_agent_outcome,
     get_outcome_result,
@@ -25,45 +23,12 @@ from codur.graph.state_operations import (
     get_error_hashes,
     was_local_repair_attempted,
 )
-from codur.tools.project_discovery import get_primary_entry_point
-from codur.utils.text_helpers import truncate_lines
 from .verification_agent import verification_agent_node
 from .repair import _attempt_local_repair
 
 console = Console()
 
-
-def _convert_agent_outcome_to_legacy_format(agent_outcome) -> dict:
-    """Convert verification agent outcome to legacy format for backward compatibility.
-
-    This adapter ensures backward compatibility with existing review.py logic.
-    Parses verification details from the agent's messages.
-
-    Args:
-        agent_outcome: Result from verification_agent_node (ExecuteNodeResult)
-
-    Returns:
-        Legacy format dict with "success", "message", etc.
-    """
-    # Import parser function
-    from .verification_agent import _parse_verification_result
-
-    # Parse verification details from messages
-    messages = agent_outcome.get("messages", [])
-    details = _parse_verification_result(messages, None)
-
-    return {
-        "success": details.get("passed", False),
-        "message": details.get("reasoning", "No verification result"),
-        "expected_output": details.get("expected"),
-        "actual_output": details.get("actual"),
-        "expected_truncated": truncate_lines(details.get("expected", "")) if details.get("expected") else None,
-        "actual_truncated": truncate_lines(details.get("actual", "")) if details.get("actual") else None,
-        "suggestions": details.get("suggestions"),
-        "raw_response": details.get("raw_response", ""),
-    }
-
-
+# TODO: llm parameter is currently unused, do we want to pass it to verification_agent_node?
 def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> ReviewNodeResult:
     """Review node: Check if the result is satisfactory.
 
@@ -141,26 +106,21 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     # Try verification if it's a fix task (but not a tool result) and we haven't exceeded iterations
     if is_fix_task and not is_tool_result and iterations < max_iterations - 1:  # Leave room for one more attempt
         verification_outcome = verification_agent_node(state, config)
-        verification_result = _convert_agent_outcome_to_legacy_format(verification_outcome)
 
-        if verification_result["success"]:
+        if verification_outcome["agent_outcome"]["status"] == "success":
             if is_verbose(state):
                 console.print(f"[green]✓ Verification passed![/green]")
-                # Decode escape sequences for readable output
-                message = verification_result['message']
-                try:
-                    message = message.encode().decode('unicode_escape')
-                except (UnicodeDecodeError, AttributeError):
-                    pass  # Keep original if decode fails
-                console.print(f"[dim]{message}[/dim]")
+                result = verification_outcome["agent_outcome"]["result"]
+                console.print(f"[dim]{verification_outcome}[/dim]")
             return {
                 "final_response": result,
                 "next_action": ACTION_END,
             }
         else:
-            # Check for repeated errors (agent is stuck)
-            error_msg = verification_result.get("message", "")
-            current_error_hash = hash(error_msg)
+            messages = verification_outcome["messages"]
+            last_message = messages[-1] if messages else "No last message?"
+
+            current_error_hash = hash(last_message.content)
             error_history = get_error_hashes(state)
 
             # If same error appears 2+ times in recent history, agent is stuck
@@ -199,68 +159,13 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                     console.print(f"[yellow]⚠ Verification failed - routing back to planning for fresh approach[/yellow]")
                 else:
                     console.print(f"[yellow]⚠ Verification failed - will retry with coding agent[/yellow]")
-                # Decode escape sequences for readable output
-                fail_message = verification_result['message'][:200]
-                try:
-                    fail_message = fail_message.encode().decode('unicode_escape')
-                except (UnicodeDecodeError, AttributeError):
-                    pass  # Keep original if decode fails
-                console.print(f"[dim]{fail_message}[/dim]")
+                console.print(f"[dim]{last_message.content}[/dim]")
 
-            # Build a structured error message for the agent
-            error_parts = ["Verification failed: Output does not match expected."]
-
-            # Determine error type: output mismatch vs execution error
-            if "expected_truncated" in verification_result:
-                # This was an output mismatch with expected.txt
-                error_parts = ["Verification failed: Output does not match expected."]
-                error_parts.append(f"\n=== Expected Output ===\n{verification_result['expected_truncated']}")
-                if "actual_truncated" in verification_result:
-                    error_parts.append(f"\n=== Actual Output ===\n{verification_result['actual_truncated']}")
-            else:
-                # This was an execution error (exit code != 0)
-                if verification_result.get("return_code"):
-                    error_parts[0] = f"Verification failed: Code exited with code {verification_result['return_code']}"
-                if verification_result.get("stdout"):
-                    stdout_content = truncate_lines(verification_result['stdout'], max_lines=15)
-                    error_parts.append(f"\n=== Standard Output ===\n{stdout_content}")
-
-            # Include stderr if available (for both error types)
-            if verification_result.get("stderr"):
-                stderr_content = truncate_lines(verification_result['stderr'], max_lines=15)
-                error_parts.append(f"\n=== Error/Exception ===\n{stderr_content}")
-
-            # Try to include current implementation for context
-            cwd = Path.cwd()
-            entry_point_name = get_primary_entry_point(root=cwd)
-            if entry_point_name and not entry_point_name.startswith("Error"):
-                entry_point_file = cwd / entry_point_name
-                if entry_point_file.exists():
-                    try:
-                        impl_content = entry_point_file.read_text()
-                        if len(impl_content) < 3000:  # Only include if not too large
-                            error_parts.append(f"\n=== Current Implementation ({entry_point_name}) ===\n```python\n{impl_content}\n```")
-                        else:
-                            error_parts.append(f"\n[Current {entry_point_name} is {len(impl_content)} chars - impl too large to display, check what's wrong with current code]")
-                    except Exception as read_err:
-                        pass
-
-            # Add suggestions from verification agent if available
-            if verification_result.get("suggestions"):
-                error_parts.append(f"\n=== Verification Agent Suggestions ===\n{verification_result['suggestions']}")
-
-            error_parts.append("\n=== Action ===\nAnalyze the output mismatch and fix the implementation to match expected output.")
-
-            error_message = SystemMessage(content="\n".join(error_parts))
-
-            # Prune old messages to prevent context explosion
-            current_messages = get_messages(state)
-            pruned_messages = prune_messages(current_messages + [error_message])
 
             result_dict = {
                 "final_response": result,
                 "next_action": ACTION_CONTINUE,
-                "messages": pruned_messages,
+                "messages": messages,
                 "local_repair_attempted": True,
                 "error_hashes": error_history,
             }

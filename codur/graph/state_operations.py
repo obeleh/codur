@@ -53,62 +53,6 @@ def get_last_human_message(state: "AgentState") -> Optional[BaseMessage]:
             return msg
     return None
 
-def prune_messages(messages: list, max_to_keep: int = 10) -> list:
-    """Prune old messages to prevent context explosion while preserving learning context.
-
-    Keeps:
-    - Original HumanMessage(s) - typically the first message
-    - Recent AIMessage(s) - agent's recent attempts (so it learns from them)
-    - Recent SystemMessage(s) - recent error/verification messages for context
-
-    This helps agents learn from their mistakes by seeing their own attempts and the feedback.
-
-    Args:
-        messages: List of messages to prune
-        max_to_keep: Maximum number of recent messages to keep after the first human message
-
-    Returns:
-        Pruned message list
-    """
-    if len(messages) <= max_to_keep:
-        return messages
-
-    # Find the first human message (original task)
-    first_human_idx = None
-    for i, msg in enumerate(messages):
-        if isinstance(msg, HumanMessage):
-            first_human_idx = i
-            break
-
-    if first_human_idx is None:
-        # No human message, just keep last N
-        return messages[-max_to_keep:]
-
-    # Keep original task
-    pruned = messages[:first_human_idx + 1]
-
-    # Keep recent agent attempts and error messages together (last 8 attempts)
-    # This way agent sees: "I tried X, got error Y, I tried Z, got error W"
-    recent_count = 0
-    max_recent = 8
-    for i, msg in enumerate(reversed(messages[first_human_idx + 1:])):
-        # Keep both AIMessage (agent attempts) and SystemMessage (errors) from recent history
-        if isinstance(msg, (AIMessage, SystemMessage)):
-            if isinstance(msg, SystemMessage) and "Verification failed" not in msg.content:
-                continue  # Skip non-error system messages
-            pruned.append(msg)
-            recent_count += 1
-            if recent_count >= max_recent:
-                break
-
-    # Reverse to maintain chronological order
-    if len(pruned) > first_human_idx + 1:
-        recent = pruned[first_human_idx + 1:]
-        recent.reverse()
-        pruned = pruned[:first_human_idx + 1] + recent
-
-    return pruned
-
 
 # ============================================================================
 # Iteration & Loop Control

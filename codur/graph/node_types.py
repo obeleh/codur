@@ -45,6 +45,7 @@ class ExecuteNodeResult(TypedDict):
 class ReviewNodeResult(TypedDict):
     final_response: str
     next_action: Literal["end"]
+    messages: NotRequired[list[BaseMessage]]
 
 
 class PlanningDecision(TypedDict):

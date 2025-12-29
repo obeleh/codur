@@ -103,6 +103,7 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
     - For Python files: Use validate_python_syntax to verify syntax is correct
     - To test execution: Use run_python_file to run the modified code and see output
     - Validation and execution are faster and more efficient than reading the entire file back
+    - Only run pytest if there are tests
 """
 
 # Initialize system prompt with tools
@@ -235,9 +236,6 @@ def _build_coding_prompt(raw_messages, iterations: int = 0) -> str:
 
     if verification_errors:
         return _build_retry_prompt(challenge, verification_errors[-1], iterations)
-    elif context_parts:
-        context_text = "\n\n---\n\n".join(context_parts)
-        return f"CODING CHALLENGE:\n{challenge}\n\nADDITIONAL CONTEXT:\n{context_text}"
     else:
         return challenge
 

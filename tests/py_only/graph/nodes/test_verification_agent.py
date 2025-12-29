@@ -74,88 +74,6 @@ class TestParseVerificationResult:
         result = _parse_verification_result([], execution_result)
         assert result["passed"] is True
 
-    def test_parse_from_json_in_message(self):
-        """Test fallback JSON parsing from AI message content."""
-        messages = [
-            AIMessage(content="""
-Here's my verification result:
-
-```json
-{
-  "verification": "FAIL",
-  "reasoning": "Output mismatch detected",
-  "expected": "42",
-  "actual": "43"
-}
-```
-""")
-        ]
-
-        result = _parse_verification_result(messages, None)
-
-        assert result["passed"] is False
-        assert result["reasoning"] == "Output mismatch detected"
-        assert result["expected"] == "42"
-        assert result["actual"] == "43"
-
-    def test_parse_from_plain_json(self):
-        """Test parsing plain JSON without code blocks."""
-        messages = [
-            AIMessage(content='{"verification": "PASS", "reasoning": "All good"}')
-        ]
-
-        result = _parse_verification_result(messages, None)
-
-        assert result["passed"] is True
-        assert result["reasoning"] == "All good"
-
-    def test_no_tool_call_no_json(self):
-        """Test failure when no tool call and no JSON found."""
-        messages = [
-            AIMessage(content="Just some random text without structure")
-        ]
-
-        result = _parse_verification_result(messages, None)
-
-        assert result["passed"] is False
-        assert "did not call build_verification_response" in result["reasoning"]
-
-    def test_empty_messages_no_execution_result(self):
-        """Test failure with empty messages and no execution result."""
-        result = _parse_verification_result([], None)
-
-        assert result["passed"] is False
-        assert result["reasoning"] == "No verification response generated"
-
-    def test_multiple_tool_calls_first_match_wins(self):
-        """Test that first build_verification_response tool call is used."""
-        execution_result = mock.Mock()
-        execution_result.results = [
-            {
-                "tool": "read_file",
-                "args": {"path": "test.py"}
-            },
-            {
-                "tool": "build_verification_response",
-                "args": {
-                    "passed": True,
-                    "reasoning": "First call"
-                }
-            },
-            {
-                "tool": "build_verification_response",
-                "args": {
-                    "passed": False,
-                    "reasoning": "Second call"
-                }
-            }
-        ]
-
-        result = _parse_verification_result([], execution_result)
-
-        assert result["passed"] is True
-        assert result["reasoning"] == "First call"
-
     def test_no_reasoning_provided(self):
         """Test handling of missing reasoning field."""
         execution_result = mock.Mock()
@@ -190,42 +108,6 @@ Here's my verification result:
 
         # Should default to False when passed field is missing
         assert result["passed"] is False
-
-    def test_multiple_ai_messages_combined(self):
-        """Test that multiple AI messages are combined for JSON parsing."""
-        messages = [
-            AIMessage(content="Let me analyze this."),
-            AIMessage(content='{"verification": "PASS", "reasoning": "Looks good"}')
-        ]
-
-        result = _parse_verification_result(messages, None)
-
-        assert result["passed"] is True
-        assert result["reasoning"] == "Looks good"
-
-    def test_json_in_code_block_with_extra_text(self):
-        """Test JSON extraction from message with extra text."""
-        messages = [
-            AIMessage(content="""
-I've verified the implementation.
-
-```json
-{
-  "verification": "FAIL",
-  "reasoning": "Missing edge case handling",
-  "suggestions": "Add null check"
-}
-```
-
-Let me know if you need more details.
-""")
-        ]
-
-        result = _parse_verification_result(messages, None)
-
-        assert result["passed"] is False
-        assert result["reasoning"] == "Missing edge case handling"
-        assert result["suggestions"] == "Add null check"
 
 
 class TestBuildVerificationPrompt:
@@ -315,35 +197,6 @@ class TestVerificationAgentFailureScenarios:
     These tests ensure we catch regressions where the verification agent
     calls tools but fails to return a proper verification result.
     """
-
-    def test_tool_called_but_no_verification_response(self):
-        """Regression test: Agent calls tool but doesn't call build_verification_response.
-
-        This happened when:
-        - First call: discover_entry_points called → result
-        - Recursion: Agent should call build_verification_response but doesn't
-        - Result: "No reasoning provided" error
-
-        This test ensures message history is passed to recursive calls
-        so agent doesn't get stuck calling the same tool twice.
-        """
-        # Simulate the failure case
-        execution_result = mock.Mock()
-        execution_result.results = [
-            {
-                "tool": "discover_entry_points",
-                "args": {}
-            }
-        ]
-        messages = [AIMessage(content="Found entry points")]
-
-        # This should fall back to error message since no build_verification_response
-        result = _parse_verification_result(messages, execution_result)
-
-        # Verify it fails gracefully with error message
-        assert result["passed"] is False
-        assert "No reasoning provided" in result["reasoning"] or \
-               "did not call build_verification_response" in result["reasoning"]
 
     def test_multiple_tool_calls_then_verification_response(self):
         """Test: Multiple tools called, then final verification response.

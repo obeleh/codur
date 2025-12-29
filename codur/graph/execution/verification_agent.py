@@ -204,13 +204,14 @@ build_verification_response(
 
 ## Important Notes
 
-- If you cannot determine verification strategy from context, use hybrid approach (syntax check + execution attempt)
 - If tests exist (test_*.py files), prioritize running them over direct execution
 - If expected output files exist, use them for comparison
 - Always provide evidence (tool results) for your decision
 - Be explicit about what you checked and why
 - If a tool returns an error, treat that as verification failure evidence
 - Focus on behavior verification: does the code do what the user asked for?
+- If the original request is vague or does not specify success criteria, infer reasonable expectations based on common practices, sometimes this means code runs without errors
+- Sometimes tools that were already run (eg. list_files, run_pytest, run_python_file) provide enough information to make a decision without further execution
 """
 
 # Initialize system prompt with tools
@@ -304,7 +305,7 @@ Suggestions: Check agent configuration and tool availability""")
                 "result": f"Verification error: {str(exc)}",
                 "status": "error",
             },
-            "messages": [error_msg],
+            "messages": new_messages + [error_msg],
             "llm_calls": get_llm_calls(state),
         }
 
@@ -315,7 +316,7 @@ Suggestions: Check agent configuration and tool availability""")
     )
 
     # If tools were called (but not final response), recurse to let agent process results
-    if execution_result.results and recursion_depth < 3 and not is_final_response:
+    if execution_result.results and recursion_depth <= 4 and not is_final_response:
         # Inject messages into state for next iteration
         add_messages(state, new_messages)
 
@@ -326,12 +327,6 @@ Suggestions: Check agent configuration and tool availability""")
 
     # Parse verification result from agent response
     verification_outcome = _parse_verification_result(new_messages, execution_result)
-
-    # Don't print result here - let review.py handle all verification output
-    # This avoids duplicate messages
-
-    # Don't store verification_details in agent_outcome (not part of schema)
-    # review.py will parse verification result from messages instead
     return {
         "agent_outcome": {
             "agent": agent_name,
@@ -456,36 +451,9 @@ def _parse_verification_result(messages, execution_result) -> dict:
                     "raw_response": str(args),
                 }
 
-    # Fallback: try JSON parsing for backward compatibility
-    ai_messages = [m for m in messages if isinstance(m, AIMessage)]
-    if not ai_messages:
-        return {
-            "passed": False,
-            "reasoning": "No verification response generated",
-            "raw_response": "",
-        }
-
-    full_response = "\n".join(m.content for m in ai_messages)
-
-    # Try to extract JSON from response using JSONResponseParser
-    parser = JSONResponseParser()
-    json_obj = parser.parse(full_response)
-
-    if json_obj:
-        # Parse JSON format
-        verification = json_obj.get("verification", "").upper()
-        return {
-            "passed": verification == "PASS",
-            "reasoning": json_obj.get("reasoning", "No reasoning provided"),
-            "expected": json_obj.get("expected"),
-            "actual": json_obj.get("actual"),
-            "suggestions": json_obj.get("suggestions"),
-            "raw_response": full_response,
-        }
 
     # Final fallback
     return {
         "passed": False,
-        "reasoning": f"Verification agent did not call build_verification_response tool or provide JSON. Response: {full_response[:200]}...",
-        "raw_response": full_response,
+        "reasoning": f"build_verification_response not yet called",
     }

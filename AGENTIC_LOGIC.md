@@ -85,12 +85,37 @@ Tool execution and agent invocation propagate this state so tools and agents can
 
 ## Review and verification
 
-The review node runs verification for fix tasks:
+The review node orchestrates verification for fix/debug tasks. It operates in two layers:
 
-- Executes `python main.py` or `python app.py`.
-- If `expected.txt` exists, output is compared in a streaming fashion for early exit.
-- Failures create structured error context and can trigger retries or replanning.
-- A small local repair system runs only as a last resort.
+### Review Node (`codur/graph/execution/review.py`)
+- **Task detection**: Identifies fix/debug tasks by keywords (fix, bug, error, debug, implement, etc.)
+- **Verification orchestration**: Calls `verification_agent_node` to determine if implementation satisfies requirements
+- **Result routing**:
+  - Success → return END
+  - Repeated error (same error 2+ times) → return END (agent is stuck)
+  - Verification failure → attempt local repair or route for retry
+- **Retry logic**:
+  - Up to iteration limit: Route failed verification back to coding agent for retry
+  - After 3 failed attempts: Route back to planning for fresh approach
+- **Local repair fallback**: Attempts 7 common mutation patterns (range boundaries, comparison operators, etc.) as last resort
+
+### Verification Agent (`codur/graph/execution/verification_agent.py`)
+- **Dynamic strategy inference**: Analyzes original request and project structure to choose verification approach:
+  - **Test-based**: Finds and runs tests (test_*.py, *_test.py) via pytest when tests exist
+  - **Execution-based**: Discovers entry points, runs them, captures output, optionally compares against expected outputs
+  - **Static analysis**: Validates syntax, checks code quality
+  - **Hybrid**: Combines multiple strategies
+- **Context-driven**: No hardcoded file names (main.py, app.py, expected.txt) — infers from actual project structure
+- **Tool-driven**: Uses tools like `discover_entry_points`, `run_python_file`, `run_pytest`, `list_files`, etc.
+- **Structured results**: Returns pass/fail decision with reasoning, expected vs actual output, and specific suggestions for fixing failures
+
+### Error Context
+- Failed verifications create structured error messages with:
+  - Expected output (if applicable)
+  - Actual output or error message (truncated for readability)
+  - Current implementation context
+  - Verification agent's suggestions for fixes
+- Error hashes track repeated failures to detect when agent is stuck in a loop
 
 ## LLM configuration
 
@@ -115,4 +140,9 @@ Tools currently lack metadata that indicates when they are appropriate. Adding r
 
 ## See also
 
+- `codur/graph/execution/README.md` for execution, delegation, and review node architecture
+- `CODING.md` for the coding agent tool loop specifics
 - `codur/tools/README.md` for tool registry details and authoring guidance
+- `codur/utils/README.md` for preferred shared utilities
+- `codur/graph/planning/injectors/README.md` for language-specific tool injectors
+- `codur/graph/planning/strategies/README.md` for textual planning strategies
