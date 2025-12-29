@@ -235,8 +235,17 @@ def verification_agent_node(
     # Build verification prompt with original request context
     prompt = _build_verification_prompt(get_messages(state))
 
-    # Get only safe, read-only tools (exclude file mutations and state changes)
+    # Get only safe, read-only tools that match the system prompt's task types
+    # This ensures the LLM only sees tools we've told it about
+    from codur.constants import TaskType
+    verification_task_types = [
+        TaskType.CODE_VALIDATION,
+        TaskType.RESULT_VERIFICATION,  # Includes build_verification_response
+        TaskType.FILE_OPERATION,
+        TaskType.EXPLANATION,
+    ]
     tool_schemas = get_function_schemas(
+        task_types=verification_task_types,
         exclude_side_effects=[
             ToolSideEffect.FILE_MUTATION,  # No modifying files
             ToolSideEffect.STATE_CHANGE,   # No git/env changes
@@ -244,13 +253,22 @@ def verification_agent_node(
         include_unannotated=True,  # Include tools without side effect annotations
     )
 
-    messages = [
-        ShortenableSystemMessage(
-            content=VERIFICATION_AGENT_SYSTEM_PROMPT,
-            short_content=VERIFICATION_AGENT_SYSTEM_PROMPT_SUMMARY,
-        ),
-        HumanMessage(content=prompt),
-    ]
+    # For first call (recursion_depth=0), build fresh messages with system prompt
+    # For recursive calls, use accumulated message history from state to include tool results
+    if recursion_depth == 0:
+        messages = [
+            ShortenableSystemMessage(
+                content=VERIFICATION_AGENT_SYSTEM_PROMPT,
+                short_content=VERIFICATION_AGENT_SYSTEM_PROMPT_SUMMARY,
+            ),
+            HumanMessage(content=prompt),
+        ]
+    else:
+        # Recursive call: use full message history from state (includes tool results)
+        # The state already has the system message and all previous messages/tool results
+        messages = get_messages(state)
+        # Append instruction to analyze previous tool results
+        messages = messages + [HumanMessage(content=prompt)]
 
     try:
         new_messages, execution_result = create_and_invoke_with_tool_support(
