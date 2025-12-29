@@ -113,7 +113,7 @@ Your mission: Determine if the implemented code satisfies the user's original re
 ## Available Verification Strategies
 
 1. **Test-Based Verification** (Preferred when tests exist)
-   - Use discover_entry_points to find test files (test_*.py, *_test.py)
+   - Use list_files find test files (test_*.py, *_test.py)
    - Use run_pytest to execute tests with appropriate filters
    - Best for: Projects with test suites, TDD challenges, library implementations
 
@@ -269,30 +269,22 @@ def verification_agent_node(
         include_unannotated=True,  # Include tools without side effect annotations
     )
 
-    # For first call (recursion_depth=0), build fresh messages with system prompt
-    # For recursive calls, use accumulated message history from state to include tool results
-    if recursion_depth == 0:
-        messages = [
-            ShortenableSystemMessage(
-                content=VERIFICATION_AGENT_SYSTEM_PROMPT,
-                short_content=VERIFICATION_AGENT_SYSTEM_PROMPT_SUMMARY,
-            ),
-            HumanMessage(content=prompt),
-        ]
-    else:
-        # Recursive call: use full message history from state (includes tool results)
-        # The state already has the system message and all previous messages/tool results
-        messages = get_messages(state)
-        # Append instruction to analyze previous tool results
-        messages = messages + [HumanMessage(content=prompt)]
+    new_messages = [
+        ShortenableSystemMessage(
+            content=VERIFICATION_AGENT_SYSTEM_PROMPT,
+            short_content=VERIFICATION_AGENT_SYSTEM_PROMPT_SUMMARY,
+            long_form_visible_for_agent_name="verification",
+        ),
+        HumanMessage(content=prompt),
+    ]
 
     try:
         new_messages, execution_result = create_and_invoke_with_tool_support(
             config,
-            messages,
+            new_messages,
             tool_schemas,
             profile_name=config.llm.default_profile,
-            temperature=0.1,  # Low temperature for consistent verification
+            temperature=0.0,  # Low temperature for consistent verification
             invoked_by="verification.primary",
             state=state,
         )
@@ -420,7 +412,7 @@ def _build_verification_prompt(messages) -> str:
 
     prompt_parts.extend([
         "## Instructions",
-        "1. Use discovery tools to understand project structure (entry points, tests)",
+        "1. Use discovery tools to understand project structure (list files, entry points)",
         "2. Infer what 'success' means from the original request",
         "3. Choose and execute appropriate verification strategy",
         "4. Make explicit PASS/FAIL decision with evidence",

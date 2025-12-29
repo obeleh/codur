@@ -66,6 +66,7 @@ def replace_function(
     # Validate syntax first
     is_valid, error_msg = _validate_with_dedent(new_code)
     if not is_valid:
+        # TODO: Create fallback mechanism that can work with invalid code. Maybe LSP?
         return f"Invalid Python syntax in replacement code:\n{error_msg}\n\nCode attempted:\n{new_code}"
 
     try:

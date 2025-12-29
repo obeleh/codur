@@ -63,7 +63,7 @@ def run_python_file(
     env: Optional[dict] = None,
     config: Optional[CodurConfig] = None,
     state: Optional[AgentState] = None,
-) -> str:
+) -> dict[str, str]:
     """Execute a Python file and return its output.
 
     This tool allows the LLM to run and validate code during the coding phase.
@@ -94,10 +94,14 @@ def run_python_file(
     exec_cwd = Path(cwd) if cwd else root_dir
 
     if not file_path.exists():
-        return f"Error: File not found: {file_path}"
+        return {
+            "error": f"Error: File not found: {file_path}"
+        }
 
     if not file_path.is_file():
-        return f"Error: Not a file: {file_path}"
+        return {
+            "error": f"Error: Not a file: {file_path}"
+        }
 
     execution_timeout = 60
 
@@ -122,28 +126,36 @@ def run_python_file(
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
-            return f"Error: Execution timed out after {execution_timeout} seconds"
+            return {
+                "error": f"Error: Execution timed out after {execution_timeout} seconds"
+            }
 
         # Format result
         output = stdout.strip() if stdout else ""
 
         if return_code != 0:
             error_msg = stderr.strip() if stderr else "Unknown error"
-            if output:
-                return f"Error (exit code {return_code}):\n{error_msg}\n\nOutput:\n{output}"
-            else:
-                return f"Error (exit code {return_code}):\n{error_msg}"
+            return {
+                "error": error_msg,
+                "output": output,
+                "return_code": return_code,
+            }
 
-        return output if output else "(No output)"
+        return {
+            "output": output
+        }
 
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {
+            "error": f"Error: {str(e)}"
+        }
 
 
 @tool_side_effects(ToolSideEffect.CODE_EXECUTION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_VALIDATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def run_pytest(
+    path: str | None = None,
     paths: list[str] | None = None,
     keyword: str | None = None,
     markers: str | None = None,
@@ -156,6 +168,12 @@ def run_pytest(
     state: AgentState | None = None,
 ) -> dict:
     """Run pytest and return the results."""
+    if path and paths:
+        raise ValueError("Specify either 'path' or 'paths', not both.")
+
+    if path:
+        paths = [path]
+
     root_path = resolve_root(root)
     exec_cwd = (
         resolve_path(cwd, root_path, allow_outside_root=allow_outside_root)

@@ -177,6 +177,7 @@ def execute_tool_calls(
 
     last_human_msg = _last_human_message(get_messages(state) or [])
     tool_map = _build_tool_map(root, allow_outside_root, tool_state, last_human_msg, config)
+    verbose = is_verbose(state)
 
     i = 0
     while i < len(tool_calls):
@@ -186,7 +187,7 @@ def execute_tool_calls(
         if not isinstance(args, dict):
             args = {}
         _normalize_tool_args(args)
-        if config.verbose:
+        if verbose:
             console.log(f"Executing tool call: {_format_tool_call_for_log(tool_name, args)}")
 
         # For agent_call, inject file_contents from the most recent read_file result
@@ -194,7 +195,10 @@ def execute_tool_calls(
             args["file_contents"] = last_read_file_output
 
         if tool_name not in tool_map:
-            errors.append(f"Unknown tool: {tool_name}")
+            msg = f"Unknown tool: {tool_name}"
+            errors.append(msg)
+            if verbose:
+                console.log(f"[red]{msg}[/red]")
             i += 1
             continue
         try:
@@ -213,7 +217,10 @@ def execute_tool_calls(
                     )
                     has_multifile_call = True
         except Exception as exc:
-            errors.append(f"{tool_name} failed: {exc}")
+            msg = f"{tool_name} failed: {exc}"
+            errors.append(msg)
+            if verbose:
+                console.log(f"[red]{msg}[/red]")
         i += 1
 
     tool_result_json = json.dumps(_list_or_single(results))
@@ -239,13 +246,6 @@ def get_tool_names(state: AgentState, config: CodurConfig) -> set[str]:
     return set(tool_map.keys())
 
 
-# Tool metadata for dynamic wiring
-_UTILITY_TOOLS = {
-    "find_function_lines", "find_class_lines", "find_method_lines",
-    "markdown_outline", "markdown_extract_sections", "markdown_extract_tables",
-    "discover_entry_points", "get_primary_entry_point",
-}
-
 _OUTPUT_FORMATTERS = {"validate_python_syntax": _format_syntax_validation_result}
 
 
@@ -264,10 +264,6 @@ def _build_tool_map(
     import codur.tools as tools_module
 
     for tool_name in tool_names:
-        # Skip utility functions that aren't meant for direct LLM invocation
-        if tool_name in _UTILITY_TOOLS:
-            continue
-
         # Get the tool function
         tool_func = getattr(tools_module, tool_name, None)
         if not callable(tool_func):

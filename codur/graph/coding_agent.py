@@ -140,10 +140,11 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
 
     # Simplified system prompt (no tool injection)
     system_prompt = CODING_AGENT_SYSTEM_PROMPT
-    messages = [
+    new_messages = [
         ShortenableSystemMessage(
             content=system_prompt,
             short_content=CODING_AGENT_SYSTEM_PROMPT_SUMMARY,
+            long_form_visible_for_agent_name="coding",
         ),
         HumanMessage(content=prompt),
     ]
@@ -151,7 +152,7 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
     try:
         new_messages, execution_result = create_and_invoke_with_tool_support(
             config,
-            messages,
+            new_messages,
             tool_schemas,
             profile_name=config.llm.default_profile,
             temperature=config.llm.generation_temperature,
@@ -168,7 +169,7 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
         if fallback_profile:
             new_messages, execution_result = create_and_invoke_with_tool_support(
                 config,
-                messages,
+                new_messages,
                 tool_schemas,
                 profile_name=fallback_profile,
                 temperature=config.llm.generation_temperature,

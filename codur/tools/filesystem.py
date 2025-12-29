@@ -243,11 +243,11 @@ def move_file_to_dir(
 @tool_contexts(ToolContext.SEARCH)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def list_files(
-    root: str | Path | None = None,
+    path: str | Path | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
     state: AgentState | None = None,
 ) -> list[str]:
-    root_path = resolve_root(root)
+    root_path = resolve_root(path)
     config = get_config_from_state(state)
     results: list[str] = []
     for file_path in _iter_files(root_path, config):

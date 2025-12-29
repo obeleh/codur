@@ -53,7 +53,7 @@ def test_move_file(temp_fs):
     assert (temp_fs / "moved.txt").read_text(encoding="utf-8") == "Hello World"
 
 def test_list_files(temp_fs):
-    files = list_files(root=temp_fs)
+    files = list_files(path=temp_fs)
     assert "file1.txt" in files
     assert "file2.txt" in files
     assert os.path.join("subdir", "file3.txt") in files

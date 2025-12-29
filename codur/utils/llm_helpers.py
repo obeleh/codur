@@ -26,24 +26,38 @@ class ShortenableSystemMessage(SystemMessage):
     """System message with a shorter summary for LLM calls."""
 
     short_content: str | None = None
+    long_form_visible_for_agent_name: str | None = None
 
 
-def message_shortening_pipeline(messages: list[BaseMessage]) -> list[BaseMessage]:
-    """Return messages optimized for LLM calls, shortening selected system messages."""
+def message_shortening_pipeline(messages: list[BaseMessage], only_for_agent: str | None = None) -> list[BaseMessage]:
+    """Return messages optimized for LLM calls, shortening selected system messages.
+
+    Rules:
+    - If only_for_agent is specified and matches message's agent, shorten it
+    - If this is not the last ShortenableSystemMessage, shorten it
+    - Otherwise, keep the full content (especially important for the last system message)
+    """
     shortened: list[BaseMessage] = []
     last_shortenable_index = None
     for idx, message in enumerate(messages):
         if isinstance(message, ShortenableSystemMessage):
             last_shortenable_index = idx
+
     for idx, message in enumerate(messages):
-        if (
-            isinstance(message, ShortenableSystemMessage)
-            and message.short_content
-            and idx != last_shortenable_index
-        ):
-            shortened.append(SystemMessage(content=message.short_content))
-        else:
-            shortened.append(message)
+        if isinstance(message, ShortenableSystemMessage):
+            # Rule 1: If only_for_agent matches, shorten it
+            if only_for_agent and message.long_form_visible_for_agent_name == only_for_agent:
+                short_msg = SystemMessage(content=message.short_content)
+                shortened.append(short_msg)
+                continue
+            # Rule 2: If this is not the last shortenable message and we have short content, shorten it
+            elif message.short_content and idx != last_shortenable_index:
+                short_msg = SystemMessage(content=message.short_content)
+                shortened.append(short_msg)
+                continue
+
+        # Otherwise keep the message as-is
+        shortened.append(message)
     return shortened
 
 
@@ -156,6 +170,7 @@ def create_and_invoke_with_tool_support(
     provider_class = ProviderRegistry.get(provider_name)
 
     verbose = is_verbose(state)
+    agent_name = invoked_by.split(".")[0] if "." in invoked_by else invoked_by
 
     # Check if provider supports native tool calling
     if provider_class.supports_native_tools():
@@ -169,7 +184,7 @@ def create_and_invoke_with_tool_support(
             tool_schemas,
             temperature=temperature,
         )
-        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages)
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, only_for_agent=agent_name)
         response = invoke_llm(
             llm,
             messages_for_llm,
@@ -194,7 +209,7 @@ def create_and_invoke_with_tool_support(
 
         # Prepend system message
         new_messages = [SystemMessage(content=system_message_content)] + list(new_messages)
-        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages)
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, only_for_agent=agent_name)
 
         # Create LLM with json_mode
         llm = _create_llm(
@@ -213,6 +228,7 @@ def create_and_invoke_with_tool_support(
         tool_calls = extract_tool_calls_from_json_text(response)
         new_messages.append(AIMessage(content=response.content))
 
+    # TODO: filter the available tools for execute_tool_calls?
     execution_result = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="brief")
     new_messages.extend(execution_result.messages)
     return new_messages, execution_result
