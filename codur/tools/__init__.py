@@ -4,7 +4,9 @@ Tool registry for Codur.
 
 from codur.tools.filesystem import (
     read_file,
+    read_files,
     write_file,
+    write_files,
     append_file,
     delete_file,
     copy_file,
@@ -130,7 +132,9 @@ from codur.tools.project_discovery import (
 
 __all__ = [
     "read_file",
+    "read_files",
     "write_file",
+    "write_files",
     "append_file",
     "delete_file",
     "copy_file",

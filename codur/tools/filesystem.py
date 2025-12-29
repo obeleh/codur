@@ -504,3 +504,63 @@ def _split_content_lines(content: str) -> list[str]:
     if content == "":
         return []
     return content.splitlines(keepends=True)
+
+
+@tool_contexts(ToolContext.FILESYSTEM)
+@tool_scenarios(
+    TaskType.EXPLANATION,
+    TaskType.CODE_FIX,
+    TaskType.CODE_GENERATION,
+    TaskType.REFACTOR,
+    TaskType.FILE_OPERATION,
+    TaskType.DOCUMENTATION,
+)
+def read_files(
+    paths: list[str],
+    root: str | Path | None = None,
+    max_bytes: int = DEFAULT_MAX_BYTES,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> dict[str, str]:
+    """Read multiple files and return a mapping of paths to contents."""
+    results = {}
+    for path in paths:
+        try:
+            content = read_file(path, root, max_bytes, allow_outside_root, state)
+            results[path] = content
+        except Exception as exc:
+            results[path] = f"Error reading file: {exc}"
+    return results
+
+
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
+@tool_guards(ToolGuard.TEST_OVERWRITE)
+@tool_contexts(ToolContext.FILESYSTEM)
+@tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.DOCUMENTATION)
+def write_files(
+    files: list[dict],
+    root: str | Path | None = None,
+    create_dirs: bool = True,
+    allow_outside_root: bool = False,
+    state: AgentState | None = None,
+) -> dict[str, str]:
+    """Write multiple files. Each dict in files must have 'path' and 'content' keys."""
+    results = {}
+    for file_spec in files:
+        if not isinstance(file_spec, dict):
+            results[str(file_spec)] = "Error: file spec must be a dict with 'path' and 'content'"
+            continue
+        path = file_spec.get("path")
+        content = file_spec.get("content")
+        if not path:
+            results["unknown"] = "Error: missing 'path' in file spec"
+            continue
+        if content is None:
+            results[path] = "Error: missing 'content' in file spec"
+            continue
+        try:
+            result = write_file(path, content, root, create_dirs, allow_outside_root, state)
+            results[path] = result
+        except Exception as exc:
+            results[path] = f"Error writing file: {exc}"
+    return results
