@@ -88,6 +88,9 @@ from codur.tools.validation import (
     run_python_file,
     run_pytest,
 )
+from codur.tools.verification_response import (
+    build_verification_response,
+)
 from codur.tools.ast_utils import (
     find_function_lines,
     find_class_lines,
@@ -184,6 +187,7 @@ __all__ = [
     "validate_python_syntax",
     "run_python_file",
     "run_pytest",
+    "build_verification_response",
     "find_function_lines",
     "find_class_lines",
     "find_method_lines",

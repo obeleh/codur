@@ -13,6 +13,7 @@ class TaskType(Enum):
     CODE_FIX = "code_fix"
     CODE_GENERATION = "code_generation"
     CODE_VALIDATION = "code_validation"
+    RESULT_VERIFICATION = "result_verification"  # For verification agent response tools (build_verification_response)
     DOCUMENTATION = "documentation"
     EXPLANATION = "explanation"
     COMPLEX_REFACTOR = "complex_refactor"

@@ -13,7 +13,13 @@ import yaml
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
+from codur.tools.tool_annotations import (
+    ToolContext,
+    ToolSideEffect,
+    tool_contexts,
+    tool_scenarios,
+    tool_side_effects,
+)
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.validation import validate_file_access
@@ -57,6 +63,7 @@ def read_json(
         return json.load(handle)
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
 def write_json(
@@ -76,6 +83,7 @@ def write_json(
     return f"Wrote JSON to {target}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def set_json_value(
@@ -123,6 +131,7 @@ def read_yaml(
         return yaml.safe_load(handle)
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
 def write_yaml(
@@ -140,6 +149,7 @@ def write_yaml(
     return f"Wrote YAML to {target}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def set_yaml_value(
@@ -190,6 +200,7 @@ def read_ini(
     return data
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
 def write_ini(
@@ -209,6 +220,7 @@ def write_ini(
     return f"Wrote INI to {target}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def set_ini_value(

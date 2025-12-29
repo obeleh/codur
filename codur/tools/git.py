@@ -11,7 +11,13 @@ import pygit2
 from codur.config import CodurConfig
 from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS, TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
+from codur.tools.tool_annotations import (
+    ToolContext,
+    ToolSideEffect,
+    tool_contexts,
+    tool_scenarios,
+    tool_side_effects,
+)
 from codur.utils.path_utils import resolve_root, resolve_path
 from codur.utils.text_helpers import truncate_chars
 from codur.utils.validation import require_tool_permission
@@ -242,6 +248,7 @@ def git_log(
     return commits
 
 
+@tool_side_effects(ToolSideEffect.STATE_CHANGE)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def git_stage_files(
@@ -294,6 +301,7 @@ def git_stage_files(
     }
 
 
+@tool_side_effects(ToolSideEffect.STATE_CHANGE)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def git_stage_all(
     root: str | Path | None = None,
@@ -313,6 +321,7 @@ def git_stage_all(
     return {"staged": True}
 
 
+@tool_side_effects(ToolSideEffect.STATE_CHANGE)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def git_commit(
     message: str,

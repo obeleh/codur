@@ -2,7 +2,9 @@
 
 import inspect
 from typing import Any, get_args, get_origin, get_type_hints
-from codur.tools.registry import list_tool_directory, get_tool_by_name
+from codur.tools.registry import list_tools_for_tasks, get_tool_by_name
+from codur.constants import TaskType
+from codur.tools.tool_annotations import ToolSideEffect
 
 
 # Internal parameters to filter out (not exposed to API)
@@ -183,24 +185,50 @@ def function_to_json_schema(func: callable) -> dict:
     }
 
 
-def get_function_schemas(tool_names: list[str] | None = None) -> list[dict]:
-    """
-    Get JSON schemas for all tools or specific subset.
+def get_function_schemas(
+    task_types: list[TaskType] | TaskType | None = None,
+    *,
+    exclude_task_types: list[TaskType] | TaskType | None = None,
+    exclude_side_effects: list[ToolSideEffect] | ToolSideEffect | None = None,
+    include_unannotated: bool = False,
+) -> list[dict]:
+    """Get JSON schemas for tools, with optional TaskType and side effect filtering.
 
     Args:
-        tool_names: Optional list of tool names to include. If None, returns all tools.
+        task_types: Include tools with these TaskTypes. If None, includes all (subject to exclusions).
+        exclude_task_types: Exclude tools with these TaskTypes.
+        exclude_side_effects: Exclude tools with these side effects.
+        include_unannotated: Include tools without TaskType annotations.
 
     Returns:
         List of JSON schemas compatible with LangChain's bind_tools()
 
-    Example:
+    Examples:
         # Get all tools
         schemas = get_function_schemas()
 
-        # Get specific tools only
-        schemas = get_function_schemas(["read_file", "replace_function", "write_file"])
+        # Get CODE_VALIDATION tools only
+        schemas = get_function_schemas(TaskType.CODE_VALIDATION)
+
+        # Get verification-safe tools (no file mutations)
+        schemas = get_function_schemas(
+            task_types=[TaskType.CODE_VALIDATION, TaskType.FILE_OPERATION],
+            exclude_side_effects=ToolSideEffect.FILE_MUTATION
+        )
+
+        # Get all tools except those that execute code
+        schemas = get_function_schemas(
+            exclude_side_effects=ToolSideEffect.CODE_EXECUTION,
+            include_unannotated=True
+        )
     """
-    tools = list_tool_directory()
+    # Use list_tools_for_tasks for filtering
+    tools = list_tools_for_tasks(
+        task_types=task_types,
+        exclude_task_types=exclude_task_types,
+        exclude_side_effects=exclude_side_effects,
+        include_unannotated=include_unannotated,
+    )
     schemas = []
 
     for tool in tools:
@@ -208,10 +236,6 @@ def get_function_schemas(tool_names: list[str] | None = None) -> list[dict]:
             continue
 
         tool_name = tool["name"]
-
-        # Filter by tool_names if provided
-        if tool_names is not None and tool_name not in tool_names:
-            continue
 
         # Get the actual function from registry
         func = get_tool_by_name(tool_name)

@@ -29,6 +29,7 @@ This document explains how Codur works at a high level and how to make changes s
 
 - `AGENTIC_LOGIC.md` for the full planner and execution flow.
 - `CODING.md` for the coding agent tool loop and guardrails.
+- `codur/utils/README.md` for preferred shared utilities and agent helpers.
 - `codur/graph/execution/README.md` for execution, delegation, and review nodes.
 - `codur/tools/README.md` for tool registry and authoring guidance.
 - `codur/graph/planning/injectors/README.md` for language-specific tool injectors.

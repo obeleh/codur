@@ -12,7 +12,7 @@ from mcp import ClientSession, StdioServerParameters, stdio_client, types
 from codur.config import CodurConfig
 from codur.constants import TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolSideEffect, tool_scenarios, tool_side_effects
 
 
 def _run(coro):
@@ -53,6 +53,7 @@ async def _with_session(config: CodurConfig, server: str, fn):
         return await fn(session)
 
 
+@tool_side_effects(ToolSideEffect.NETWORK)
 @tool_scenarios(TaskType.WEB_SEARCH, TaskType.EXPLANATION)
 def list_mcp_tools(
     server: str,
@@ -67,6 +68,7 @@ def list_mcp_tools(
     return _run(_with_session(config, server, _list))
 
 
+@tool_side_effects(ToolSideEffect.NETWORK)
 @tool_scenarios(TaskType.WEB_SEARCH, TaskType.EXPLANATION)
 def call_mcp_tool(
     server: str,
@@ -83,6 +85,7 @@ def call_mcp_tool(
     return _run(_with_session(config, server, _call))
 
 
+@tool_side_effects(ToolSideEffect.NETWORK)
 @tool_scenarios(TaskType.WEB_SEARCH, TaskType.EXPLANATION)
 def list_mcp_resources(
     server: str,
@@ -97,6 +100,7 @@ def list_mcp_resources(
     return _run(_with_session(config, server, _list))
 
 
+@tool_side_effects(ToolSideEffect.NETWORK)
 @tool_scenarios(TaskType.WEB_SEARCH, TaskType.EXPLANATION)
 def list_mcp_resource_templates(
     server: str,
@@ -111,6 +115,7 @@ def list_mcp_resource_templates(
     return _run(_with_session(config, server, _list))
 
 
+@tool_side_effects(ToolSideEffect.NETWORK)
 @tool_scenarios(TaskType.WEB_SEARCH, TaskType.EXPLANATION)
 def read_mcp_resource(
     server: str,

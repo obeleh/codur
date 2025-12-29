@@ -8,7 +8,7 @@ import inspect
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import tool_scenarios
+from codur.tools.tool_annotations import ToolSideEffect, tool_scenarios, tool_side_effects
 
 try:
     from ddgs import DDGS
@@ -16,6 +16,7 @@ except ImportError:  # pragma: no cover - optional dependency
     DDGS = None
 
 
+@tool_side_effects(ToolSideEffect.NETWORK)
 @tool_scenarios(TaskType.WEB_SEARCH)
 def duckduckgo_search(
     query: str,

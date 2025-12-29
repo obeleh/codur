@@ -9,7 +9,13 @@ from typing import Optional
 from codur.config import CodurConfig
 from codur.constants import DEFAULT_MAX_BYTES, TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
+from codur.tools.tool_annotations import (
+    ToolContext,
+    ToolSideEffect,
+    tool_contexts,
+    tool_scenarios,
+    tool_side_effects,
+)
 from codur.utils.config_helpers import get_cli_timeout
 from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.path_utils import resolve_path, resolve_root
@@ -48,6 +54,7 @@ def validate_python_syntax(code: str) -> tuple[bool, Optional[str]]:
         return (False, f"Parse error: {str(e)}")
 
 
+@tool_side_effects(ToolSideEffect.CODE_EXECUTION)
 @tool_scenarios(TaskType.CODE_VALIDATION, TaskType.CODE_FIX)
 def run_python_file(
     path: str,
@@ -133,6 +140,7 @@ def run_python_file(
         return f"Error: {str(e)}"
 
 
+@tool_side_effects(ToolSideEffect.CODE_EXECUTION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_VALIDATION, TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def run_pytest(

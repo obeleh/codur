@@ -12,7 +12,15 @@ import textwrap
 from codur.constants import TaskType
 from codur.tools.filesystem import read_file, replace_lines, write_file, inject_lines
 from codur.tools.ast_utils import find_function_lines, find_class_lines, find_method_lines
-from codur.tools.tool_annotations import ToolContext, ToolGuard, tool_contexts, tool_guards, tool_scenarios
+from codur.tools.tool_annotations import (
+    ToolContext,
+    ToolGuard,
+    ToolSideEffect,
+    tool_contexts,
+    tool_guards,
+    tool_scenarios,
+    tool_side_effects,
+)
 from codur.tools.validation import validate_python_syntax
 
 
@@ -28,6 +36,7 @@ def _validate_with_dedent(code: str) -> tuple[bool, Optional[str]]:
     return is_valid, error_msg
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
 def replace_function(
@@ -86,6 +95,7 @@ def replace_function(
         return f"Failed to replace function: {str(e)}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def replace_class(
@@ -141,6 +151,7 @@ def replace_class(
         return f"Failed to replace class: {str(e)}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.COMPLEX_REFACTOR)
 def replace_method(
@@ -198,6 +209,7 @@ def replace_method(
         return f"Failed to replace method: {str(e)}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_guards(ToolGuard.TEST_OVERWRITE)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR)
@@ -252,6 +264,7 @@ def _extract_function_name(new_code: str) -> Optional[str]:
     return None
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_GENERATION, TaskType.CODE_FIX)
 def inject_function(

@@ -14,7 +14,13 @@ from rope.refactor.rename import Rename
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
-from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
+from codur.tools.tool_annotations import (
+    ToolContext,
+    ToolSideEffect,
+    tool_contexts,
+    tool_scenarios,
+    tool_side_effects,
+)
 from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.path_utils import resolve_root, resolve_path
 from codur.utils.validation import (
@@ -123,6 +129,7 @@ def rope_find_definition(
         project.close()
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.COMPLEX_REFACTOR, TaskType.CODE_FIX)
 def rope_rename_symbol(
@@ -181,6 +188,7 @@ def rope_rename_symbol(
         project.close()
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.COMPLEX_REFACTOR)
 def rope_move_module(
@@ -220,6 +228,7 @@ def rope_move_module(
         project.close()
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.COMPLEX_REFACTOR, TaskType.CODE_FIX)
 def rope_extract_method(

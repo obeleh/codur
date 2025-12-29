@@ -37,6 +37,7 @@ def _convert_agent_outcome_to_legacy_format(agent_outcome) -> dict:
     """Convert verification agent outcome to legacy format for backward compatibility.
 
     This adapter ensures backward compatibility with existing review.py logic.
+    Parses verification details from the agent's messages.
 
     Args:
         agent_outcome: Result from verification_agent_node (ExecuteNodeResult)
@@ -44,7 +45,12 @@ def _convert_agent_outcome_to_legacy_format(agent_outcome) -> dict:
     Returns:
         Legacy format dict with "success", "message", etc.
     """
-    details = agent_outcome["agent_outcome"].get("verification_details", {})
+    # Import parser function
+    from .verification_agent import _parse_verification_result
+
+    # Parse verification details from messages
+    messages = agent_outcome.get("messages", [])
+    details = _parse_verification_result(messages, None)
 
     return {
         "success": details.get("passed", False),
@@ -140,7 +146,13 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         if verification_result["success"]:
             if is_verbose(state):
                 console.print(f"[green]✓ Verification passed![/green]")
-                console.print(f"[dim]{verification_result['message']}[/dim]")
+                # Decode escape sequences for readable output
+                message = verification_result['message']
+                try:
+                    message = message.encode().decode('unicode_escape')
+                except (UnicodeDecodeError, AttributeError):
+                    pass  # Keep original if decode fails
+                console.print(f"[dim]{message}[/dim]")
             return {
                 "final_response": result,
                 "next_action": ACTION_END,
@@ -187,7 +199,13 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                     console.print(f"[yellow]⚠ Verification failed - routing back to planning for fresh approach[/yellow]")
                 else:
                     console.print(f"[yellow]⚠ Verification failed - will retry with coding agent[/yellow]")
-                console.print(f"[dim]{verification_result['message'][:200]}[/dim]")
+                # Decode escape sequences for readable output
+                fail_message = verification_result['message'][:200]
+                try:
+                    fail_message = fail_message.encode().decode('unicode_escape')
+                except (UnicodeDecodeError, AttributeError):
+                    pass  # Keep original if decode fails
+                console.print(f"[dim]{fail_message}[/dim]")
 
             # Build a structured error message for the agent
             error_parts = ["Verification failed: Output does not match expected."]

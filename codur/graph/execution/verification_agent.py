@@ -1,7 +1,4 @@
 """Dedicated verification node for the codur-verification agent."""
-import re
-from typing import Any
-
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from rich.console import Console
 
@@ -13,12 +10,16 @@ from codur.graph.state_operations import (
     get_llm_calls,
     get_messages,
     is_verbose,
+    add_messages,
 )
+from codur.graph.planning.json_parser import JSONResponseParser
 from codur.tools.schema_generator import get_function_schemas
+from codur.tools.tool_annotations import ToolSideEffect
 from codur.utils.llm_helpers import (
     ShortenableSystemMessage,
     create_and_invoke_with_tool_support,
 )
+
 
 """
 NOTE:
@@ -31,20 +32,6 @@ NOTE:
 console = Console()
 
 
-# Whitelist of verification-relevant tools
-ALLOWED_VERIFICATION_TOOLS = {
-    'discover_entry_points',
-    'get_primary_entry_point',
-    'run_python_file',
-    'run_pytest',
-    'validate_python_syntax',
-    'code_quality',
-    'read_file',
-    'read_files',
-    'list_directory',
-}
-
-
 # Build system prompt with available tools
 def _get_system_prompt_with_tools():
     """Build system prompt with available tools listed."""
@@ -54,25 +41,27 @@ def _get_system_prompt_with_tools():
     # Get verification-relevant tools
     verification_task_types = [
         TaskType.CODE_VALIDATION,
+        TaskType.RESULT_VERIFICATION,  # Includes build_verification_response
         TaskType.FILE_OPERATION,
         TaskType.EXPLANATION,
     ]
     tools = list_tools_for_tasks(verification_task_types, include_unannotated=False)
-
-    # Filter to whitelisted verification tools
-    verification_tools = [t for t in tools if t['name'] in ALLOWED_VERIFICATION_TOOLS]
 
     # Categorize tools by TaskType for readability
     discovery_tools = []
     execution_tools = []
     analysis_tools = []
     file_tools = []
+    response_tools = []
 
-    for tool in verification_tools:
+    for tool in tools:
         name = tool['name']
         scenarios = tool.get('scenarios', [])
 
-        if TaskType.EXPLANATION in scenarios:
+        if TaskType.RESULT_VERIFICATION in scenarios:
+            # Response tools (build_verification_response)
+            response_tools.append(name)
+        elif TaskType.EXPLANATION in scenarios:
             # Discovery tools (entry points, project structure)
             discovery_tools.append(name)
         elif TaskType.CODE_VALIDATION in scenarios:
@@ -102,6 +91,7 @@ You have access to verification-relevant tools. Call them directly - they will b
 **Execution**: {', '.join(sorted(execution_tools))}
 **Analysis**: {', '.join(sorted(analysis_tools))}
 **File Reading**: {', '.join(sorted(file_tools))}
+**Response**: {', '.join(sorted(response_tools))}
 
 CRITICAL: Only use tools from this list. Do NOT invent or create new tools.
 """
@@ -154,18 +144,48 @@ Do:
 3. **Execute Verification**: Run the necessary tools to gather evidence
 4. **Make Decision**: Based on evidence, explicitly state PASS or FAIL with reasoning
 
-## Output Format
+## Final Step: Report Your Decision
 
-You MUST end your response with one of these formats:
+After executing verification tools and analyzing results, you MUST call the
+`build_verification_response` tool with your decision:
 
-**VERIFICATION: PASS**
-Reasoning: [Explain what evidence supports success - be specific about what you checked and what the results were]
+**For PASS**:
+```
+build_verification_response(
+    passed=True,
+    reasoning="Explain what evidence supports success - be specific about what you checked and what the results were"
+)
+```
 
-**VERIFICATION: FAIL**
-Reasoning: [Explain what evidence shows failure - be specific about the mismatch or error]
-Expected: [What was expected based on the original request]
-Actual: [What was observed from tool execution]
-Suggestions: [Specific, actionable advice on how to fix the issue]
+Example:
+```
+build_verification_response(
+    passed=True,
+    reasoning="All tests in test_main.py passed. Executed main.py successfully with exit code 0."
+)
+```
+
+**For FAIL**:
+```
+build_verification_response(
+    passed=False,
+    reasoning="Explain what evidence shows failure - be specific about the mismatch",
+    expected="What was expected based on the original request",
+    actual="What was observed from tool execution",
+    suggestions="Specific, actionable advice on how to fix the issue"
+)
+```
+
+Example:
+```
+build_verification_response(
+    passed=False,
+    reasoning="Test case_2 failed: expected output '5' but got '6'",
+    expected="Output: 5",
+    actual="Output: 6",
+    suggestions="Check the factorial formula - should be n + (n-1)! not n * (n-1)!"
+)
+```
 
 ## Important Notes
 
@@ -185,42 +205,23 @@ VERIFICATION_AGENT_SYSTEM_PROMPT_SUMMARY = (
 )
 
 
-def _get_verification_tools() -> list[dict[str, Any]]:
-    """Get tools relevant to verification tasks.
-
-    Returns whitelisted verification-relevant tools only.
-    """
-    from codur.tools.registry import list_tools_for_tasks
-    from codur.constants import TaskType
-
-    # Verification-relevant task types
-    verification_task_types = [
-        TaskType.CODE_VALIDATION,
-        TaskType.FILE_OPERATION,
-        TaskType.EXPLANATION,  # For discovery tools
-    ]
-
-    all_tools = list_tools_for_tasks(verification_task_types, include_unannotated=False)
-
-    # Filter to whitelisted verification tools
-    return [t for t in all_tools if t['name'] in ALLOWED_VERIFICATION_TOOLS]
-
-
 def verification_agent_node(
     state: AgentState,
-    config: CodurConfig
+    config: CodurConfig,
+    recursion_depth: int = 0
 ) -> ExecuteNodeResult:
     """Run verification agent to determine if implementation satisfies requirements.
 
     This agent:
     1. Analyzes original request to infer success criteria
     2. Chooses appropriate verification strategy (tests, execution, static analysis)
-    3. Executes verification tools
+    3. Executes verification tools (with recursive tool loop up to 3 iterations)
     4. Returns structured PASS/FAIL result with evidence
 
     Args:
         state: Current graph state with message history
         config: Runtime configuration
+        recursion_depth: Current recursion depth for tool execution loop (default: 0)
 
     Returns:
         ExecuteNodeResult with verification outcome
@@ -234,13 +235,14 @@ def verification_agent_node(
     # Build verification prompt with original request context
     prompt = _build_verification_prompt(get_messages(state))
 
-    # Get verification-specific tools
-    verification_tools = _get_verification_tools()
-    tool_schemas = get_function_schemas()
-
-    # Filter to only verification tools
-    verification_tool_names = {t['name'] for t in verification_tools}
-    filtered_schemas = [s for s in tool_schemas if s.get('name') in verification_tool_names]
+    # Get only safe, read-only tools (exclude file mutations and state changes)
+    tool_schemas = get_function_schemas(
+        exclude_side_effects=[
+            ToolSideEffect.FILE_MUTATION,  # No modifying files
+            ToolSideEffect.STATE_CHANGE,   # No git/env changes
+        ],
+        include_unannotated=True,  # Include tools without side effect annotations
+    )
 
     messages = [
         ShortenableSystemMessage(
@@ -254,7 +256,7 @@ def verification_agent_node(
         new_messages, execution_result = create_and_invoke_with_tool_support(
             config,
             messages,
-            filtered_schemas,
+            tool_schemas,
             profile_name=config.llm.default_profile,
             temperature=0.0,  # Low temperature for consistent verification
             invoked_by="verification.primary",
@@ -263,36 +265,52 @@ def verification_agent_node(
     except Exception as exc:
         if verbose:
             console.log(f"[yellow]Verification invocation failed: {exc}[/yellow]")
-        # Fallback: assume failure with error message
+        # Fallback: create error message with VERIFICATION: FAIL format
+        error_msg = AIMessage(content=f"""**VERIFICATION: FAIL**
+Reasoning: Verification agent encountered an error: {str(exc)}
+Expected: Successful verification execution
+Actual: Exception during verification
+Suggestions: Check agent configuration and tool availability""")
+
         return {
             "agent_outcome": {
                 "agent": agent_name,
                 "result": f"Verification error: {str(exc)}",
                 "status": "error",
-                "verification_details": {
-                    "passed": False,
-                    "reasoning": f"Verification error: {str(exc)}",
-                    "raw_response": "",
-                }
             },
-            "messages": [],
+            "messages": [error_msg],
             "llm_calls": get_llm_calls(state),
         }
+
+    # Check if build_verification_response was called (final response)
+    is_final_response = any(
+        result.get("tool") == "build_verification_response"
+        for result in (execution_result.results or [])
+    )
+
+    # If tools were called (but not final response), recurse to let agent process results
+    if execution_result.results and recursion_depth < 3 and not is_final_response:
+        # Inject messages into state for next iteration
+        add_messages(state, new_messages)
+
+        # Recurse to let agent see tool results and make final decision
+        nested_outcome = verification_agent_node(state, config, recursion_depth + 1)
+        nested_outcome["messages"] = new_messages + nested_outcome["messages"]
+        return nested_outcome
 
     # Parse verification result from agent response
     verification_outcome = _parse_verification_result(new_messages, execution_result)
 
-    if verbose:
-        status_str = "[green]PASS[/green]" if verification_outcome.get("passed") else "[red]FAIL[/red]"
-        console.print(f"[bold cyan]Verification result: {status_str}[/bold cyan]")
-        console.print(f"[dim]{verification_outcome.get('reasoning', 'No reasoning')[:200]}...[/dim]")
+    # Don't print result here - let review.py handle all verification output
+    # This avoids duplicate messages
 
+    # Don't store verification_details in agent_outcome (not part of schema)
+    # review.py will parse verification result from messages instead
     return {
         "agent_outcome": {
             "agent": agent_name,
             "result": verification_outcome.get("reasoning", "No reasoning provided"),
             "status": "success" if verification_outcome.get("passed") else "failed",
-            "verification_details": verification_outcome,
         },
         "messages": new_messages,
         "llm_calls": get_llm_calls(state),
@@ -362,11 +380,10 @@ def _build_verification_prompt(messages) -> str:
 
 
 def _parse_verification_result(messages, execution_result) -> dict:
-    """Parse verification outcome from agent messages.
+    """Parse verification outcome from tool call or agent messages.
 
-    Looks for:
-    - **VERIFICATION: PASS** or **VERIFICATION: FAIL** markers
-    - Reasoning, Expected, Actual, Suggestions fields
+    Looks for build_verification_response tool call in execution results.
+    Falls back to JSON parsing if tool call not found.
 
     Returns:
         {
@@ -378,7 +395,24 @@ def _parse_verification_result(messages, execution_result) -> dict:
             "raw_response": str,
         }
     """
-    # Combine all AI messages into one response
+    # Check if build_verification_response was called
+    if execution_result and execution_result.results:
+        for result in execution_result.results:
+            if result.get("tool") == "build_verification_response":
+                args = result.get("args", {})
+                # Get boolean value directly from args
+                passed = args.get("passed", False)
+
+                return {
+                    "passed": bool(passed),
+                    "reasoning": args.get("reasoning", "No reasoning provided"),
+                    "expected": args.get("expected"),
+                    "actual": args.get("actual"),
+                    "suggestions": args.get("suggestions"),
+                    "raw_response": str(args),
+                }
+
+    # Fallback: try JSON parsing for backward compatibility
     ai_messages = [m for m in messages if isinstance(m, AIMessage)]
     if not ai_messages:
         return {
@@ -389,36 +423,25 @@ def _parse_verification_result(messages, execution_result) -> dict:
 
     full_response = "\n".join(m.content for m in ai_messages)
 
-    # Parse structured output
-    passed = "VERIFICATION: PASS" in full_response
-    failed = "VERIFICATION: FAIL" in full_response
+    # Try to extract JSON from response using JSONResponseParser
+    parser = JSONResponseParser()
+    json_obj = parser.parse(full_response)
 
-    if not passed and not failed:
-        # Agent didn't follow format - default to fail
+    if json_obj:
+        # Parse JSON format
+        verification = json_obj.get("verification", "").upper()
         return {
-            "passed": False,
-            "reasoning": f"Verification agent did not provide explicit PASS/FAIL decision. Response: {full_response[:200]}...",
+            "passed": verification == "PASS",
+            "reasoning": json_obj.get("reasoning", "No reasoning provided"),
+            "expected": json_obj.get("expected"),
+            "actual": json_obj.get("actual"),
+            "suggestions": json_obj.get("suggestions"),
             "raw_response": full_response,
         }
 
-    # Extract fields using simple parsing
-    reasoning = _extract_field(full_response, "Reasoning:")
-    expected = _extract_field(full_response, "Expected:")
-    actual = _extract_field(full_response, "Actual:")
-    suggestions = _extract_field(full_response, "Suggestions:")
-
+    # Final fallback
     return {
-        "passed": passed,
-        "reasoning": reasoning or "No reasoning provided",
-        "expected": expected,
-        "actual": actual,
-        "suggestions": suggestions,
+        "passed": False,
+        "reasoning": f"Verification agent did not call build_verification_response tool or provide JSON. Response: {full_response[:200]}...",
         "raw_response": full_response,
     }
-
-
-def _extract_field(text: str, field_name: str) -> str | None:
-    """Extract content after field marker until next field or end."""
-    pattern = rf"{re.escape(field_name)}\s*(.+?)(?=\n(?:Reasoning:|Expected:|Actual:|Suggestions:|\*\*VERIFICATION:)|$)"
-    match = re.search(pattern, text, re.DOTALL)
-    return match.group(1).strip() if match else None

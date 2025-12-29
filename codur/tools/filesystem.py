@@ -22,7 +22,15 @@ from codur.utils.ignore_utils import (
     should_respect_gitignore,
 )
 from codur.utils.validation import validate_file_access
-from codur.tools.tool_annotations import ToolContext, ToolGuard, tool_contexts, tool_guards, tool_scenarios
+from codur.tools.tool_annotations import (
+    ToolContext,
+    ToolGuard,
+    ToolSideEffect,
+    tool_contexts,
+    tool_guards,
+    tool_scenarios,
+    tool_side_effects,
+)
 
 def _filter_dirnames(
     *,
@@ -103,6 +111,7 @@ def read_file(
     return data
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_guards(ToolGuard.TEST_OVERWRITE)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.DOCUMENTATION)
@@ -122,6 +131,7 @@ def write_file(
     return f"Wrote {len(content)} bytes to {target}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.DOCUMENTATION)
 def append_file(
@@ -138,6 +148,7 @@ def append_file(
     return f"Appended {len(content)} bytes to {target}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
 def delete_file(
@@ -151,6 +162,7 @@ def delete_file(
     return f"Deleted {target}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
 def copy_file(
@@ -169,6 +181,7 @@ def copy_file(
     return f"Copied {source_path} to {destination_path}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
 def move_file(
@@ -187,6 +200,7 @@ def move_file(
     return f"Moved {source_path} to {destination_path}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
 def copy_file_to_dir(
@@ -206,6 +220,7 @@ def copy_file_to_dir(
     return f"Copied {source_path} to {destination_path}"
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
 def move_file_to_dir(
@@ -350,6 +365,7 @@ def search_files(
     return results
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
 def replace_in_file(
@@ -402,6 +418,7 @@ def line_count(
     return {"path": str(target), "lines": count}
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
 def inject_lines(
@@ -435,6 +452,7 @@ def inject_lines(
     return {"path": str(target), "line": line, "inserted_lines": len(insert_lines)}
 
 
+@tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.COMPLEX_REFACTOR, TaskType.DOCUMENTATION)
 def replace_lines(
