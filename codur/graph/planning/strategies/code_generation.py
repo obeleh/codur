@@ -95,6 +95,7 @@ class CodeGenerationStrategy:
             iterations=iterations,
             verbose=verbose,
             context_message="Reading {file_path} for context, routing decision in Phase 2",
+            selected_agent="agent:codur-coding",
         )
 
     def build_planning_prompt(

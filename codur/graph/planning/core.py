@@ -8,6 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
+from codur.constants import TaskType
 from codur.graph.state import AgentState
 from codur.graph.node_types import PlanNodeResult
 from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose
@@ -314,7 +315,8 @@ class PlanningOrchestrator:
         ):
             candidate = select_file_from_tool_results(messages)
             if candidate:
-                return _with_llm_calls({
+                coding_tasks = {TaskType.CODE_FIX, TaskType.CODE_GENERATION}
+                result = {
                     "next_action": "tool",
                     "tool_calls": [{"tool": "read_file", "args": {"path": candidate}}],
                     "iterations": iterations + 1,
@@ -323,7 +325,10 @@ class PlanningOrchestrator:
                         "task_type": classification.task_type.value,
                         "file_discovery": candidate,
                     },
-                })
+                }
+                if classification.task_type in coding_tasks:
+                    result["selected_agent"] = "agent:codur-coding"
+                return _with_llm_calls(result)
 
         # If no file hint is available for a change request, list files for discovery.
         last_human_msg = get_last_human_message(messages)
@@ -336,6 +341,7 @@ class PlanningOrchestrator:
             return _with_llm_calls({
                 "next_action": "tool",
                 "tool_calls": [{"tool": "list_files", "args": {}}],
+                "selected_agent": "agent:codur-coding",
                 "iterations": iterations + 1,
                 "llm_debug": {
                     "phase2_resolved": True,

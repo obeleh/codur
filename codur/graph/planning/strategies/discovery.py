@@ -28,6 +28,7 @@ def discover_files_if_needed(
     discovery_message: str = "No file hint detected - listing files",
     selection_message: str = "Selected file from tool results: {candidate}",
     context_message: str = "Reading {file_path} for context",
+    selected_agent: str | None = None,
 ) -> PlanNodeResult | None:
     """Handle the common file discovery pattern.
 
@@ -47,6 +48,7 @@ def discover_files_if_needed(
         discovery_message: Message to print when listing files
         selection_message: Message to print when selecting file (use {candidate})
         context_message: Message to print when reading context (use {file_path})
+        selected_agent: Optional agent to route to after discovery (e.g., "agent:codur-coding")
 
     Returns:
         A PlanNodeResult if discovery action is needed, None otherwise
@@ -57,7 +59,7 @@ def discover_files_if_needed(
     if not tool_results_present and not classification.detected_files:
         if verbose:
             console.print(f"[dim]{discovery_message}[/dim]")
-        return {
+        result: PlanNodeResult = {
             "next_action": "tool",
             "tool_calls": [{"tool": "list_files", "args": {}}],
             "iterations": iterations + 1,
@@ -67,6 +69,9 @@ def discover_files_if_needed(
                 "file_discovery": "list_files",
             },
         }
+        if selected_agent:
+            result["selected_agent"] = selected_agent
+        return result
 
     # 2. Tool results present (likely list_files) -> select and read file
     if tool_results_present and not classification.detected_files and not tool_results_include_read_file(messages):
@@ -74,7 +79,7 @@ def discover_files_if_needed(
         if candidate:
             if verbose:
                 console.print(f"[dim]{selection_message.format(candidate=candidate)}[/dim]")
-            return {
+            result: PlanNodeResult = {
                 "next_action": "tool",
                 "tool_calls": [{"tool": "read_file", "args": {"path": candidate}}],
                 "iterations": iterations + 1,
@@ -84,13 +89,16 @@ def discover_files_if_needed(
                     "file_discovery": candidate,
                 },
             }
+            if selected_agent:
+                result["selected_agent"] = selected_agent
+            return result
 
     # 3. High confidence with files -> read file for context
     if classification.is_confident and not tool_results_present and classification.detected_files:
         file_path = classification.detected_files[0]
         if verbose:
             console.print(f"[dim]{context_message.format(file_path=file_path)}[/dim]")
-        return {
+        result: PlanNodeResult = {
             "next_action": "tool",
             "tool_calls": [{"tool": "read_file", "args": {"path": file_path}}],
             "iterations": iterations + 1,
@@ -100,5 +108,8 @@ def discover_files_if_needed(
                 "discovery_only": True,
             },
         }
+        if selected_agent:
+            result["selected_agent"] = selected_agent
+        return result
 
     return None
