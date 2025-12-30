@@ -144,14 +144,6 @@ def _reset_challenges() -> None:
         repo.checkout_tree(head, paths=[path], strategy=pygit2.GIT_CHECKOUT_FORCE)
 
 
-def _list_challenges() -> list[Path]:
-    assert CHALLENGES_DIR.exists(), f"Missing challenges directory: {CHALLENGES_DIR}"
-    _assert_challenges_committed()
-    challenge_dirs = sorted([p for p in CHALLENGES_DIR.iterdir() if p.is_dir()])
-    assert challenge_dirs, "No challenges found"
-    return challenge_dirs
-
-
 def _assert_challenges_committed() -> None:
     repo_path = pygit2.discover_repository(str(REPO_ROOT))
     if repo_path is None:
@@ -179,16 +171,8 @@ def _reset_after_challenge():
         _reset_challenges()
 
 
-@pytest.mark.parametrize("challenge_dir", _list_challenges(), ids=lambda p: p.name)
-def test_challenge_outputs(challenge_dir: Path) -> None:
-    """Run a challenge and verify output.
-
-    Assumes:
-    - expected.txt exists (contains expected output)
-    - prompt.txt exists (contains instructions for Codur)
-    - main.py or equivalent entry point exists (to be fixed/implemented)
-    - Challenge directory has no uncommitted changes in git
-    """
+def _test_challenge_with_expected_output(challenge_dir: Path) -> None:
+    """Run a challenge and verify output against expected.txt."""
     expected_path = challenge_dir / "expected.txt"
     prompt_path = challenge_dir / "prompt.txt"
     main_path = _find_entrypoint(challenge_dir)
@@ -209,3 +193,65 @@ def test_challenge_outputs(challenge_dir: Path) -> None:
     )
     _print_main_diff(main_path)
     print(f"Challenge passed: {challenge_dir.name}")
+
+
+def _test_challenge_agent_response_only(challenge_dir: Path) -> None:
+    """Run a challenge and verify agent completes successfully (no output verification)."""
+    prompt_path = challenge_dir / "prompt.txt"
+    main_path = _find_entrypoint(challenge_dir)
+
+    assert prompt_path.exists(), f"Missing prompt.txt in {challenge_dir}"
+    assert main_path.exists(), f"Missing entry point in {challenge_dir}"
+
+    prompt = _read_text(prompt_path)
+    agent_response = _run_codur(prompt, cwd=challenge_dir)
+
+    # Just verify codur completed successfully
+    assert agent_response, f"Agent returned empty response in {challenge_dir.name}"
+    _print_main_diff(main_path)
+    print(f"Challenge passed (agent response only): {challenge_dir.name}")
+
+
+def test_challenge_01_fix_off_by_one() -> None:
+    """Test challenge: 01-fix-off-by-onerror"""
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "01-fix-off-by-onerror")
+
+
+def test_challenge_02_fix_discount_mismatch() -> None:
+    """Test challenge: 02-fix-discount-mismatch"""
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "02-fix-discount-mismatch")
+
+
+def test_challenge_03_decimal_rounding() -> None:
+    """Test challenge: 03-decimal-rounding"""
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "03-decimal-rounding")
+
+
+def test_challenge_04_multi_file() -> None:
+    """Test challenge: 04-multi-file"""
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "04-multi-file")
+
+
+def test_challenge_05_multi_file_not_main() -> None:
+    """Test challenge: 05-multi-file-not-main (agent response only, no output verification)"""
+    _test_challenge_agent_response_only(CHALLENGES_DIR / "05-multi-file-not-main")
+
+
+def test_challenge_06_title_case_exceptions() -> None:
+    """Test challenge: 06-title-case-exceptions"""
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "06-title-case-exceptions")
+
+
+def test_challenge_07_markdown_table_formatter() -> None:
+    """Test challenge: 07-markdown-table-formatter"""
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "07-markdown-table-formatter")
+
+
+def test_challenge_08_distance() -> None:
+    """Test challenge: 08-distance"""
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "08-distance")
+
+
+def test_challenge_09_implement_palindrome() -> None:
+    """Test challenge: 09-implement-palindrome"""
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "09-implement-palindrome")

@@ -21,11 +21,9 @@ from codur.graph.state_operations import (
     get_outcome_result,
     get_tool_calls,
     get_error_hashes,
-    was_local_repair_attempted,
     get_first_human_message_content,
 )
 from .verification_agent import verification_agent_node
-from .repair import _attempt_local_repair
 
 console = Console()
 
@@ -133,21 +131,6 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             # Track this error for future checks
             error_history.append(current_error_hash)
 
-            if not was_local_repair_attempted(state):
-                repair_result = _attempt_local_repair(state)
-                if repair_result["success"]:
-                    if is_verbose(state):
-                        console.print(f"[green]✓ Local repair succeeded[/green]")
-                        console.print(f"[dim]{repair_result['message']}[/dim]")
-                    return {
-                        "final_response": repair_result["message"],
-                        "next_action": ACTION_END,
-                        "local_repair_attempted": True,
-                    }
-                if is_verbose(state):
-                    console.print(f"[yellow]⚠ Local repair failed[/yellow]")
-                    console.print(f"[dim]{repair_result['message']}[/dim]")
-
             # Verification failed - decide whether to retry with coding or replan
             # After 3 failed attempts, route back to planning for a fresh approach
             should_replan = iterations >= 3
@@ -164,7 +147,6 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 "final_response": result,
                 "next_action": ACTION_CONTINUE,
                 "messages": messages,
-                "local_repair_attempted": True,
                 "error_hashes": error_history,
             }
 
