@@ -361,19 +361,7 @@ def get_execution_result(execution_result) -> VerificationResult:
     if execution_result and execution_result.results:
         for result in execution_result.results:
             if result.get("tool") == "build_verification_response":
-                args = result.get("args", {})
-                # Get boolean value directly from args
-                passed = args.get("passed", False)
-
-                return {
-                    "passed": bool(passed),
-                    "reasoning": args.get("reasoning", "No reasoning provided"),
-                    "expected": args.get("expected"),
-                    "actual": args.get("actual"),
-                    "suggestions": args.get("suggestions"),
-                    "raw_response": str(args),
-                }
-
+                return result["output"]
 
     # Final fallback
     return {

@@ -62,15 +62,10 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
 
     # If only tools ran (no agent did actual work), continue to let an agent work
     if outcome.get("agent") == "tools":
-        console.log("[pink]TODO REMOVE: Tools-only outcome detected in review_node - this should be handled earlier in the pipeline[/pink]")
-        tool_calls = get_tool_calls(state)
-        if not any(call.get("tool") == "agent_call" for call in tool_calls):
-            if verbose:
-                console.print("[dim]No agent work done yet, continuing...[/dim]")
-            return {
-                "final_response": result,
-                "next_action": ACTION_CONTINUE,
-            }
+        return {
+            "final_response": result,
+            "next_action": ACTION_CONTINUE,
+        }
 
     # Check if this was a bug fix / debug task by looking at original message
     original_task = get_first_human_message_content(state)
