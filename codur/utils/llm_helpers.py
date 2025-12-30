@@ -105,6 +105,16 @@ def create_and_invoke(
     )
 
 
+def is_retryable_error(error_message: str) -> bool:
+    if "Tool call validation failed: tool call validation failed" in error_message:
+        return True
+    if "Parsing failed. The model generated output that could not be parsed" in error_message:
+        return True
+    if "Tool call validation failed: tool call validation failed" in error_message:
+        return True
+    return False
+
+
 def create_and_invoke_with_tool_support(
     config: CodurConfig,
     new_messages: list[BaseMessage],
@@ -162,13 +172,27 @@ def create_and_invoke_with_tool_support(
         )
         messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, only_for_agent=agent_name)
 
-        response = invoke_llm(
-            llm,
-            messages_for_llm,
-            invoked_by=invoked_by,
-            state=state,
-            config=config,
-        )
+        try:
+            response = invoke_llm(
+                llm,
+                messages_for_llm,
+                invoked_by=invoked_by,
+                state=state,
+                config=config,
+            )
+        except Exception as e:
+            if is_retryable_error(str(e)):
+                console.log("[yellow]Retrying LLM invocation due to retryable error...[/yellow]")
+                response = invoke_llm(
+                    llm,
+                    messages_for_llm,
+                    invoked_by=invoked_by,
+                    state=state,
+                    config=config,
+                )
+            else:
+                raise
+
         response_dict = deserialize_tool_calls(response)
         tool_calls = response_dict["tool_calls"]
         new_messages.append(AIMessage(content=json.dumps(response_dict)))
