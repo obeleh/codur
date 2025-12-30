@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from codur.tools.verification_response import build_verification_response
+from codur.tools.verification_response import build_verification_response, VerificationResult
 from codur.constants import TaskType
 from codur.tools.tool_annotations import get_tool_scenarios
 
@@ -18,7 +18,11 @@ class TestBuildVerificationResponse:
             passed=True,
             reasoning="All tests passed successfully"
         )
-        assert result == "Verification response recorded: PASS"
+        assert isinstance(result, VerificationResult)
+        assert result.passed is True
+        assert result.reasoning == "All tests passed successfully"
+        assert result.status == "PASS"
+        assert str(result) == "Verification response recorded: PASS"
 
     def test_fail_response(self):
         """Test FAIL verification response."""
@@ -29,7 +33,14 @@ class TestBuildVerificationResponse:
             actual="Output: 6",
             suggestions="Check the factorial formula"
         )
-        assert result == "Verification response recorded: FAIL"
+        assert isinstance(result, VerificationResult)
+        assert result.passed is False
+        assert result.reasoning == "Test case_2 failed"
+        assert result.expected == "Output: 5"
+        assert result.actual == "Output: 6"
+        assert result.suggestions == "Check the factorial formula"
+        assert result.status == "FAIL"
+        assert str(result) == "Verification response recorded: FAIL"
 
     def test_minimal_pass(self):
         """Test minimal PASS with only required fields."""
@@ -37,7 +48,12 @@ class TestBuildVerificationResponse:
             passed=True,
             reasoning="Verification succeeded"
         )
-        assert "PASS" in result
+        assert result.passed is True
+        assert result.reasoning == "Verification succeeded"
+        assert result.expected is None
+        assert result.actual is None
+        assert result.suggestions is None
+        assert "PASS" in str(result)
 
     def test_optional_fields_none(self):
         """Test that optional fields can be None."""
@@ -48,7 +64,11 @@ class TestBuildVerificationResponse:
             actual=None,
             suggestions=None
         )
-        assert result == "Verification response recorded: PASS"
+        assert result.passed is True
+        assert result.expected is None
+        assert result.actual is None
+        assert result.suggestions is None
+        assert str(result) == "Verification response recorded: PASS"
 
     def test_tool_has_result_verification_annotation(self):
         """Test that tool is annotated with RESULT_VERIFICATION TaskType."""
@@ -64,4 +84,44 @@ class TestBuildVerificationResponse:
             state=None,
             allow_outside_root=True
         )
-        assert result == "Verification response recorded: PASS"
+        assert result.passed is True
+        assert str(result) == "Verification response recorded: PASS"
+
+
+class TestVerificationResult:
+    """Tests for VerificationResult dataclass."""
+
+    def test_status_property_pass(self):
+        """Test status property returns PASS."""
+        result = VerificationResult(passed=True, reasoning="Success")
+        assert result.status == "PASS"
+
+    def test_status_property_fail(self):
+        """Test status property returns FAIL."""
+        result = VerificationResult(passed=False, reasoning="Failed")
+        assert result.status == "FAIL"
+
+    def test_str_representation_pass(self):
+        """Test string representation for PASS."""
+        result = VerificationResult(passed=True, reasoning="Success")
+        assert str(result) == "Verification response recorded: PASS"
+
+    def test_str_representation_fail(self):
+        """Test string representation for FAIL."""
+        result = VerificationResult(passed=False, reasoning="Failed")
+        assert str(result) == "Verification response recorded: FAIL"
+
+    def test_all_fields_populated(self):
+        """Test result with all fields populated."""
+        result = VerificationResult(
+            passed=False,
+            reasoning="Test failed",
+            expected="5",
+            actual="6",
+            suggestions="Fix the formula"
+        )
+        assert result.passed is False
+        assert result.reasoning == "Test failed"
+        assert result.expected == "5"
+        assert result.actual == "6"
+        assert result.suggestions == "Fix the formula"

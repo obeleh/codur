@@ -1,10 +1,29 @@
 """Verification response tool for structured verification results."""
 
-from typing import Any
+from dataclasses import dataclass
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
 from codur.tools.tool_annotations import tool_scenarios
+
+
+@dataclass
+class VerificationResult:
+    """Structured verification result."""
+    passed: bool
+    reasoning: str
+    expected: str | None = None
+    actual: str | None = None
+    suggestions: str | None = None
+
+    @property
+    def status(self) -> str:
+        """Get verification status as string."""
+        return "PASS" if self.passed else "FAIL"
+
+    def __str__(self) -> str:
+        """Return string representation."""
+        return f"Verification response recorded: {self.status}"
 
 
 @tool_scenarios(TaskType.RESULT_VERIFICATION)
@@ -17,7 +36,7 @@ def build_verification_response(
     root: str | None = None,
     state: AgentState | None = None,
     allow_outside_root: bool = False,
-) -> str:
+) -> VerificationResult:
     """Build verification response with structured data.
 
     This tool doesn't execute anything - it captures the verification decision.
@@ -34,7 +53,12 @@ def build_verification_response(
         allow_outside_root: Permission flag (ignored)
 
     Returns:
-        Confirmation message
+        VerificationResult with all verification data
     """
-    status = "PASS" if passed else "FAIL"
-    return f"Verification response recorded: {status}"
+    return VerificationResult(
+        passed=passed,
+        reasoning=reasoning,
+        expected=expected,
+        actual=actual,
+        suggestions=suggestions,
+    )

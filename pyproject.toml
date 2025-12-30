@@ -56,3 +56,26 @@ filterwarnings = [
     "ignore:codecs.open\\(\\) is deprecated:DeprecationWarning",
     "ignore:Delete once deprecated functions are gone:DeprecationWarning",
 ]
+
+[tool.vulture]
+exclude = [
+    "challenges/",
+    "tests/",
+    "codur/tui.py",
+    "*/__pycache__/",
+    "*.pyc",
+]
+ignore_decorators = [
+    "@tool_scenarios",
+    "@tool_side_effects",
+    "@tool_contexts",
+    "@staticmethod",
+    "@classmethod",
+    "@property",
+    "@abstractmethod",
+]
+ignore_names = [
+    "test_*",  # Ignore test functions
+]
+min_confidence = 65
+paths = ["codur/"]
