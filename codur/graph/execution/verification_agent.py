@@ -14,6 +14,7 @@ from codur.graph.state_operations import (
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.tools.tool_annotations import ToolSideEffect
+from codur.tools.verification_response import VerificationResult
 from codur.utils.llm_helpers import (
     ShortenableSystemMessage,
     create_and_invoke_with_tool_support,
@@ -301,7 +302,7 @@ Suggestions: Check agent configuration and tool availability""")
         return nested_outcome
 
     # Parse verification result from agent response
-    verification_outcome = _parse_verification_result(new_messages, execution_result)
+    verification_outcome = get_execution_result(execution_result)
     return {
         "agent_outcome": {
             "agent": agent_name,
@@ -340,7 +341,7 @@ def _build_verification_prompt(messages) -> str:
     """
 
 
-def _parse_verification_result(messages, execution_result) -> dict:
+def get_execution_result(execution_result) -> VerificationResult:
     """Parse verification outcome from tool call or agent messages.
 
     Looks for build_verification_response tool call in execution results.

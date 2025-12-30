@@ -95,7 +95,7 @@ def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
 
     if result:
         if is_verbose(state):
-            console.print("[green]✓ Pattern resolved via strategy[/green]")
+            console.print(f"[green]✓ Pattern resolved via strategy[/green] {result}")
         return result
 
     # No pattern match - pass to next phase
