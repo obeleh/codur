@@ -55,40 +55,10 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     iterations = get_iterations(state)
     max_iterations = config.runtime.max_iterations
 
-    # If we just ran tools to gather context (e.g., read_file), route to coding agent.
-    # BUT: If agent_call was also executed, skip this routing - the result is the implementation.
-    if outcome.get("agent") == "tools":
-        tool_calls = get_tool_calls(state)
-        has_read_file = any(call.get("tool") == "read_file" for call in tool_calls)
-        has_agent_call = any(call.get("tool") == "agent_call" for call in tool_calls)
-
-        # Only route to coding agent if we read files but didn't call an agent yet
-        if has_read_file and not has_agent_call:
-            if is_verbose(state):
-                tool_names = [call.get("tool") for call in tool_calls if call.get("tool")]
-                tool_label = ", ".join(tool_names) if tool_names else "tool calls"
-                console.print(
-                    f"[dim]Tool calls completed ({tool_label}; auto-injected follow-ups may have run) - "
-                    "delegating to codur-coding[/dim]"
-                )
-
-            return {
-                "final_response": result,
-                "next_action": ACTION_CONTINUE,
-            }
-
     if verbose:
         console.print(f"[dim]Result status: {outcome.get('status', 'unknown')}[/dim]")
         console.print(f"[dim]Result length: {len(result)} chars[/dim]")
         console.print(f"[dim]Iteration: {iterations}/{max_iterations}[/dim]")
-
-    # Check if this was a tool result (file read, etc) - skip verification for those
-    # BUT: If agent_call was executed, it's an implementation result, not just a tool result
-    agent_name = outcome.get("agent", "")
-    tool_calls = get_tool_calls(state)
-    has_agent_call = any(call.get("tool") == "agent_call" for call in tool_calls)
-
-    is_tool_result = (agent_name == "tools" and not has_agent_call) or (isinstance(result, str) and result.startswith("Error") and len(result) < 200)
 
     # Check if this was a bug fix / debug task by looking at original message
     original_task = get_first_human_message_content(state)
@@ -99,8 +69,8 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         "implement", "write", "create", "complete", "build"
     ])
 
-    # Try verification if it's a fix task (but not a tool result) and we haven't exceeded iterations
-    if is_fix_task and not is_tool_result and iterations < max_iterations - 1:  # Leave room for one more attempt
+    # Try verification if it's a fix task and we haven't exceeded iterations
+    if is_fix_task and iterations < max_iterations - 1:
         verification_outcome = verification_agent_node(state, config)
 
         if verification_outcome["agent_outcome"]["status"] == "success":
@@ -156,15 +126,6 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 result_dict["selected_agent"] = None
 
             return result_dict
-
-    # For tool results (file reads, etc), continue back to planning with the result as context
-    if is_tool_result:
-        if is_verbose(state):
-            console.print(f"[dim]Tool result: continuing to planning phase with context[/dim]")
-        return {
-            "final_response": None,
-            "next_action": ACTION_CONTINUE,  # Go back to planning to use this context
-        }
 
     # Accept result if:
     # - Not a fix task
