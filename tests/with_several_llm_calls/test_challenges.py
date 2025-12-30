@@ -253,5 +253,5 @@ def test_challenge_08_distance() -> None:
 
 
 def test_challenge_09_implement_palindrome() -> None:
-    """Test challenge: 09-implement-palindrome"""
-    _test_challenge_with_expected_output(CHALLENGES_DIR / "09-implement-palindrome")
+    """Test challenge: 09-implement-palindrome (pytest verification, not output)"""
+    _test_challenge_agent_response_only(CHALLENGES_DIR / "09-implement-palindrome")

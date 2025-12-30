@@ -68,13 +68,12 @@ class AgentExecutor:
         task = last_message.content if hasattr(last_message, "content") else str(last_message)
 
         try:
-            messages_out = None
             if self.agent_name.startswith("llm:"):
-                # TODO: extract messages_out from llm profile execution
-                result = self._execute_llm_profile(task)
+                messages_out, result = self._execute_llm_profile(task)
             else:
-                result, messages_out = self._execute_agent(task)
+                messages_out, result = self._execute_agent(task)
 
+            assert isinstance(messages_out, list)
             if is_verbose(self.state):
                 console.print("[green]✓ Execution completed successfully[/green]")
 
@@ -85,10 +84,8 @@ class AgentExecutor:
                     "status": "success",
                 },
                 "llm_calls": get_llm_calls(self.state),
+                "messages": messages_out
             }
-            if messages_out:
-                assert isinstance(messages_out, list)
-                dct["messages"] = messages_out
             return dct
         except Exception as exc:
             if isinstance(exc, LLMCallLimitExceeded):
@@ -105,7 +102,7 @@ class AgentExecutor:
                 "llm_calls": get_llm_calls(self.state),
             }
 
-    def _execute_llm_profile(self, task: str) -> str:
+    def _execute_llm_profile(self, task: str) -> tuple[list[BaseMessage], str]:
         profile_name = self.agent_name.split(":", 1)[1]
         if is_verbose(self.state):
             console.print(f"[dim]Using LLM profile: {profile_name}[/dim]")
@@ -121,7 +118,7 @@ class AgentExecutor:
         if is_verbose(self.state):
             console.print(f"[dim]LLM response length: {len(result)} chars[/dim]")
             console.print(f"[dim]LLM response preview: {result[:300]}...[/dim]")
-        return result
+        return [AIMessage(content=result)], result,
 
     def _execute_agent(self, task: str) -> tuple[list[BaseMessage], str]:
         agent_config = self.config.agents.configs.get(self.resolved_agent)
@@ -165,6 +162,7 @@ class AgentExecutor:
         # Wrap agent in tool-using loop for iterative execution
         return self._execute_agent_with_tools(agent, task)
 
+    # TODO: make use of create_and_invoke_with_tool_support
     def _execute_agent_with_tools(self, agent, task: str, max_tool_iterations: int = 5) -> tuple[list[BaseMessage], str]:
         """Execute agent with automatic tool call detection and execution.
 
