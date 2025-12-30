@@ -8,7 +8,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Literal, TypedDict
 
 from codur.graph.state import AgentState
 from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS, TaskType
@@ -31,6 +31,62 @@ from codur.tools.tool_annotations import (
     tool_scenarios,
     tool_side_effects,
 )
+
+class FileWriteResult(TypedDict):
+    action: Literal["write"]
+    path: str
+    bytes_written: int
+    created: bool
+
+
+class FileAppendResult(TypedDict):
+    action: Literal["append"]
+    path: str
+    bytes_written: int
+
+
+class FileDeleteResult(TypedDict):
+    action: Literal["delete"]
+    path: str
+    deleted: bool
+
+
+class FileCopyResult(TypedDict):
+    action: Literal["copy"]
+    source: str
+    destination: str
+
+
+class FileMoveResult(TypedDict):
+    action: Literal["move"]
+    source: str
+    destination: str
+
+
+class FileCopyToDirResult(TypedDict):
+    action: Literal["copy_to_dir"]
+    source: str
+    destination_dir: str
+    destination: str
+
+
+class FileMoveToDirResult(TypedDict):
+    action: Literal["move_to_dir"]
+    source: str
+    destination_dir: str
+    destination: str
+
+
+class BatchWriteFileResult(TypedDict):
+    path: str
+    ok: bool
+    bytes_written: int | None
+    error: str | None
+
+
+class BatchWriteFilesResult(TypedDict):
+    results: list[BatchWriteFileResult]
+
 
 def _filter_dirnames(
     *,
@@ -122,13 +178,19 @@ def write_file(
     create_dirs: bool = True,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> str:
+) -> FileWriteResult:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
+    existed = target.exists()
     if create_dirs:
         target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "w", encoding="utf-8") as handle:
         handle.write(content)
-    return f"Wrote {len(content)} bytes to {target}"
+    return {
+        "action": "write",
+        "path": str(target),
+        "bytes_written": len(content.encode("utf-8")),
+        "created": not existed,
+    }
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -140,12 +202,16 @@ def append_file(
     root: str | Path | None = None,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> str:
+) -> FileAppendResult:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "a", encoding="utf-8") as handle:
         handle.write(content)
-    return f"Appended {len(content)} bytes to {target}"
+    return {
+        "action": "append",
+        "path": str(target),
+        "bytes_written": len(content.encode("utf-8")),
+    }
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -156,10 +222,14 @@ def delete_file(
     root: str | Path | None = None,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> str:
+) -> FileDeleteResult:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.unlink()
-    return f"Deleted {target}"
+    return {
+        "action": "delete",
+        "path": str(target),
+        "deleted": True,
+    }
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -172,13 +242,17 @@ def copy_file(
     create_dirs: bool = True,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> str:
+) -> FileCopyResult:
     source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
     destination_path = resolve_path(destination, root, allow_outside_root=allow_outside_root)
     if create_dirs:
         destination_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source_path, destination_path)
-    return f"Copied {source_path} to {destination_path}"
+    return {
+        "action": "copy",
+        "source": str(source_path),
+        "destination": str(destination_path),
+    }
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -191,13 +265,17 @@ def move_file(
     create_dirs: bool = True,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> str:
+) -> FileMoveResult:
     source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
     destination_path = resolve_path(destination, root, allow_outside_root=allow_outside_root)
     if create_dirs:
         destination_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(source_path), str(destination_path))
-    return f"Moved {source_path} to {destination_path}"
+    return {
+        "action": "move",
+        "source": str(source_path),
+        "destination": str(destination_path),
+    }
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -210,14 +288,19 @@ def copy_file_to_dir(
     create_dirs: bool = True,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> str:
+) -> FileCopyToDirResult:
     source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
     dest_dir_path = resolve_path(destination_dir, root, allow_outside_root=allow_outside_root)
     if create_dirs:
         dest_dir_path.mkdir(parents=True, exist_ok=True)
     destination_path = dest_dir_path / source_path.name
     shutil.copy2(source_path, destination_path)
-    return f"Copied {source_path} to {destination_path}"
+    return {
+        "action": "copy_to_dir",
+        "source": str(source_path),
+        "destination_dir": str(dest_dir_path),
+        "destination": str(destination_path),
+    }
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -230,14 +313,19 @@ def move_file_to_dir(
     create_dirs: bool = True,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> str:
+) -> FileMoveToDirResult:
     source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
     dest_dir_path = resolve_path(destination_dir, root, allow_outside_root=allow_outside_root)
     if create_dirs:
         dest_dir_path.mkdir(parents=True, exist_ok=True)
     destination_path = dest_dir_path / source_path.name
     shutil.move(str(source_path), str(destination_path))
-    return f"Moved {source_path} to {destination_path}"
+    return {
+        "action": "move_to_dir",
+        "source": str(source_path),
+        "destination_dir": str(dest_dir_path),
+        "destination": str(destination_path),
+    }
 
 
 @tool_contexts(ToolContext.SEARCH)
@@ -543,24 +631,49 @@ def write_files(
     create_dirs: bool = True,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> dict[str, str]:
+) -> BatchWriteFilesResult:
     """Write multiple files. Each dict in files must have 'path' and 'content' keys."""
-    results = {}
+    results: list[BatchWriteFileResult] = []
     for file_spec in files:
         if not isinstance(file_spec, dict):
-            results[str(file_spec)] = "Error: file spec must be a dict with 'path' and 'content'"
+            results.append({
+                "path": str(file_spec),
+                "ok": False,
+                "bytes_written": None,
+                "error": "file spec must be a dict with 'path' and 'content'",
+            })
             continue
         path = file_spec.get("path")
         content = file_spec.get("content")
         if not path:
-            results["unknown"] = "Error: missing 'path' in file spec"
+            results.append({
+                "path": "unknown",
+                "ok": False,
+                "bytes_written": None,
+                "error": "missing 'path' in file spec",
+            })
             continue
         if content is None:
-            results[path] = "Error: missing 'content' in file spec"
+            results.append({
+                "path": str(path),
+                "ok": False,
+                "bytes_written": None,
+                "error": "missing 'content' in file spec",
+            })
             continue
         try:
             result = write_file(path, content, root, create_dirs, allow_outside_root, state)
-            results[path] = result
+            results.append({
+                "path": result["path"],
+                "ok": True,
+                "bytes_written": result["bytes_written"],
+                "error": None,
+            })
         except Exception as exc:
-            results[path] = f"Error writing file: {exc}"
-    return results
+            results.append({
+                "path": str(path),
+                "ok": False,
+                "bytes_written": None,
+                "error": f"Error writing file: {exc}",
+            })
+    return {"results": results}

@@ -4,7 +4,7 @@ These tools combine AST analysis with file modification to robustly update code 
 """
 
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional, Any, TypedDict
 import ast
 import re
 import textwrap
@@ -36,6 +36,46 @@ def _validate_with_dedent(code: str) -> tuple[bool, Optional[str]]:
     return is_valid, error_msg
 
 
+class CodeModificationResult(TypedDict):
+    ok: bool
+    operation: str
+    path: str
+    target: str | None
+    message: str
+    error: str | None
+    start_line: int | None
+    end_line: int | None
+    inserted_line: int | None
+    inserted_lines: int | None
+
+
+def _build_result(
+    *,
+    ok: bool,
+    operation: str,
+    path: str,
+    target: str | None,
+    message: str,
+    error: str | None = None,
+    start_line: int | None = None,
+    end_line: int | None = None,
+    inserted_line: int | None = None,
+    inserted_lines: int | None = None,
+) -> CodeModificationResult:
+    return {
+        "ok": ok,
+        "operation": operation,
+        "path": path,
+        "target": target,
+        "message": message,
+        "error": error,
+        "start_line": start_line,
+        "end_line": end_line,
+        "inserted_line": inserted_line,
+        "inserted_lines": inserted_lines,
+    }
+
+
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR)
@@ -46,7 +86,7 @@ def replace_function(
     root: Path | None = None,
     allow_outside_root: bool = False,
     state: Any | None = None,
-) -> str:
+) -> CodeModificationResult:
     """Replace a specific function implementation in a file.
 
     Args:
@@ -67,7 +107,15 @@ def replace_function(
     is_valid, error_msg = _validate_with_dedent(new_code)
     if not is_valid:
         # TODO: Create fallback mechanism that can work with invalid code. Maybe LSP?
-        return f"Invalid Python syntax in replacement code:\n{error_msg}\n\nCode attempted:\n{new_code}"
+        message = f"Invalid Python syntax in replacement code:\n{error_msg}\n\nCode attempted:\n{new_code}"
+        return _build_result(
+            ok=False,
+            operation="replace_function",
+            path=str(path),
+            target=function_name,
+            message=message,
+            error=message,
+        )
 
     try:
         # Read current content to find lines
@@ -75,7 +123,15 @@ def replace_function(
         
         line_range = find_function_lines(content, function_name)
         if not line_range:
-            return f"Could not find function '{function_name}' in {path}"
+            message = f"Could not find function '{function_name}' in {path}"
+            return _build_result(
+                ok=False,
+                operation="replace_function",
+                path=str(path),
+                target=function_name,
+                message=message,
+                error=message,
+            )
         
         start_line, end_line = line_range
         
@@ -90,10 +146,27 @@ def replace_function(
             state=state
         )
         
-        return f"Successfully replaced function '{function_name}' in {path}"
+        message = f"Successfully replaced function '{function_name}' in {path}"
+        return _build_result(
+            ok=True,
+            operation="replace_function",
+            path=str(path),
+            target=function_name,
+            message=message,
+            start_line=start_line,
+            end_line=end_line,
+        )
 
     except Exception as e:
-        return f"Failed to replace function: {str(e)}"
+        message = f"Failed to replace function: {str(e)}"
+        return _build_result(
+            ok=False,
+            operation="replace_function",
+            path=str(path),
+            target=function_name,
+            message=message,
+            error=message,
+        )
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -106,7 +179,7 @@ def replace_class(
     root: Path | None = None,
     allow_outside_root: bool = False,
     state: Any | None = None,
-) -> str:
+) -> CodeModificationResult:
     """Replace a specific class implementation in a file.
 
     Args:
@@ -125,14 +198,30 @@ def replace_class(
 
     is_valid, error_msg = _validate_with_dedent(new_code)
     if not is_valid:
-        return f"Invalid Python syntax in replacement code:\n{error_msg}\n\nCode attempted:\n{new_code}"
+        message = f"Invalid Python syntax in replacement code:\n{error_msg}\n\nCode attempted:\n{new_code}"
+        return _build_result(
+            ok=False,
+            operation="replace_class",
+            path=str(path),
+            target=class_name,
+            message=message,
+            error=message,
+        )
 
     try:
         content = read_file(path=path, root=root, allow_outside_root=allow_outside_root, state=state)
         
         line_range = find_class_lines(content, class_name)
         if not line_range:
-            return f"Could not find class '{class_name}' in {path}"
+            message = f"Could not find class '{class_name}' in {path}"
+            return _build_result(
+                ok=False,
+                operation="replace_class",
+                path=str(path),
+                target=class_name,
+                message=message,
+                error=message,
+            )
         
         start_line, end_line = line_range
         
@@ -146,10 +235,27 @@ def replace_class(
             state=state
         )
         
-        return f"Successfully replaced class '{class_name}' in {path}"
+        message = f"Successfully replaced class '{class_name}' in {path}"
+        return _build_result(
+            ok=True,
+            operation="replace_class",
+            path=str(path),
+            target=class_name,
+            message=message,
+            start_line=start_line,
+            end_line=end_line,
+        )
 
     except Exception as e:
-        return f"Failed to replace class: {str(e)}"
+        message = f"Failed to replace class: {str(e)}"
+        return _build_result(
+            ok=False,
+            operation="replace_class",
+            path=str(path),
+            target=class_name,
+            message=message,
+            error=message,
+        )
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -163,7 +269,7 @@ def replace_method(
     root: Path | None = None,
     allow_outside_root: bool = False,
     state: Any | None = None,
-) -> str:
+) -> CodeModificationResult:
     """Replace a specific method implementation in a class.
 
     Args:
@@ -183,14 +289,30 @@ def replace_method(
 
     is_valid, error_msg = _validate_with_dedent(new_code)
     if not is_valid:
-        return f"Invalid Python syntax in replacement code:\n{error_msg}\n\nCode attempted:\n{new_code}"
+        message = f"Invalid Python syntax in replacement code:\n{error_msg}\n\nCode attempted:\n{new_code}"
+        return _build_result(
+            ok=False,
+            operation="replace_method",
+            path=str(path),
+            target=f"{class_name}.{method_name}",
+            message=message,
+            error=message,
+        )
 
     try:
         content = read_file(path=path, root=root, allow_outside_root=allow_outside_root, state=state)
         
         line_range = find_method_lines(content, class_name, method_name)
         if not line_range:
-            return f"Could not find method '{class_name}.{method_name}' in {path}"
+            message = f"Could not find method '{class_name}.{method_name}' in {path}"
+            return _build_result(
+                ok=False,
+                operation="replace_method",
+                path=str(path),
+                target=f"{class_name}.{method_name}",
+                message=message,
+                error=message,
+            )
         
         start_line, end_line = line_range
         
@@ -204,10 +326,27 @@ def replace_method(
             state=state
         )
         
-        return f"Successfully replaced method '{class_name}.{method_name}' in {path}"
+        message = f"Successfully replaced method '{class_name}.{method_name}' in {path}"
+        return _build_result(
+            ok=True,
+            operation="replace_method",
+            path=str(path),
+            target=f"{class_name}.{method_name}",
+            message=message,
+            start_line=start_line,
+            end_line=end_line,
+        )
 
     except Exception as e:
-        return f"Failed to replace method: {str(e)}"
+        message = f"Failed to replace method: {str(e)}"
+        return _build_result(
+            ok=False,
+            operation="replace_method",
+            path=str(path),
+            target=f"{class_name}.{method_name}",
+            message=message,
+            error=message,
+        )
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -220,7 +359,7 @@ def replace_file_content(
     root: Path | None = None,
     allow_outside_root: bool = False,
     state: Any | None = None,
-) -> str:
+) -> CodeModificationResult:
     """Replace the entire content of a file (alias for write_file with syntax validation).
 
     Args:
@@ -239,7 +378,15 @@ def replace_file_content(
     if path.endswith(".py"):
         is_valid, error_msg = validate_python_syntax(new_code)
         if not is_valid:
-            return f"Invalid Python syntax:\n{error_msg}\n\nCode attempted:\n{new_code}"
+            message = f"Invalid Python syntax:\n{error_msg}\n\nCode attempted:\n{new_code}"
+            return _build_result(
+                ok=False,
+                operation="replace_file_content",
+                path=str(path),
+                target=None,
+                message=message,
+                error=message,
+            )
 
     try:
         write_file(
@@ -249,9 +396,24 @@ def replace_file_content(
             allow_outside_root=allow_outside_root,
             state=state
         )
-        return f"Successfully replaced file content in {path}"
+        message = f"Successfully replaced file content in {path}"
+        return _build_result(
+            ok=True,
+            operation="replace_file_content",
+            path=str(path),
+            target=None,
+            message=message,
+        )
     except Exception as e:
-        return f"Failed to replace file content: {str(e)}"
+        message = f"Failed to replace file content: {str(e)}"
+        return _build_result(
+            ok=False,
+            operation="replace_file_content",
+            path=str(path),
+            target=None,
+            message=message,
+            error=message,
+        )
 
 
 def _extract_function_name(new_code: str) -> Optional[str]:
@@ -275,7 +437,7 @@ def inject_function(
     root: Path | None = None,
     allow_outside_root: bool = False,
     state: Any | None = None,
-) -> str:
+) -> CodeModificationResult:
     """Insert a new top-level function into a file.
 
     Args:
@@ -294,19 +456,51 @@ def inject_function(
 
     is_valid, error_msg = _validate_with_dedent(new_code)
     if not is_valid:
-        return f"Invalid Python syntax in injected code:\n{error_msg}\n\nCode attempted:\n{new_code}"
+        message = f"Invalid Python syntax in injected code:\n{error_msg}\n\nCode attempted:\n{new_code}"
+        return _build_result(
+            ok=False,
+            operation="inject_function",
+            path=str(path),
+            target=function_name or _extract_function_name(new_code),
+            message=message,
+            error=message,
+        )
 
     inferred_name = _extract_function_name(new_code)
     target_name = function_name or inferred_name
     if not target_name:
-        return "Injected code must define a top-level function."
+        message = "Injected code must define a top-level function."
+        return _build_result(
+            ok=False,
+            operation="inject_function",
+            path=str(path),
+            target=None,
+            message=message,
+            error=message,
+        )
     if function_name and inferred_name and function_name != inferred_name:
-        return f"Injected function name '{inferred_name}' does not match '{function_name}'."
+        message = f"Injected function name '{inferred_name}' does not match '{function_name}'."
+        return _build_result(
+            ok=False,
+            operation="inject_function",
+            path=str(path),
+            target=function_name,
+            message=message,
+            error=message,
+        )
 
     try:
         content = read_file(path=path, root=root, allow_outside_root=allow_outside_root, state=state)
         if find_function_lines(content, target_name):
-            return f"Function '{target_name}' already exists in {path}"
+            message = f"Function '{target_name}' already exists in {path}"
+            return _build_result(
+                ok=False,
+                operation="inject_function",
+                path=str(path),
+                target=target_name,
+                message=message,
+                error=message,
+            )
 
         lines = content.splitlines(keepends=True)
         guard_index = None
@@ -318,7 +512,7 @@ def inject_function(
 
         insert_line = (guard_index + 1) if guard_index is not None else (len(lines) + 1)
         snippet = new_code.rstrip("\n") + "\n\n"
-        inject_lines(
+        insert_result = inject_lines(
             path=path,
             line=insert_line,
             content=snippet,
@@ -326,6 +520,23 @@ def inject_function(
             allow_outside_root=allow_outside_root,
             state=state,
         )
-        return f"Successfully injected function '{target_name}' into {path}"
+        message = f"Successfully injected function '{target_name}' into {path}"
+        return _build_result(
+            ok=True,
+            operation="inject_function",
+            path=str(path),
+            target=target_name,
+            message=message,
+            inserted_line=insert_result.get("line"),
+            inserted_lines=insert_result.get("inserted_lines"),
+        )
     except Exception as e:
-        return f"Failed to inject function: {str(e)}"
+        message = f"Failed to inject function: {str(e)}"
+        return _build_result(
+            ok=False,
+            operation="inject_function",
+            path=str(path),
+            target=target_name,
+            message=message,
+            error=message,
+        )

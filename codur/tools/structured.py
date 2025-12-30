@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import configparser
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import yaml
 
@@ -23,6 +23,12 @@ from codur.tools.tool_annotations import (
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.validation import validate_file_access
+
+
+class StructuredWriteResult(TypedDict):
+    format: str
+    path: str
+    bytes_written: int
 
 
 def _set_nested_value(data: Any, key_path: str | list[str], value: Any) -> Any:
@@ -74,13 +80,13 @@ def write_json(
     sort_keys: bool = False,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> str:
+) -> StructuredWriteResult:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "w", encoding="utf-8") as handle:
         json.dump(data, handle, indent=indent, sort_keys=sort_keys)
         handle.write("\n")
-    return f"Wrote JSON to {target}"
+    return {"format": "json", "path": str(target), "bytes_written": target.stat().st_size}
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -141,12 +147,12 @@ def write_yaml(
     sort_keys: bool = False,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> str:
+) -> StructuredWriteResult:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "w", encoding="utf-8") as handle:
         yaml.safe_dump(data, handle, sort_keys=sort_keys)
-    return f"Wrote YAML to {target}"
+    return {"format": "yaml", "path": str(target), "bytes_written": target.stat().st_size}
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
@@ -209,7 +215,7 @@ def write_ini(
     root: str | Path | None = None,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> str:
+) -> StructuredWriteResult:
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     parser = configparser.ConfigParser()
@@ -217,7 +223,7 @@ def write_ini(
         parser[section] = {key: str(value) for key, value in values.items()}
     with open(target, "w", encoding="utf-8") as handle:
         parser.write(handle)
-    return f"Wrote INI to {target}"
+    return {"format": "ini", "path": str(target), "bytes_written": target.stat().st_size}
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)

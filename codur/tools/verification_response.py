@@ -1,29 +1,19 @@
 """Verification response tool for structured verification results."""
 
-from dataclasses import dataclass
+from typing import NotRequired, TypedDict
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
 from codur.tools.tool_annotations import tool_scenarios
 
 
-@dataclass
-class VerificationResult:
+class VerificationResult(TypedDict):
     """Structured verification result."""
     passed: bool
     reasoning: str
-    expected: str | None = None
-    actual: str | None = None
-    suggestions: str | None = None
-
-    @property
-    def status(self) -> str:
-        """Get verification status as string."""
-        return "PASS" if self.passed else "FAIL"
-
-    def __str__(self) -> str:
-        """Return string representation."""
-        return f"Verification response recorded: {self.status}"
+    expected: NotRequired[str | None]
+    actual: NotRequired[str | None]
+    suggestions: NotRequired[str | None]
 
 
 @tool_scenarios(TaskType.RESULT_VERIFICATION)

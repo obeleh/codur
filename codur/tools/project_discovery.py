@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 import os
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, TypedDict
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
@@ -21,6 +21,24 @@ from codur.utils.ignore_utils import (
     should_include_hidden,
     should_respect_gitignore,
 )
+
+class EntryPointInfo(TypedDict):
+    path: str
+    priority: int
+    reason: str
+
+
+class EntryPointsResult(TypedDict):
+    ok: bool
+    entries: list[EntryPointInfo]
+    primary: str | None
+    message: str
+
+
+class PrimaryEntryPointResult(TypedDict):
+    ok: bool
+    path: str | None
+    message: str
 
 
 def _filter_dirnames(
@@ -85,7 +103,7 @@ def _has_main_block(file_path: Path) -> bool:
 def discover_entry_points(
     root: str | Path | None = None,
     state: AgentState | None = None,
-) -> str:
+) -> EntryPointsResult:
     """Discover all executable entry points in the project.
 
     Scans the project for Python files with `if __name__ == "__main__":` blocks,
@@ -129,21 +147,36 @@ def discover_entry_points(
             seen.add(py_file)
 
     if not entry_points:
-        return "No executable entry points found (no files with 'if __name__ == \"__main__\":' blocks)"
+        message = "No executable entry points found (no files with 'if __name__ == \"__main__\":' blocks)"
+        return {
+            "ok": False,
+            "entries": [],
+            "primary": None,
+            "message": message,
+        }
 
-    # Format result
+    entries = [
+        {"path": filename, "priority": priority, "reason": description}
+        for filename, priority, description in entry_points
+    ]
+    primary = entries[0]["path"] if entries else None
     lines = ["Discovered entry points (in priority order):"]
-    for filename, priority, description in entry_points:
-        lines.append(f"[{priority}] {filename} - {description}")
+    for entry in entries:
+        lines.append(f"[{entry['priority']}] {entry['path']} - {entry['reason']}")
 
-    return "\n".join(lines)
+    return {
+        "ok": True,
+        "entries": entries,
+        "primary": primary,
+        "message": "\n".join(lines),
+    }
 
 
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_VALIDATION)
 def get_primary_entry_point(
     root: str | Path | None = None,
     state: AgentState | None = None,
-) -> str:
+) -> PrimaryEntryPointResult:
     """Get the primary (highest priority) entry point for the project.
 
     Returns the single best entry point to execute:
@@ -166,14 +199,19 @@ def get_primary_entry_point(
     app_py = root_path / "app.py"
 
     if main_py.exists() and _has_main_block(main_py):
-        return "main.py"
+        return {"ok": True, "path": "main.py", "message": "main.py"}
 
     if app_py.exists() and _has_main_block(app_py):
-        return "app.py"
+        return {"ok": True, "path": "app.py", "message": "app.py"}
 
     # Find first other executable file
     for py_file in _iter_python_files(root_path, config):
         if py_file not in {main_py, app_py} and _has_main_block(py_file):
-            return str(py_file.relative_to(root_path))
+            rel_path = str(py_file.relative_to(root_path))
+            return {"ok": True, "path": rel_path, "message": rel_path}
 
-    return "Error: No executable entry point found"
+    return {
+        "ok": False,
+        "path": None,
+        "message": "Error: No executable entry point found",
+    }

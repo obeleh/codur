@@ -203,5 +203,6 @@ def test_copy_file_to_dir_create_dirs_false_raises(temp_fs):
     with pytest.raises(OSError):
         copy_file_to_dir("file1.txt", "missing", root=temp_fs, create_dirs=False)
     result = copy_file_to_dir("file1.txt", "created", root=temp_fs, create_dirs=True)
-    assert "created" in result
+    assert result["action"] == "copy_to_dir"
+    assert "created" in result["destination_dir"]
     assert (temp_fs / "created" / "file1.txt").exists()

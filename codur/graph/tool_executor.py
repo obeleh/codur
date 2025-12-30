@@ -349,11 +349,29 @@ def _format_tool_result(item: dict, mode: str) -> str:
         return f"read_file: {path} -> {length} chars"
     if mode == "brief" and tool == "write_file":
         path = args.get("path", "unknown")
+        if isinstance(output, dict):
+            bytes_written = output.get("bytes_written")
+            created = output.get("created")
+            suffix = "ok"
+            if isinstance(bytes_written, int):
+                suffix = f"{bytes_written} bytes"
+            if created is True:
+                suffix += " (created)"
+            elif created is False:
+                suffix += " (overwrote)"
+            return f"write_file: {path} -> {suffix}"
         return f"write_file: {path} -> {output}"
     if mode == "brief" and tool == "replace_function":
         func_name = args.get("function_name", "unknown")
         path = args.get("path", "unknown")
         return f"replace_function: {func_name} in {path}"
+    if tool == "build_verification_response":
+        if isinstance(output, dict):
+            passed = output.get("passed", False)
+            reasoning = output.get("reasoning", "No reasoning provided")
+            status = "PASS" if passed else "FAIL"
+            return f"build_verification_response: {status} - {reasoning}"
+        return f"build_verification_response: {output}"
     return f"{tool}: {output}"
 
 

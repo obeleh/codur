@@ -39,7 +39,9 @@ def also_keep():
             os.chdir(tmpdir)
             try:
                 result = replace_function(str(file_path), "target_func", new_code)
-                assert "Successfully replaced function" in result
+                assert result["ok"] is True
+                assert result["operation"] == "replace_function"
+                assert result["target"] == "target_func"
                 
                 new_content = file_path.read_text()
                 assert 'print("new implementation")' in new_content
@@ -74,7 +76,9 @@ class TargetClass:
             os.chdir(tmpdir)
             try:
                 result = replace_class(str(file_path), "TargetClass", new_code)
-                assert "Successfully replaced class" in result
+                assert result["ok"] is True
+                assert result["operation"] == "replace_class"
+                assert result["target"] == "TargetClass"
                 
                 new_content = file_path.read_text()
                 assert 'self.x = 2' in new_content
@@ -107,7 +111,9 @@ class MyClass:
             os.chdir(tmpdir)
             try:
                 result = replace_method(str(file_path), "MyClass", "target_method", new_code)
-                assert "Successfully replaced method" in result
+                assert result["ok"] is True
+                assert result["operation"] == "replace_method"
+                assert result["target"] == "MyClass.target_method"
                 
                 new_content = file_path.read_text()
                 assert 'return arg * 2' in new_content
@@ -130,7 +136,8 @@ class MyClass:
             os.chdir(tmpdir)
             try:
                 result = replace_file_content(str(file_path), new_code)
-                assert "Successfully replaced file content" in result
+                assert result["ok"] is True
+                assert result["operation"] == "replace_file_content"
                 assert file_path.read_text() == "x = 1"
             finally:
                 os.chdir(old_cwd)
@@ -147,7 +154,8 @@ class MyClass:
             os.chdir(tmpdir)
             try:
                 result = replace_class(str(file_path), "Missing", new_code)
-                assert "Could not find class 'Missing'" in result
+                assert result["ok"] is False
+                assert "Could not find class 'Missing'" in result["message"]
             finally:
                 os.chdir(old_cwd)
 
@@ -163,7 +171,8 @@ class MyClass:
             os.chdir(tmpdir)
             try:
                 result = replace_method(str(file_path), "Example", "missing", new_code)
-                assert "Could not find method 'Example.missing'" in result
+                assert result["ok"] is False
+                assert "Could not find method 'Example.missing'" in result["message"]
             finally:
                 os.chdir(old_cwd)
 
@@ -178,7 +187,8 @@ class MyClass:
             os.chdir(tmpdir)
             try:
                 result = replace_file_content(str(file_path), invalid_code)
-                assert "Invalid Python syntax" in result
+                assert result["ok"] is False
+                assert "Invalid Python syntax" in result["message"]
                 assert file_path.read_text() == "print('ok')\n"
             finally:
                 os.chdir(old_cwd)
@@ -197,7 +207,9 @@ class MyClass:
             os.chdir(tmpdir)
             try:
                 result = inject_function(str(file_path), new_code)
-                assert "Successfully injected function 'injected'" in result
+                assert result["ok"] is True
+                assert result["operation"] == "inject_function"
+                assert result["target"] == "injected"
                 content = file_path.read_text()
                 assert content.index("def injected") < content.index("if __name__ == \"__main__\":")
             finally:
@@ -214,7 +226,8 @@ class MyClass:
             os.chdir(tmpdir)
             try:
                 result = inject_function(str(file_path), new_code)
-                assert "already exists" in result
+                assert result["ok"] is False
+                assert "already exists" in result["message"]
             finally:
                 os.chdir(old_cwd)
 
@@ -229,6 +242,7 @@ class MyClass:
             os.chdir(tmpdir)
             try:
                 result = inject_function(str(file_path), invalid_code)
-                assert "Invalid Python syntax" in result
+                assert result["ok"] is False
+                assert "Invalid Python syntax" in result["message"]
             finally:
                 os.chdir(old_cwd)
