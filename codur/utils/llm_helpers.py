@@ -13,6 +13,7 @@ from codur.config import CodurConfig
 from codur.graph.state_operations import is_verbose, get_messages
 from codur.graph.tool_executor import execute_tool_calls, ToolExecutionResult
 from codur.llm import create_llm, create_llm_profile
+from codur.utils.custom_messages import ShortenableSystemMessage
 from codur.utils.llm_calls import invoke_llm
 from codur.utils.tool_response_handler import deserialize_tool_calls, extract_tool_calls_from_json_text
 
@@ -20,13 +21,6 @@ if TYPE_CHECKING:
     from codur.graph.state import AgentState
 
 console = Console()
-
-
-class ShortenableSystemMessage(SystemMessage):
-    """System message with a shorter summary for LLM calls."""
-
-    short_content: str | None = None
-    long_form_visible_for_agent_name: str | None = None
 
 
 def message_shortening_pipeline(messages: list[BaseMessage], only_for_agent: str | None = None) -> list[BaseMessage]:

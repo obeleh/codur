@@ -12,7 +12,7 @@ from codur.graph.state_operations import (
     get_iterations,
     get_llm_calls,
     get_messages,
-    is_verbose, increment_iterations, add_messages,
+    is_verbose, increment_iterations, add_messages, is_first_mutating_agent_call, shuffle_toolcall_order,
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.utils.llm_helpers import (
@@ -144,9 +144,12 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
                 content=system_prompt,
                 short_content=CODING_AGENT_SYSTEM_PROMPT_SUMMARY,
                 long_form_visible_for_agent_name="coding",
+                exact_agent_name=agent_name,
             ),
             HumanMessage(content=prompt),
         ]
+        if is_first_mutating_agent_call(state):
+            new_messages = shuffle_toolcall_order(state, new_messages)
     else:
         new_messages = []
 
@@ -185,7 +188,6 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
         return {
             "agent_outcome": {
                 "agent": agent_name,
-                "result": "no tool calls made",
                 "status": "success",
             },
             "messages": new_messages,
