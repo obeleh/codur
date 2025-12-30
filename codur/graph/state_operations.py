@@ -43,6 +43,14 @@ def get_messages(state: "AgentState") -> list[BaseMessage]:
     messages = state.get("messages", [])
     return normalize_messages(messages)
 
+def get_first_human_message(state: "AgentState") -> Optional[BaseMessage]:
+    """Get the first human message from state (original request), if any."""
+    messages = get_messages(state)
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            return msg
+    return None
+
 def get_last_human_message(state: "AgentState") -> Optional[BaseMessage]:
     """Get the last human message from state, if any."""
     messages = get_messages(state)
@@ -52,6 +60,16 @@ def get_last_human_message(state: "AgentState") -> Optional[BaseMessage]:
         if isinstance(msg, HumanMessage):
             return msg
     return None
+
+def get_first_human_message_content(state: "AgentState") -> Optional[str]:
+    """Get the content of the first human message (original request), if any."""
+    msg = get_first_human_message(state)
+    return msg.content if msg else None
+
+def get_last_human_message_content(state: "AgentState") -> Optional[str]:
+    """Get the content of the last human message, if any."""
+    msg = get_last_human_message(state)
+    return msg.content if msg else None
 
 
 # ============================================================================

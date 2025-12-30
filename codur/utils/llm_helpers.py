@@ -185,6 +185,7 @@ def create_and_invoke_with_tool_support(
             temperature=temperature,
         )
         messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, only_for_agent=agent_name)
+
         response = invoke_llm(
             llm,
             messages_for_llm,

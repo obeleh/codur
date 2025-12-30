@@ -121,11 +121,8 @@ def quick_classify(messages: list[BaseMessage], config: CodurConfig) -> Classifi
     Scoring is delegated to individual TaskStrategy implementations.
     """
     # Get last human message
-    user_message = ""
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            user_message = msg.content
-            break
+    from codur.graph.utils import get_last_human_message
+    user_message = get_last_human_message(messages) or ""
 
     if not user_message:
         candidates = _build_candidates({}, {task: [] for task in TaskType})

@@ -5,7 +5,7 @@ LLM invocation accounting and limits.
 from __future__ import annotations
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
@@ -15,6 +15,59 @@ console = Console()
 
 class LLMCallLimitExceeded(RuntimeError):
     """Raised when the LLM call limit is exceeded."""
+
+
+def _sanitize_tool_messages(llm: BaseChatModel, messages: list[BaseMessage]) -> list[BaseMessage]:
+    """Convert ToolMessages to SystemMessages if LLM doesn't have tools bound.
+
+    When an LLM is called without bound tools (e.g., planning with json_mode),
+    any ToolMessages from previous calls will cause errors with providers like Groq.
+    This function converts those ToolMessages to SystemMessages to preserve information
+    while avoiding API errors.
+
+    Args:
+        llm: The LLM instance to check for bound tools
+        messages: List of messages to sanitize
+
+    Returns:
+        Sanitized list of messages
+    """
+    # Check if LLM has tools bound by looking for tool schemas
+    # When tools are bound via bind_tools(), the LLM is wrapped in a RunnableBinding
+    # with kwargs containing 'tools'
+    has_bound_tools = False
+    if hasattr(llm, 'kwargs') and 'tools' in llm.kwargs:
+        bound_tools = llm.kwargs.get('tools', [])
+        has_bound_tools = bool(bound_tools)
+
+    if has_bound_tools:
+        # If tools are bound, filter ToolMessages to only include bound tools
+        bound_tool_names = set()
+        for tool in llm.kwargs.get('tools', []):
+            if isinstance(tool, dict):
+                bound_tool_names.add(tool.get('name'))
+
+        sanitized = []
+        for msg in messages:
+            if isinstance(msg, ToolMessage):
+                if msg.name and msg.name in bound_tool_names:
+                    # Tool is bound, keep as ToolMessage
+                    sanitized.append(msg)
+                else:
+                    # Tool not bound, convert to SystemMessage
+                    sanitized.append(SystemMessage(content=f"Tool results from {msg.name}:\n{msg.content}"))
+            else:
+                sanitized.append(msg)
+        return sanitized
+    else:
+        # No tools bound - convert all ToolMessages to SystemMessages
+        sanitized = []
+        for msg in messages:
+            if isinstance(msg, ToolMessage):
+                sanitized.append(SystemMessage(content=f"Tool results from {msg.name}:\n{msg.content}"))
+            else:
+                sanitized.append(msg)
+        return sanitized
 
 
 def _get_matching_instructions(config: CodurConfig | None, invoked_by: str) -> list[str]:
@@ -60,6 +113,11 @@ def invoke_llm(
             for instruction in instructions
         ]
         prompt_messages = instruction_messages + list(prompt_messages)
+
+    # Convert ToolMessages to SystemMessages if LLM doesn't have tools bound
+    # This prevents errors with providers like Groq when ToolMessages reference
+    # tools that aren't in the currently bound tool set
+    prompt_messages = _sanitize_tool_messages(llm, prompt_messages)
 
     return llm.invoke(prompt_messages)
 

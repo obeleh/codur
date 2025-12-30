@@ -22,6 +22,7 @@ from codur.graph.state_operations import (
     get_tool_calls,
     get_error_hashes,
     was_local_repair_attempted,
+    get_first_human_message_content,
 )
 from .verification_agent import verification_agent_node
 from .repair import _attempt_local_repair
@@ -47,7 +48,8 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     Returns:
         Dictionary with final_response and next_action ("end" or "continue")
     """
-    if is_verbose(state):
+    verbose = is_verbose(state)
+    if verbose:
         console.print("[bold magenta]Reviewing result...[/bold magenta]")
 
     outcome = get_agent_outcome(state)
@@ -77,7 +79,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 "next_action": ACTION_CONTINUE,
             }
 
-    if is_verbose(state):
+    if verbose:
         console.print(f"[dim]Result status: {outcome.get('status', 'unknown')}[/dim]")
         console.print(f"[dim]Result length: {len(result)} chars[/dim]")
         console.print(f"[dim]Iteration: {iterations}/{max_iterations}[/dim]")
@@ -91,14 +93,10 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     is_tool_result = (agent_name == "tools" and not has_agent_call) or (isinstance(result, str) and result.startswith("Error") and len(result) < 200)
 
     # Check if this was a bug fix / debug task by looking at original message
-    messages = get_messages(state)
-    original_task = None
-    for msg in messages:
-        if isinstance(msg, HumanMessage):
-            original_task = msg.content.lower()
-            break
+    original_task = get_first_human_message_content(state)
+    original_task_lower = original_task.lower() if original_task else ""
 
-    is_fix_task = original_task and any(keyword in original_task for keyword in [
+    is_fix_task = original_task_lower and any(keyword in original_task_lower for keyword in [
         "fix", "bug", "error", "debug", "issue", "broken", "incorrect", "wrong",
         "implement", "write", "create", "complete", "build"
     ])

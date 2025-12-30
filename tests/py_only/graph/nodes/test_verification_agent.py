@@ -113,17 +113,12 @@ class TestParseVerificationResult:
 class TestBuildVerificationPrompt:
     """Tests for _build_verification_prompt function.
 
-    Ensures tool results are included in the prompt so agent doesn't
-    repeat the same tool calls in recursive invocations.
+    The function extracts the original user request from message history.
+    Tool results are passed via ToolMessages in the conversation, not in the prompt text.
     """
 
-    def test_prompt_includes_tool_results(self):
-        """Test: Prompt includes ToolMessage results from previous executions.
-
-        This is critical to prevent agent from calling the same tool twice.
-        The agent needs to see tool results in the PROMPT TEXT, not just
-        in the message list.
-        """
+    def test_extracts_original_request_with_tool_results(self):
+        """Test: Extracts original request even when tool results are present."""
         messages = [
             HumanMessage(content="Verify this implementation"),
             AIMessage(
@@ -139,29 +134,25 @@ class TestBuildVerificationPrompt:
 
         prompt = _build_verification_prompt(messages)
 
-        # Tool results should be in the prompt text
-        assert "run_python_file" in prompt, "Tool name should be in prompt"
-        assert "Output: success" in prompt or "success" in prompt, "Tool results should be in prompt"
-        assert "Do NOT call the same tools again" in prompt, "Should warn against repeating tools"
+        # Should extract original request
+        assert "Verify this implementation" in prompt
 
-    def test_prompt_without_tool_results(self):
-        """Test: Prompt works fine without tool results (first call)."""
+    def test_extracts_original_request_simple(self):
+        """Test: Extracts original request from simple message list."""
         messages = [
             HumanMessage(content="Verify this implementation"),
         ]
 
         prompt = _build_verification_prompt(messages)
 
-        # Should have instructions but no tool results section
-        assert "Verify that the current implementation" in prompt
-        assert "## Your Task" in prompt
-        # Should NOT have the previous results section
-        assert "## Previous Tool Execution Results" not in prompt
+        # Should include original request
+        assert "Verify this implementation" in prompt
+        assert "## Original User Request" in prompt
 
-    def test_multiple_tool_results_in_prompt(self):
-        """Test: Prompt includes multiple tool results."""
+    def test_extracts_first_human_message_as_original(self):
+        """Test: Uses first HumanMessage as original request."""
         messages = [
-            HumanMessage(content="Verify this"),
+            HumanMessage(content="First request"),
             # First tool
             AIMessage(content="Running discovery", tool_calls=[
                 {"id": "1", "name": "discover_entry_points", "args": {}}
@@ -184,11 +175,8 @@ class TestBuildVerificationPrompt:
 
         prompt = _build_verification_prompt(messages)
 
-        # Both tool results should be in prompt
-        assert "discover_entry_points" in prompt
-        assert "run_pytest" in prompt
-        assert "Found:" in prompt or "main.py" in prompt
-        assert "Tests passed" in prompt
+        # Should use first human message as original request
+        assert "First request" in prompt
 
 
 class TestVerificationAgentFailureScenarios:

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional, Any, Callable, List
 import re
 
-from langchain_core.messages import HumanMessage, BaseMessage, SystemMessage
+from langchain_core.messages import HumanMessage, BaseMessage, ToolMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
@@ -223,8 +223,14 @@ def execute_tool_calls(
                 console.log(f"[red]{msg}[/red]")
         i += 1
 
-    tool_result_json = json.dumps(_list_or_single(results))
-    tool_call_messages = [SystemMessage(content=tool_result_json)]
+    tool_call_messages = []
+    for res in results:
+        tool_call_id = res.get("id")
+        tool_name = res.get("tool")
+        tool_result_json = json.dumps(res)
+        if not tool_call_id:
+            tool_call_id = hash(tool_result_json)
+        tool_call_messages.append(ToolMessage(content=tool_result_json, tool_call_id=tool_call_id, tool_name=tool_name))
 
     summary = _format_summary(results, errors, summary_mode)
     return ToolExecutionResult(

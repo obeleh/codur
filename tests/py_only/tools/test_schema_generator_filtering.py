@@ -12,8 +12,8 @@ from codur.tools.tool_annotations import ToolSideEffect
 class TestGetFunctionSchemasFiltering:
     """Tests for TaskType and side effect filtering in get_function_schemas."""
 
-    def test_get_all_schemas_backward_compatible(self):
-        """Test that get_function_schemas() with no args works (backward compatible)."""
+    def test_get_all_schemas_no_filters(self):
+        """Test that get_function_schemas() with no args returns all schemas."""
         schemas = get_function_schemas()
         assert len(schemas) > 0
         assert all(isinstance(s, dict) for s in schemas)

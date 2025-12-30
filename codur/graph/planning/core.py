@@ -11,6 +11,7 @@ from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.node_types import PlanNodeResult
 from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose
+from codur.graph.utils import get_last_human_message
 from codur.graph.non_llm_tools import run_non_llm_tools
 from codur.llm import create_llm_profile
 from codur.utils.retry import LLMRetryStrategy
@@ -137,11 +138,8 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
     classification = state.get("classification")
 
     # Get last human message
-    user_message = ""
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            user_message = msg.content
-            break
+    from codur.graph.state_operations import get_last_human_message_content
+    user_message = get_last_human_message_content(state) or ""
 
     # Build lightweight classification prompt with clear JSON schema
     system_prompt = SystemMessage(content="""You are a task classifier. Analyze the user's request and classify it.
@@ -312,9 +310,9 @@ class PlanningOrchestrator:
         if (
             tool_results_present
             and not classification.detected_files
-            and not self._tool_results_include_read_file(messages)
+            and not tool_results_include_read_file(messages)
         ):
-            candidate = self._select_file_from_tool_results(messages)
+            candidate = select_file_from_tool_results(messages)
             if candidate:
                 return _with_llm_calls({
                     "next_action": "tool",
@@ -328,7 +326,7 @@ class PlanningOrchestrator:
                 })
 
         # If no file hint is available for a change request, list files for discovery.
-        last_human_msg = self._last_human_message(messages)
+        last_human_msg = get_last_human_message(messages)
         if (
             not tool_results_present
             and not classification.detected_files
@@ -414,7 +412,7 @@ class PlanningOrchestrator:
 
             if decision is None:
                 if tool_results_present:
-                    last_human_msg = self._last_human_message(messages)
+                    last_human_msg = get_last_human_message(messages)
                     if last_human_msg and looks_like_change_request(last_human_msg) and mentions_file_path(last_human_msg):
                         retry_prompt = SystemMessage(
                             content=(
@@ -467,12 +465,12 @@ class PlanningOrchestrator:
                 }
 
             if decision is not None and tool_results_present:
-                last_human_msg = self._last_human_message(messages)
+                last_human_msg = get_last_human_message(messages)
                 if last_human_msg and looks_like_change_request(last_human_msg) and mentions_file_path(last_human_msg):
                     allow_delegate = (
                         decision.get("action") == "delegate"
                         and decision.get("agent") == "agent:codur-coding"
-                        and self._tool_results_include_read_file(messages)
+                        and tool_results_include_read_file(messages)
                     )
                     if decision.get("action") != "tool" and not allow_delegate:
                         retry_prompt = SystemMessage(
@@ -530,7 +528,7 @@ class PlanningOrchestrator:
                 and decision.get("agent") == "agent:codur-coding"):
 
                 # Check if file contents are available in messages
-                has_file_contents = self._tool_results_include_read_file(messages)
+                has_file_contents = tool_results_include_read_file(messages)
 
                 # For multi-file scenarios, check if we've read all discovered files
                 discovered_files = self._extract_files_from_tool_results(messages)
@@ -643,20 +641,6 @@ class PlanningOrchestrator:
                 "llm_debug": llm_debug,
             })
 
-    @staticmethod
-    def _last_human_message(messages: list[BaseMessage]) -> str | None:
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage):
-                return msg.content
-        return None
-
-    @staticmethod
-    def _tool_results_include_read_file(messages: list[BaseMessage]) -> bool:
-        return tool_results_include_read_file(messages)
-
-    @staticmethod
-    def _select_file_from_tool_results(messages: list[BaseMessage]) -> str | None:
-        return select_file_from_tool_results(messages)
 
     @staticmethod
     def _extract_files_from_tool_results(messages: list[BaseMessage]) -> list[str]:
