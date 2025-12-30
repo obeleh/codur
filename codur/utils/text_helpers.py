@@ -38,30 +38,6 @@ def truncate_chars(text: str, max_chars: int = 1000) -> str:
     return f"{truncated}... ({len(text) - max_chars} more chars)"
 
 
-def truncate_text(text: str, max_lines: int | None = None, max_chars: int | None = None) -> str:
-    """Truncate text by lines and/or characters.
-
-    Applies truncation in order: lines first, then characters.
-
-    Args:
-        text: Text to truncate
-        max_lines: Maximum number of lines to keep (None = no limit)
-        max_chars: Maximum number of characters to keep (None = no limit)
-
-    Returns:
-        str: Truncated text
-    """
-    result = text
-
-    if max_lines is not None:
-        result = truncate_lines(result, max_lines)
-
-    if max_chars is not None:
-        result = truncate_chars(result, max_chars)
-
-    return result
-
-
 def smart_truncate(text: str, target_length: int = 1000) -> str:
     """Truncate text intelligently, preserving line structure.
 

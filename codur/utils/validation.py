@@ -82,14 +82,6 @@ def require_tool_permission(
         raise PermissionError(msg)
 
 
-def validate_tool_permission(config: CodurConfig, permission_check: str) -> None:
-    """Validate that a tool permission flag is enabled."""
-    if not hasattr(config.tools, permission_check):
-        raise PermissionError(f"Unknown permission: {permission_check}")
-    if not getattr(config.tools, permission_check):
-        raise PermissionError(f"Tool operation denied by configuration: {permission_check}")
-
-
 def validate_file_exists(
     path: Path,
     context: str = "",

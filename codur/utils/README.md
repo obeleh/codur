@@ -17,7 +17,7 @@ This directory contains shared, workspace-safe helpers that agents and tools sho
   - `resolve_root`, `resolve_path`, `set_default_root`
   - Use for workspace-aware path resolution and root enforcement.
 - `codur/utils/validation.py`
-  - `validate_file_access`, `validate_within_workspace`, `require_*`, `validate_tool_permission`
+  - `validate_file_access`, `validate_within_workspace`, `require_*`
   - Use for file existence checks, workspace boundaries, and tool permission gating.
 - `codur/utils/ignore_utils.py`
   - `guard_secret_read`, `get_exclude_dirs`, `load_gitignore`, `is_gitignored`
@@ -37,16 +37,14 @@ This directory contains shared, workspace-safe helpers that agents and tools sho
 - `codur/utils/retry.py`
   - `retry_with_backoff`, `LLMRetryStrategy`
   - Use for network/LLM retry logic with backoff and fallback profiles.
-- `codur/utils/token_counter.py`
-  - `TokenCounter` helpers for prompt budgeting and truncation.
 
 ### Tool call handling
 
 - `codur/utils/tool_helpers.py`
-  - `extract_tool_info`, `validate_tool_call`
+  - `extract_tool_info`
   - Use for validating tool call structure and supported tool lists.
 - `codur/utils/tool_response_handler.py`
-  - `deserialize_tool_calls`, `extract_tool_calls_from_json_text`, `create_tool_messages`
+  - `deserialize_tool_calls`, `extract_tool_calls_from_json_text`
   - Use for normalizing tool calls across native and JSON fallback responses.
 
 ### Text and output helpers

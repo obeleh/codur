@@ -80,38 +80,3 @@ def extract_tool_calls_from_json_text(message: AIMessage) -> list[dict]:
         return []
 
     return tool_calls
-
-
-def create_tool_messages(results: list[dict], tool_call_ids: list[str]) -> list[ToolMessage]:
-    """
-    Create ToolMessage objects for conversation history.
-
-    Args:
-        results: List of tool execution results [{"tool": "read_file", "output": "..."}]
-        tool_call_ids: List of tool call IDs from native API
-
-    Returns:
-        List of ToolMessage objects for appending to conversation
-
-    Example:
-        # After executing tools
-        tool_messages = create_tool_messages(execution.results, tool_call_ids)
-        messages.extend(tool_messages)
-        # Now LLM can see tool results in conversation
-    """
-    tool_messages = []
-
-    for i, result in enumerate(results):
-        tool_name = result.get("tool", "unknown")
-        output = result.get("output", "")
-        tool_id = tool_call_ids[i] if i < len(tool_call_ids) else ""
-
-        tool_messages.append(
-            ToolMessage(
-                content=str(output),
-                tool_call_id=tool_id,
-                name=tool_name,
-            )
-        )
-
-    return tool_messages

@@ -22,14 +22,3 @@ def extract_tool_info(call: dict) -> tuple[str, dict]:
     if not isinstance(args, dict):
         raise ToolCallError(f"Tool args must be dictionary, got {type(args)}")
     return tool_name, args
-
-
-def validate_tool_call(call: dict, supported_tools: Iterable[str]) -> str | None:
-    """Validate tool call structure and availability."""
-    try:
-        tool_name, _ = extract_tool_info(call)
-    except ToolCallError as exc:
-        return str(exc)
-    if tool_name not in supported_tools:
-        return f"Unknown tool: {tool_name}"
-    return None

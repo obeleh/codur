@@ -61,15 +61,6 @@ def message_shortening_pipeline(messages: list[BaseMessage], only_for_agent: str
     return shortened
 
 
-def _profile_for_model(config: CodurConfig, model: str | None) -> str | None:
-    if not model:
-        return None
-    for profile_name, profile in config.llm.profiles.items():
-        if profile.model == model:
-            return profile_name
-    return None
-
-
 def _create_llm(
     config: CodurConfig,
     profile_name: str | None,
@@ -93,15 +84,6 @@ def _create_llm(
             temperature=temperature,
         )
     return create_llm(config, temperature=temperature)
-
-
-def _is_json_validation_error(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return (
-        "json_validate_failed" in message
-        or "failed to validate json" in message
-        or ("json" in message and "400" in message)
-    )
 
 
 def create_and_invoke(
