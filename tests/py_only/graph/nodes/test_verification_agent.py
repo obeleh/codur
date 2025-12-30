@@ -7,7 +7,7 @@ from unittest import mock
 import pytest
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, ToolMessage
 
-from codur.graph.execution.verification_agent import _parse_verification_result, _build_verification_prompt
+from codur.graph.execution.verification_agent import _build_verification_prompt, get_execution_result
 
 
 class TestParseVerificationResult:
@@ -19,14 +19,17 @@ class TestParseVerificationResult:
         execution_result.results = [
             {
                 "tool": "build_verification_response",
-                "args": {
+                "output": {
                     "passed": True,
-                    "reasoning": "All tests passed successfully"
+                    "reasoning": "All tests passed successfully",
+                    "expected": None,
+                    "actual": None,
+                    "suggestions": None,
                 }
             }
         ]
 
-        result = _parse_verification_result([], execution_result)
+        result = get_execution_result(execution_result)
 
         assert result["passed"] is True
         assert result["reasoning"] == "All tests passed successfully"
@@ -40,7 +43,7 @@ class TestParseVerificationResult:
         execution_result.results = [
             {
                 "tool": "build_verification_response",
-                "args": {
+                "output": {
                     "passed": False,
                     "reasoning": "Test case_2 failed",
                     "expected": "Output: 5",
@@ -50,7 +53,7 @@ class TestParseVerificationResult:
             }
         ]
 
-        result = _parse_verification_result([], execution_result)
+        result = get_execution_result(execution_result)
 
         assert result["passed"] is False
         assert result["reasoning"] == "Test case_2 failed"
@@ -64,14 +67,14 @@ class TestParseVerificationResult:
         execution_result.results = [
             {
                 "tool": "build_verification_response",
-                "args": {
-                    "passed": 1,  # Truthy value
+                "output": {
+                    "passed": True,
                     "reasoning": "Success"
                 }
             }
         ]
 
-        result = _parse_verification_result([], execution_result)
+        result = get_execution_result(execution_result)
         assert result["passed"] is True
 
     def test_no_reasoning_provided(self):
@@ -80,17 +83,17 @@ class TestParseVerificationResult:
         execution_result.results = [
             {
                 "tool": "build_verification_response",
-                "args": {
-                    "passed": True
-                    # No reasoning provided
+                "output": {
+                    "passed": True,
+                    "reasoning": None,
                 }
             }
         ]
 
-        result = _parse_verification_result([], execution_result)
+        result = get_execution_result(execution_result)
 
         assert result["passed"] is True
-        assert result["reasoning"] == "No reasoning provided"
+        assert result["reasoning"] is None
 
     def test_missing_passed_field(self):
         """Test handling of missing passed field defaults to False."""
@@ -98,13 +101,14 @@ class TestParseVerificationResult:
         execution_result.results = [
             {
                 "tool": "build_verification_response",
-                "args": {
+                "output": {
+                    "passed": False,
                     "reasoning": "Missing passed field"
                 }
             }
         ]
 
-        result = _parse_verification_result([], execution_result)
+        result = get_execution_result(execution_result)
 
         # Should default to False when passed field is missing
         assert result["passed"] is False
@@ -213,7 +217,7 @@ class TestVerificationAgentFailureScenarios:
         execution_result_3.results = [
             {
                 "tool": "build_verification_response",
-                "args": {
+                "output": {
                     "passed": True,
                     "reasoning": "All tests passed"
                 }
@@ -221,7 +225,7 @@ class TestVerificationAgentFailureScenarios:
         ]
 
         # Should parse correctly
-        result = _parse_verification_result([], execution_result_3)
+        result = get_execution_result(execution_result_3)
         assert result["passed"] is True
         assert result["reasoning"] == "All tests passed"
 
