@@ -20,13 +20,12 @@ from codur.tools.tool_annotations import ToolContext, ToolGuard, get_tool_contex
 console = Console()
 
 
-def _format_syntax_validation_result(result: tuple[bool, Optional[str]]) -> str:
+def _format_syntax_validation_result(result: dict) -> str:
     """Format the result of validate_python_syntax for tool output."""
-    is_valid, error_msg = result
-    if is_valid:
+    if result.get("valid"):
         return "✓ Python syntax is valid"
     else:
-        return f"✗ Syntax error:\n{error_msg}"
+        return f"✗ Syntax error:\n{result.get('error', 'Unknown error')}"
 
 
 _TEST_OVERWRITE_VERBS = {

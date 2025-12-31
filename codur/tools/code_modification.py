@@ -26,14 +26,14 @@ from codur.tools.validation import validate_python_syntax
 
 def _validate_with_dedent(code: str) -> tuple[bool, Optional[str]]:
     """Validate syntax, attempting dedent if initial parse fails due to indentation."""
-    is_valid, error_msg = validate_python_syntax(code)
-    if not is_valid and "unexpected indent" in str(error_msg):
+    result = validate_python_syntax(code)
+    if not result.get("valid") and "unexpected indent" in str(result.get("error", "")):
         # Try dedenting
         dedented_code = textwrap.dedent(code)
-        is_valid_dedent, error_msg_dedent = validate_python_syntax(dedented_code)
-        if is_valid_dedent:
+        result_dedent = validate_python_syntax(dedented_code)
+        if result_dedent.get("valid"):
             return True, None
-    return is_valid, error_msg
+    return result.get("valid", False), result.get("error")
 
 
 class CodeModificationResult(TypedDict):
@@ -376,8 +376,9 @@ def replace_file_content(
         root = Path.cwd()
 
     if path.endswith(".py"):
-        is_valid, error_msg = validate_python_syntax(new_code)
-        if not is_valid:
+        result = validate_python_syntax(new_code)
+        if not result.get("valid"):
+            error_msg = result.get("error", "Unknown error")
             message = f"Invalid Python syntax:\n{error_msg}\n\nCode attempted:\n{new_code}"
             return _build_result(
                 ok=False,

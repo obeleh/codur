@@ -4,9 +4,36 @@ import ast
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TypedDict
 
 from codur.config import CodurConfig
+
+
+class ValidateSyntaxResult(TypedDict, total=False):
+    """Result from validate_python_syntax."""
+    valid: bool
+    error: str
+
+
+class RunPythonFileResult(TypedDict, total=False):
+    """Result from run_python_file."""
+    output: str
+    error: str
+    return_code: int
+
+
+class RunPytestResult(TypedDict, total=False):
+    """Result from run_pytest."""
+    success: bool
+    exit_code: int | None
+    command: str
+    cwd: str
+    paths: list[str]
+    stdout: str
+    stderr: str
+    error: str
+
+
 from codur.constants import DEFAULT_MAX_BYTES, TaskType
 from codur.graph.state import AgentState
 from codur.tools.tool_annotations import (
@@ -29,7 +56,7 @@ from codur.utils.validation import require_directory_exists
     TaskType.CODE_VALIDATION,
     TaskType.REFACTOR,
 )
-def validate_python_syntax(code: str) -> tuple[bool, Optional[str]]:
+def validate_python_syntax(code: str) -> ValidateSyntaxResult:
     """
     Validate Python syntax using AST parsing.
 
@@ -37,21 +64,21 @@ def validate_python_syntax(code: str) -> tuple[bool, Optional[str]]:
         code: Python source code to validate
 
     Returns:
-        (True, None) if valid
-        (False, error_message) if invalid
+        {"valid": True} if valid
+        {"valid": False, "error": error_message} if invalid
     """
     try:
         ast.parse(code)
-        return (True, None)
+        return {"valid": True}
     except SyntaxError as e:
         error_msg = f"Syntax error at line {e.lineno}: {e.msg}"
         if e.text:
             error_msg += f"\n{e.text}"
             if e.offset:
                 error_msg += "\n" + " " * (e.offset - 1) + "^"
-        return (False, error_msg)
+        return {"valid": False, "error": error_msg}
     except Exception as e:
-        return (False, f"Parse error: {str(e)}")
+        return {"valid": False, "error": f"Parse error: {str(e)}"}
 
 
 @tool_side_effects(ToolSideEffect.CODE_EXECUTION)
@@ -63,7 +90,7 @@ def run_python_file(
     env: Optional[dict] = None,
     config: Optional[CodurConfig] = None,
     state: Optional[AgentState] = None,
-) -> dict[str, str]:
+) -> RunPythonFileResult:
     """Execute a Python file and return its output.
 
     This tool allows the LLM to run and validate code during the coding phase.
@@ -142,7 +169,8 @@ def run_python_file(
             }
 
         return {
-            "output": output
+            "output": output,
+            "return_code": return_code,
         }
 
     except Exception as e:
@@ -166,7 +194,7 @@ def run_pytest(
     timeout: int | None = None,
     allow_outside_root: bool = False,
     state: AgentState | None = None,
-) -> dict:
+) -> RunPytestResult:
     """Run pytest and return the results."""
     if path and paths:
         raise ValueError("Specify either 'path' or 'paths', not both.")
