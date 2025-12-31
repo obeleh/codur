@@ -7,7 +7,7 @@ from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
 from codur.tools.registry import get_tools_with_side_effects
 
 
-def message_shortening_pipeline(messages: list[BaseMessage]) -> list[BaseMessage]:
+def message_shortening_pipeline(messages: list[BaseMessage], known_tool_names: list[str] | None=None) -> list[BaseMessage]:
     """
     Returns all tool calls that were _after_ a mutation tool call.
     Mutation tool calls: ToolSideEffect.FILE_MUTATION and ToolSideEffect.STATE_CHANGE
@@ -47,6 +47,9 @@ def message_shortening_pipeline(messages: list[BaseMessage]) -> list[BaseMessage
     for idx in range(start_idx, last_system_idx):
         message = messages[idx]
         if isinstance(message, ToolMessage):
+            # filter out tools that would be unknown to the LLM
+            if known_tool_names and message.tool_name not in known_tool_names:
+                continue
             tool_calls_to_inject.append(message)
 
     system_message = messages[last_system_idx]

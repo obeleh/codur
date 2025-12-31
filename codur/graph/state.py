@@ -42,6 +42,7 @@ class AgentState(TypedDict):
     max_llm_calls: int | None
     error_hashes: list
     local_repair_attempted: bool
+    next_step_suggestion: str | None
 
 
 class AgentStateData(dict):

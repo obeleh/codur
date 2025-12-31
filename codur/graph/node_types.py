@@ -40,6 +40,7 @@ class ExecuteNodeResult(TypedDict):
     agent_outcome: AgentOutcome
     messages: list[BaseMessage]
     llm_calls: NotRequired[int]
+    next_step_suggestion: NotRequired[str]
 
 
 class ReviewNodeResult(TypedDict):

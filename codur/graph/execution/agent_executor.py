@@ -56,7 +56,7 @@ class AgentExecutor:
         last_message = messages[-1] if messages else None
 
         if not last_message:
-            return {"agent_outcome": {"agent": self.agent_name, "result": "No task provided", "status": "error"}}
+            return {"agent_outcome": {"agent": self.agent_name, "result": "No task provided", "status": "error"}, "next_step_suggestion": None}
 
         if is_verbose(self.state):
             task_preview = str(last_message.content if hasattr(last_message, "content") else last_message)[:200]
@@ -81,7 +81,8 @@ class AgentExecutor:
                     "status": "success",
                 },
                 "llm_calls": get_llm_calls(self.state),
-                "messages": messages_out
+                "messages": messages_out,
+                "next_step_suggestion": None,
             }
             return dct
         except Exception as exc:
@@ -97,6 +98,7 @@ class AgentExecutor:
                     "status": "error",
                 },
                 "llm_calls": get_llm_calls(self.state),
+                "next_step_suggestion": None,
             }
 
     def _execute_llm_profile(self, task: str) -> tuple[list[BaseMessage], str]:

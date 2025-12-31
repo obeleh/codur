@@ -10,7 +10,7 @@ from codur.graph.state_operations import (
     get_iterations,
     get_llm_calls,
     get_messages,
-    is_verbose, increment_iterations, add_messages
+    is_verbose, increment_iterations, add_messages, get_next_step_suggestion
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.utils.llm_helpers import create_and_invoke_with_tool_support
@@ -99,6 +99,7 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
     - To test execution: Use run_python_file to run the modified code and see output
     - Validation and execution are faster and more efficient than reading the entire file back
     - Only run pytest if there are tests
+    - Make fixes based on validation/execution results (if any)
 """
 
 # Initialize system prompt with tools
@@ -129,6 +130,11 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
     tool_schemas = get_function_schemas()  # All 70+ tools
 
     if recursion_depth == 0:
+        suggestion = get_next_step_suggestion(state)
+        if suggestion:
+            if verbose:
+                console.print(f"[dim]Incorporating next step suggestion into prompt:[/dim] {suggestion}")
+            prompt += f"\n\nNext Step Suggestion: {suggestion}"
         new_messages = [
             SystemMessage(content=CODING_AGENT_SYSTEM_PROMPT),
             HumanMessage(content=prompt),
@@ -175,6 +181,7 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
             },
             "messages": new_messages,
             "llm_calls": get_llm_calls(state),
+            "next_step_suggestion": None,
         }
 
     if recursion_depth < 3:
@@ -193,6 +200,7 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
         },
         "llm_calls": get_llm_calls(state),
         "messages": new_messages,
+        "next_step_suggestion": None,
     }
 
 

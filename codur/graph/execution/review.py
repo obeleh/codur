@@ -1,5 +1,8 @@
 """Review node for verifying and routing fix results."""
+import json
+
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import BaseMessage
 from rich.console import Console
 
 from codur.graph.state import AgentState
@@ -59,6 +62,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         return {
             "final_response": result,
             "next_action": ACTION_CONTINUE,
+            "next_step_suggestion": None,
         }
 
     # Check if this was a bug fix / debug task by looking at original message
@@ -82,6 +86,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             return {
                 "final_response": result,
                 "next_action": ACTION_END,
+                "next_step_suggestion": None,
             }
         else:
             messages = verification_outcome["messages"]
@@ -97,6 +102,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                 return {
                     "final_response": result,
                     "next_action": ACTION_END,
+                    "next_step_suggestion": None,
                 }
 
             # Track this error for future checks
@@ -111,14 +117,16 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
                     console.print(f"[yellow]⚠ Verification failed - routing back to planning for fresh approach[/yellow]")
                 else:
                     console.print(f"[yellow]⚠ Verification failed - will retry with coding agent[/yellow]")
-                console.print(f"[dim]{last_message.content}[/dim]")
 
+                response = _format_verification_response(last_message)
+                console.print(f"[dim]{response}[/dim]")
 
             result_dict = {
                 "final_response": result,
                 "next_action": ACTION_CONTINUE,
                 "messages": messages,
                 "error_hashes": error_history,
+                "next_step_suggestion": verification_outcome.get("next_step_suggestion"),
             }
 
             # After 3 failed attempts, clear selected_agent to route back to planning
@@ -141,4 +149,19 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     return {
         "final_response": result,
         "next_action": ACTION_END,
+        "next_step_suggestion": None,
     }
+
+
+def _format_verification_response(last_message: BaseMessage) -> str:
+    response = last_message.content
+    try:
+        loaded = json.loads(response)
+        output = loaded["output"]
+        response = f"passed: {output['passed']}"
+        if "error" in loaded:
+            response += f"\nError: {loaded['error']}"
+        response += f"\n{output['expected']} vs\n{output['actual']}"
+    except Exception as ex:
+        print(f"!!!!!!!! {ex}")
+    return response

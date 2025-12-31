@@ -34,4 +34,5 @@ def tool_node(state: AgentState, config: CodurConfig) -> ToolNodeResult:
         },
         "messages": execution.messages,
         "llm_calls": get_llm_calls(state),
+        "next_step_suggestion": None,
     }

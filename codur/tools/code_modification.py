@@ -36,12 +36,12 @@ def _validate_with_dedent(code: str) -> tuple[bool, Optional[str]]:
     return result.get("valid", False), result.get("error")
 
 
-class CodeModificationResult(TypedDict):
+class CodeModificationResult(TypedDict, total=False):
     ok: bool
     operation: str
     path: str
-    target: str | None
     message: str
+    target: str | None
     error: str | None
     start_line: int | None
     end_line: int | None
@@ -62,19 +62,25 @@ def _build_result(
     inserted_line: int | None = None,
     inserted_lines: int | None = None,
 ) -> CodeModificationResult:
-    return {
+    dct: CodeModificationResult = {
         "ok": ok,
         "operation": operation,
         "path": path,
-        "target": target,
         "message": message,
-        "error": error,
-        "start_line": start_line,
-        "end_line": end_line,
-        "inserted_line": inserted_line,
-        "inserted_lines": inserted_lines,
     }
-
+    if target is not None:
+        dct["target"] = target
+    if error is not None:
+        dct["error"] = error
+    if start_line is not None:
+        dct["start_line"] = start_line
+    if end_line is not None:
+        dct["end_line"] = end_line
+    if inserted_line is not None:
+        dct["inserted_line"] = inserted_line
+    if inserted_lines is not None:
+        dct["inserted_lines"] = inserted_lines
+    return dct
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)

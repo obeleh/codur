@@ -97,6 +97,10 @@ def should_continue_iterating(state: "AgentState", max_iterations: int) -> bool:
     """Check if we should continue iterating."""
     return get_iterations(state) < max_iterations
 
+def get_next_step_suggestion(state: "AgentState") -> Optional[str]:
+    """Get the next step suggestion from state, if any."""
+    return state.get("next_step_suggestion")
+
 # ============================================================================
 # LLM Call Tracking
 # ============================================================================

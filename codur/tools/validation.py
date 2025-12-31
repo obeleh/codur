@@ -161,12 +161,14 @@ def run_python_file(
         output = stdout.strip() if stdout else ""
 
         if return_code != 0:
-            error_msg = stderr.strip() if stderr else "Unknown error"
-            return {
-                "error": error_msg,
-                "output": output,
+            dct: RunPythonFileResult = {
                 "return_code": return_code,
             }
+            if stderr:
+                dct["error"] = stderr.strip()
+            if output:
+                dct["output"] = output.strip()
+            return dct
 
         return {
             "output": output,

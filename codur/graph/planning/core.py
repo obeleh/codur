@@ -107,6 +107,7 @@ def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
         "next_action": "continue_to_llm_pre_plan",
         "iterations": iterations,
         "classification": classification,  # Pass to next phase for context
+        "next_step_suggestion": None,
     }
 
 
@@ -127,6 +128,7 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
             "next_action": "continue_to_llm_plan",
             "iterations": get_iterations(state),
             "classification": state.get("classification"),
+            "next_step_suggestion": None,
         }
 
     messages = get_messages(state)
@@ -235,6 +237,7 @@ Respond with ONLY valid JSON matching the schema above.""")
                     "final_response": llm_result.get("reasoning", "Task classified."),
                     "iterations": iterations + 1,
                     "llm_debug": {"phase1_llm_resolved": True},
+                    "next_step_suggestion": None,
                 }
             elif action == "tool":
                 # Would need to determine specific tool - for now, pass to Phase 2
@@ -256,6 +259,7 @@ Respond with ONLY valid JSON matching the schema above.""")
         "next_action": "continue_to_llm_plan",
         "iterations": iterations,
         "classification": classification,
+        "next_step_suggestion": None,
     }
 
 
@@ -283,6 +287,7 @@ class PlanningOrchestrator:
 
         def _with_llm_calls(result: PlanNodeResult) -> PlanNodeResult:
             result["llm_calls"] = get_llm_calls(state)
+            result["next_step_suggestion"] = None
             return result
 
         messages = get_messages(state)

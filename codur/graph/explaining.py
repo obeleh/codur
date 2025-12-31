@@ -112,6 +112,7 @@ def explaining_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult
             "status": "success",
         },
         "llm_calls": get_llm_calls(state),
+        "next_step_suggestion": None,
     }
 
 

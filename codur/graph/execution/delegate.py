@@ -38,5 +38,6 @@ def delegate_node(state: AgentState, config: CodurConfig) -> DelegateNodeResult:
         "agent_outcome": {
             "agent": selected_agent,
             "status": "delegated"
-        }
+        },
+        "next_step_suggestion": None,
     }

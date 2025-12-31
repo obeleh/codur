@@ -293,7 +293,7 @@ Suggestions: Check agent configuration and tool availability""")
 
     # Parse verification result from agent response
     verification_outcome = get_execution_result(execution_result)
-    return {
+    dct: ExecuteNodeResult = {
         "agent_outcome": {
             "agent": agent_name,
             "result": verification_outcome.get("reasoning", "No reasoning provided"),
@@ -302,6 +302,10 @@ Suggestions: Check agent configuration and tool availability""")
         "messages": new_messages,
         "llm_calls": get_llm_calls(state),
     }
+    if "suggestions" in verification_outcome:
+        dct["next_step_suggestion"] = verification_outcome["suggestions"]
+
+    return dct
 
 
 def _build_verification_prompt(messages) -> str:

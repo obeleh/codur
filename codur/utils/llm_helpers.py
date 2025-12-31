@@ -124,6 +124,7 @@ def create_and_invoke_with_tool_support(
     provider_class = ProviderRegistry.get(provider_name)
 
     verbose = is_verbose(state)
+    tool_names = [schema["name"] for schema in tool_schemas]
 
     # Check if provider supports native tool calling
     if provider_class.supports_native_tools():
@@ -137,7 +138,7 @@ def create_and_invoke_with_tool_support(
             tool_schemas,
             temperature=temperature,
         )
-        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages)
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, tool_names)
 
         try:
             response = invoke_llm(
@@ -177,7 +178,7 @@ def create_and_invoke_with_tool_support(
 
         # Prepend system message
         new_messages = [SystemMessage(content=system_message_content)] + list(new_messages)
-        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages)
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, tool_names)
 
         # Create LLM with json_mode
         llm = _create_llm(

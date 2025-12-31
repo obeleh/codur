@@ -215,6 +215,10 @@ def execute_tool_calls(
                         {"tool": "python_ast_dependencies_multifile", "args": {"paths": py_files}},
                     )
                     has_multifile_call = True
+
+            if verbose and isinstance(output, dict) and "error" in output:
+                console.log(f"[red]{tool_name} error:\n{output}[/red]")
+
         except Exception as exc:
             msg = f"{tool_name} failed: {exc}"
             errors.append(msg)
