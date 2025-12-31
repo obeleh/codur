@@ -1,6 +1,7 @@
 """Handle tool calls from both native API responses and JSON text fallback."""
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage
+from codur.graph.planning.json_parser import JSONResponseParser
 
 
 def deserialize_tool_calls(message: AIMessage) -> dict:
@@ -67,8 +68,6 @@ def extract_tool_calls_from_json_text(message: AIMessage) -> list[dict]:
     Returns:
         List of tool calls in internal format
     """
-    from codur.graph.planning.json_parser import JSONResponseParser
-
     parser = JSONResponseParser()
     data = parser.parse(message.content)
 

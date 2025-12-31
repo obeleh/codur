@@ -24,38 +24,6 @@ if TYPE_CHECKING:
 console = Console()
 
 
-def message_shortening_pipeline_old(messages: list[BaseMessage], only_for_agent: str | None = None) -> list[BaseMessage]:
-    """Return messages optimized for LLM calls, shortening selected system messages.
-
-    Rules:
-    - If only_for_agent is specified and matches message's agent, shorten it
-    - If this is not the last ShortenableSystemMessage, shorten it
-    - Otherwise, keep the full content (especially important for the last system message)
-    """
-    shortened: list[BaseMessage] = []
-    last_shortenable_index = None
-    for idx, message in enumerate(messages):
-        if isinstance(message, ShortenableSystemMessage):
-            last_shortenable_index = idx
-
-    for idx, message in enumerate(messages):
-        if isinstance(message, ShortenableSystemMessage):
-            # Rule 1: If the message was meant for another agent, shorten it
-            if only_for_agent and message.long_form_visible_for_agent_name != only_for_agent:
-                short_msg = SystemMessage(content=message.short_content)
-                shortened.append(short_msg)
-                continue
-            # Rule 2: If this is not the last shortenable message and we have short content, shorten it
-            elif message.short_content and idx != last_shortenable_index:
-                short_msg = SystemMessage(content=message.short_content)
-                shortened.append(short_msg)
-                continue
-
-        # Otherwise keep the message as-is
-        shortened.append(message)
-    return shortened
-
-
 def message_shortening_pipeline(messages: list[BaseMessage], only_for_agent: str | None = None) -> list[BaseMessage]:
     """
     Returns all tool calls that were _after_ a mutation tool call.

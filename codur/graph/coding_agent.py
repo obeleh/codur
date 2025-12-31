@@ -1,7 +1,5 @@
 """Dedicated coding node for the codur-coding agent."""
-import json
-
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
@@ -12,7 +10,7 @@ from codur.graph.state_operations import (
     get_iterations,
     get_llm_calls,
     get_messages,
-    is_verbose, increment_iterations, add_messages, is_first_mutating_agent_call, shuffle_toolcall_order,
+    is_verbose, increment_iterations, add_messages
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.utils.llm_helpers import (
@@ -136,20 +134,16 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
 
     tool_schemas = get_function_schemas()  # All 70+ tools
 
-    # Simplified system prompt (no tool injection)
-    system_prompt = CODING_AGENT_SYSTEM_PROMPT
     if recursion_depth == 0:
         new_messages = [
             ShortenableSystemMessage(
-                content=system_prompt,
+                content=CODING_AGENT_SYSTEM_PROMPT,
                 short_content=CODING_AGENT_SYSTEM_PROMPT_SUMMARY,
                 long_form_visible_for_agent_name="coding",
                 exact_agent_name=agent_name,
             ),
             HumanMessage(content=prompt),
         ]
-        # if is_first_mutating_agent_call(state):
-        #     new_messages = shuffle_toolcall_order(state, new_messages)
     else:
         new_messages = []
 

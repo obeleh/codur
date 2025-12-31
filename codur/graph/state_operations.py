@@ -241,29 +241,3 @@ def get_final_response(state: "AgentState") -> Optional[str]:
 def set_final_response(state: "AgentState", response: Optional[str]) -> None:
     """Set the final response."""
     state["final_response"] = response
-
-
-def is_first_mutating_agent_call(state: "AgentState") -> bool:
-    """Check if this is the first coding agent call."""
-    # NOTE: This assumes we'll add other mutating agents later
-
-    for msg in get_messages(state):
-        if isinstance(msg, ShortenableSystemMessage):
-            if msg.exact_agent_name == "agent:codur-coding":
-                return False
-    return True
-
-def shuffle_toolcall_order(state: "AgentState", new_messages: list[BaseMessage]) -> list[BaseMessage]:
-    """
-    This shuffles the order of the tool calls to make it appear as if the LLM ordered
-    them even though they were added by the preplanning logic.
-    """
-    messages = get_messages(state)
-    new_state_message_order = []
-    for message in messages:
-        if isinstance(message, ToolMessage):
-            new_messages.append(message)
-        else:
-            new_state_message_order.append(message)
-    set_messages(state, new_state_message_order)
-    return new_messages
