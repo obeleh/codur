@@ -1,5 +1,6 @@
 """Review node for verifying and routing fix results."""
 import json
+from traceback import format_exc
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
@@ -163,5 +164,5 @@ def _format_verification_response(last_message: BaseMessage) -> str:
             response += f"\nError: {loaded['error']}"
         response += f"\n{output['expected']} vs\n{output['actual']}"
     except Exception as ex:
-        print(f"!!!!!!!! {ex}")
+        print(f"!!!!!!!! {format_exc(ex)}")
     return response

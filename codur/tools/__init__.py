@@ -129,6 +129,9 @@ from codur.tools.project_discovery import (
     discover_entry_points,
     get_primary_entry_point,
 )
+from codur.tools.clarification import (
+    clarify,
+)
 
 __all__ = [
     "read_file",
@@ -216,4 +219,5 @@ __all__ = [
     "system_processes_list",
     "discover_entry_points",
     "get_primary_entry_point",
+    "clarify",
 ]
