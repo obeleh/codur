@@ -148,8 +148,8 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
             ),
             HumanMessage(content=prompt),
         ]
-        if is_first_mutating_agent_call(state):
-            new_messages = shuffle_toolcall_order(state, new_messages)
+        # if is_first_mutating_agent_call(state):
+        #     new_messages = shuffle_toolcall_order(state, new_messages)
     else:
         new_messages = []
 

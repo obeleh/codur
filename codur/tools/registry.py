@@ -169,6 +169,8 @@ def list_tools_for_tasks(
     return items
 
 
+
+
 @tool_scenarios(TaskType.EXPLANATION)
 def get_tool_help(name: str, state: object | None = None) -> dict:
     """
@@ -184,6 +186,33 @@ def get_tool_help(name: str, state: object | None = None) -> dict:
         "doc": inspect.getdoc(func) or "",
         "module": getattr(func, "__module__", ""),
     }
+
+
+def get_tools_with_side_effects(
+    side_effects: list[ToolSideEffect] | ToolSideEffect | None = None,
+) -> list[str]:
+    """Get tool names that have the specified side effects.
+
+    Args:
+        side_effects: Side effects to filter by. If None, defaults to
+            FILE_MUTATION and STATE_CHANGE.
+
+    Returns:
+        List of tool names that have any of the specified side effects.
+    """
+    if side_effects is None:
+        effect_set = {ToolSideEffect.FILE_MUTATION, ToolSideEffect.STATE_CHANGE}
+    elif isinstance(side_effects, ToolSideEffect):
+        effect_set = {side_effects}
+    else:
+        effect_set = set(side_effects)
+
+    result = []
+    for name, func in _iter_tool_functions().items():
+        tool_effects = get_tool_side_effects(func)
+        if any(effect in tool_effects for effect in effect_set):
+            result.append(name)
+    return sorted(result)
 
 
 def get_tool_by_name(name: str) -> callable | None:
