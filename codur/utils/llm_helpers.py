@@ -6,71 +6,21 @@ import json
 from typing import TYPE_CHECKING
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, SystemMessage, AIMessage, ToolMessage
+from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.graph.state_operations import is_verbose, get_messages
 from codur.graph.tool_executor import execute_tool_calls, ToolExecutionResult
 from codur.llm import create_llm, create_llm_profile
-from codur.tools.registry import get_tools_with_side_effects
-from codur.utils.custom_messages import ShortenableSystemMessage
 from codur.utils.llm_calls import invoke_llm
+from codur.utils.message_pipeline import message_shortening_pipeline
 from codur.utils.tool_response_handler import deserialize_tool_calls, extract_tool_calls_from_json_text
 
 if TYPE_CHECKING:
     from codur.graph.state import AgentState
 
 console = Console()
-
-
-def message_shortening_pipeline(messages: list[BaseMessage], only_for_agent: str | None = None) -> list[BaseMessage]:
-    """
-    Returns all tool calls that were _after_ a mutation tool call.
-    Mutation tool calls: ToolSideEffect.FILE_MUTATION and ToolSideEffect.STATE_CHANGE
-
-    Only a single "ShortenableSystemMessage" should be returned, everything before that (except the tool calls) is dropped
-
-    The goal is to move the toolcalls into the context, and drop everything before the last mutation,
-    while keeping the last ShortenableSystemMessage (which should contain important context).
-    """
-    # Get tool names with mutation side effects
-    tools_with_side_effects = set(get_tools_with_side_effects())
-
-    last_mutation_index = -1
-    for idx, message in enumerate(messages):
-        if isinstance(message, ToolMessage):
-            if message.name in tools_with_side_effects:
-                last_mutation_index = idx
-
-    # Find the last ShortenableSystemMessage
-    last_shortenable_index = None
-    for idx, message in enumerate(messages):
-        if isinstance(message, ShortenableSystemMessage):
-            last_shortenable_index = idx
-
-    if last_shortenable_index is None:
-        raise ValueError("No ShortenableSystemMessage found in messages")
-
-    # Determine which tool calls to preserve and inject after the shortenable message
-    # - If mutation before shortenable: collect from (mutation + 1) to shortenable
-    # - If no mutation (or mutation after shortenable): collect all from 0 to shortenable
-    if last_mutation_index != -1 and last_mutation_index < last_shortenable_index:
-        start_idx = last_mutation_index + 1
-    else:
-        start_idx = 0
-
-    tool_calls_to_inject = []
-    for idx in range(start_idx, last_shortenable_index):
-        message = messages[idx]
-        if isinstance(message, ToolMessage):
-            tool_calls_to_inject.append(message)
-
-    last_shortenable_message = messages[last_shortenable_index]
-
-    # Output: shortenable + preserved tool calls + messages after shortenable
-    messages_out = [last_shortenable_message] + tool_calls_to_inject + messages[last_shortenable_index + 1:]
-    return messages_out
 
 
 def _create_llm(
@@ -174,7 +124,6 @@ def create_and_invoke_with_tool_support(
     provider_class = ProviderRegistry.get(provider_name)
 
     verbose = is_verbose(state)
-    agent_name = invoked_by.split(".")[0] if "." in invoked_by else invoked_by
 
     # Check if provider supports native tool calling
     if provider_class.supports_native_tools():
@@ -188,7 +137,7 @@ def create_and_invoke_with_tool_support(
             tool_schemas,
             temperature=temperature,
         )
-        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, only_for_agent=agent_name)
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages)
 
         try:
             response = invoke_llm(
@@ -228,7 +177,7 @@ def create_and_invoke_with_tool_support(
 
         # Prepend system message
         new_messages = [SystemMessage(content=system_message_content)] + list(new_messages)
-        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, only_for_agent=agent_name)
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages)
 
         # Create LLM with json_mode
         llm = _create_llm(

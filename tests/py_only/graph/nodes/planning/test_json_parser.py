@@ -1,4 +1,4 @@
-from codur.graph.planning.json_parser import JSONResponseParser, clean_json_response
+from codur.utils.json_parser import JSONResponseParser, clean_json_response
 
 
 def test_clean_json_response_extracts_object() -> None:

@@ -11,10 +11,7 @@ from codur.config import CodurConfig
 from codur.utils.llm_helpers import create_and_invoke
 from codur.agents import AgentRegistry
 from codur.graph.node_types import ExecuteNodeResult
-from codur.graph.utils import (
-    resolve_agent_profile,
-    resolve_agent_reference,
-)
+from codur.graph.utils import resolve_agent_profile, resolve_agent_reference
 from codur.utils.config_helpers import get_default_agent
 from codur.utils.validation import require_config
 from codur.graph.state_operations import (

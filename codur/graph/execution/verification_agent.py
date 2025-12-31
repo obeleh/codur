@@ -15,10 +15,7 @@ from codur.graph.state_operations import (
 from codur.tools.schema_generator import get_function_schemas
 from codur.tools.tool_annotations import ToolSideEffect
 from codur.tools.verification_response import VerificationResult
-from codur.utils.llm_helpers import (
-    ShortenableSystemMessage,
-    create_and_invoke_with_tool_support,
-)
+from codur.utils.llm_helpers import create_and_invoke_with_tool_support
 
 
 """
@@ -189,9 +186,6 @@ build_verification_response(
 
 # Initialize system prompt with tools
 VERIFICATION_AGENT_SYSTEM_PROMPT = _get_system_prompt_with_tools()
-VERIFICATION_AGENT_SYSTEM_PROMPT_SUMMARY = (
-    "Verification agent: determine if implementation satisfies requirements using context-driven strategies"
-)
 
 
 def verification_agent_node(
@@ -245,11 +239,7 @@ def verification_agent_node(
 
     if recursion_depth == 0:
         new_messages = [
-            ShortenableSystemMessage(
-                content=VERIFICATION_AGENT_SYSTEM_PROMPT,
-                short_content=VERIFICATION_AGENT_SYSTEM_PROMPT_SUMMARY,
-                long_form_visible_for_agent_name="verification",
-            ),
+            SystemMessage(content=VERIFICATION_AGENT_SYSTEM_PROMPT),
             HumanMessage(content=prompt),
         ]
     else:

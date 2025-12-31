@@ -1,8 +1,7 @@
 from typing import TYPE_CHECKING, Optional
 
-from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from codur.graph.utils import normalize_messages
-from codur.utils.custom_messages import ShortenableSystemMessage
 
 if TYPE_CHECKING:
     # Avoid circular imports for type checking

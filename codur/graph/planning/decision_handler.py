@@ -13,7 +13,7 @@ from codur.graph.state import AgentState
 from codur.utils.llm_calls import invoke_llm
 from codur.utils.validation import require_config
 
-from .json_parser import JSONResponseParser
+from codur.utils.json_parser import JSONResponseParser
 
 
 class PlanningDecisionHandler:

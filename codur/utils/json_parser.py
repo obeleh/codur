@@ -1,4 +1,4 @@
-"""JSON parsing helpers for planning responses."""
+"""JSON parsing helpers for LLM responses."""
 
 from __future__ import annotations
 

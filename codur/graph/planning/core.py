@@ -23,7 +23,7 @@ from codur.utils.validation import require_config
 from .decision_handler import PlanningDecisionHandler
 from .prompt_builder import PlanningPromptBuilder
 from .validators import looks_like_change_request, mentions_file_path, has_mutation_tool
-from .json_parser import JSONResponseParser
+from codur.utils.json_parser import JSONResponseParser
 from .classifier import quick_classify
 from .types import ClassificationResult
 from .strategies import get_strategy_for_task
