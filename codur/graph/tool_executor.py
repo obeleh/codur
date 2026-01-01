@@ -13,7 +13,7 @@ from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState, AgentStateData
-from codur.graph.state_operations import get_messages, is_verbose
+from codur.graph.state_operations import get_messages, is_verbose, get_tool_calls
 from codur.utils.path_utils import resolve_path
 from codur.tools.tool_annotations import ToolContext, ToolGuard, get_tool_contexts, get_tool_guards
 
@@ -116,7 +116,6 @@ def _inject_missing_required_params(tool_calls: list[dict], state: AgentState) -
     }
 
     # Try to infer path from recent tool calls
-    from codur.graph.state_operations import get_tool_calls
     try:
         previous_calls = get_tool_calls(state)
     except Exception:
@@ -267,10 +266,9 @@ def _build_tool_map(
 ) -> dict:
     """Build tool map dynamically from tool registry."""
     from codur.tools import __all__ as tool_names
-    tool_map = {}
-
-    # Import tools dynamically
     import codur.tools as tools_module
+
+    tool_map = {}
 
     for tool_name in tool_names:
         # Get the tool function
