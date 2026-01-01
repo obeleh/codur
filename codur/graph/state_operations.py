@@ -49,10 +49,25 @@ def set_messages(state: "AgentState", messages: list[BaseMessage]) -> None:
     """
     state["messages"] = messages
 
+def get_first_human_message_from_messages(messages: list[BaseMessage]) -> Optional[BaseMessage]:
+    if not messages:
+        return None
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            return msg
+    return None
+
+
 def get_first_human_message(state: "AgentState") -> Optional[BaseMessage]:
     """Get the first human message from state (original request), if any."""
     messages = get_messages(state)
-    for msg in messages:
+    return get_first_human_message_from_messages(messages)
+
+
+def get_last_human_message_from_messages(messages: list[BaseMessage]) -> Optional[BaseMessage]:
+    if not messages:
+        return None
+    for msg in reversed(messages):
         if isinstance(msg, HumanMessage):
             return msg
     return None
@@ -60,12 +75,8 @@ def get_first_human_message(state: "AgentState") -> Optional[BaseMessage]:
 def get_last_human_message(state: "AgentState") -> Optional[BaseMessage]:
     """Get the last human message from state, if any."""
     messages = get_messages(state)
-    if not messages:
-        return None
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            return msg
-    return None
+    return get_last_human_message_from_messages(messages)
+
 
 def get_first_human_message_content(state: "AgentState") -> Optional[str]:
     """Get the content of the first human message (original request), if any."""
@@ -75,6 +86,16 @@ def get_first_human_message_content(state: "AgentState") -> Optional[str]:
 def get_last_human_message_content(state: "AgentState") -> Optional[str]:
     """Get the content of the last human message, if any."""
     msg = get_last_human_message(state)
+    return msg.content if msg else None
+
+def get_first_human_message_content_from_messages(messages: list[BaseMessage]) -> Optional[str]:
+    """Get the content of the first human message from a list of messages, if any."""
+    msg = get_first_human_message_from_messages(messages)
+    return msg.content if msg else None
+
+def get_last_human_message_content_from_messages(messages: list[BaseMessage]) -> Optional[str]:
+    """Get the content of the last human message from a list of messages, if any."""
+    msg = get_last_human_message_from_messages(messages)
     return msg.content if msg else None
 
 

@@ -1,8 +1,8 @@
 import json
 import pytest
 from codur.tools.structured import (
-    read_json, write_json, set_json_value,
-    read_yaml, write_yaml, set_yaml_value,
+    read_json, json_decode, write_json, set_json_value,
+    read_yaml, yaml_decode, write_yaml, set_yaml_value,
     read_ini, write_ini, set_ini_value
 )
 
@@ -22,6 +22,7 @@ def test_json_ops(temp_fs):
     set_json_value("test.json", "nested.foo", "baz", root=temp_fs)
     loaded = read_json("test.json", root=temp_fs)
     assert loaded["nested"]["foo"] == "baz"
+    assert json_decode(json.dumps(data)) == data
 
 def test_yaml_ops(temp_fs):
     data = {"key": "value", "list": [1, 2, 3]}
@@ -33,6 +34,7 @@ def test_yaml_ops(temp_fs):
     set_yaml_value("test.yaml", "key", "updated", root=temp_fs)
     loaded = read_yaml("test.yaml", root=temp_fs)
     assert loaded["key"] == "updated"
+    assert yaml_decode("key: value\nlist:\n  - 1\n  - 2") == {"key": "value", "list": [1, 2]}
 
 def test_ini_ops(temp_fs):
     data = {"Section": {"key": "value"}}

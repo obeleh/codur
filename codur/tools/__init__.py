@@ -28,9 +28,11 @@ from codur.tools.ripgrep import (
 )
 from codur.tools.structured import (
     read_json,
+    json_decode,
     write_json,
     set_json_value,
     read_yaml,
+    yaml_decode,
     write_yaml,
     set_yaml_value,
     read_ini,
@@ -155,9 +157,11 @@ __all__ = [
     "replace_lines",
     "line_count",
     "read_json",
+    "json_decode",
     "write_json",
     "set_json_value",
     "read_yaml",
+    "yaml_decode",
     "write_yaml",
     "set_yaml_value",
     "read_ini",

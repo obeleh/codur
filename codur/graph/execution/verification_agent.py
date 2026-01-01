@@ -53,6 +53,7 @@ def _get_system_prompt_with_tools():
     analysis_tools = []
     file_tools = []
     response_tools = []
+    other_tools = []
 
     for tool in tools:
         name = tool['name']
@@ -74,13 +75,7 @@ def _get_system_prompt_with_tools():
             # File reading tools
             file_tools.append(name)
         else:
-            # Fallback categorization for edge cases
-            if 'entry_point' in name or 'discover' in name:
-                discovery_tools.append(name)
-            elif 'run_' in name:
-                execution_tools.append(name)
-            elif 'read' in name or 'list' in name:
-                file_tools.append(name)
+            other_tools.append(name)
 
     tools_section = f"""
 ## Available Tools
@@ -92,6 +87,7 @@ You have access to verification-relevant tools. Call them directly - they will b
 **Analysis**: {', '.join(sorted(analysis_tools))}
 **File Reading**: {', '.join(sorted(file_tools))}
 **Response**: {', '.join(sorted(response_tools))}
+{"**Other**: " + ', '.join(sorted(other_tools)) if other_tools else ""}
 
 CRITICAL: Only use tools from this list. Do NOT invent or create new tools.
 """
@@ -179,6 +175,7 @@ build_verification_response(
 - Always provide evidence (tool results) for your decision
 - Be explicit about what you checked and why
 - If a tool returns an error, treat that as verification failure evidence
+- run_python_file returns std_out/std_err/return_code; non-zero return_code or std_err indicates failure in the python script. error field is reserved for tool execution failures.
 - Focus on behavior verification: does the code do what the user asked for?
 - If the original request is vague or does not specify success criteria, infer reasonable expectations based on common practices, sometimes this means code runs without errors
 - Sometimes tools that were already run (eg. list_files, run_pytest, run_python_file) provide enough information to make a decision without further execution

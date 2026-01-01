@@ -12,9 +12,10 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage
 
 from codur.config import CodurConfig
+from codur.graph.state_operations import get_last_human_message_content_from_messages
 from codur.utils.path_extraction import extract_file_paths
 
 from codur.constants import TaskType
@@ -32,6 +33,7 @@ from codur.graph.planning.strategies import (
     WebSearchStrategy,
     UnknownStrategy,
 )
+
 
 # Code file extensions for detection
 CODE_FILE_EXTENSIONS = {
@@ -121,8 +123,7 @@ def quick_classify(messages: list[BaseMessage], config: CodurConfig) -> Classifi
     Scoring is delegated to individual TaskStrategy implementations.
     """
     # Get last human message
-    from codur.graph.utils import get_last_human_message
-    user_message = get_last_human_message(messages) or ""
+    user_message = get_last_human_message_content_from_messages(messages) or ""
 
     if not user_message:
         candidates = _build_candidates({}, {task: [] for task in TaskType})
@@ -175,7 +176,7 @@ def quick_classify(messages: list[BaseMessage], config: CodurConfig) -> Classifi
     if best_score <= 0.0:
         return ClassificationResult(
             task_type=TaskType.UNKNOWN,
-            confidence=0.4 * confidence_backoff,
+            confidence=0.0,
             detected_files=detected_files,
             detected_action=None,
             reasoning="No clear pattern matched",

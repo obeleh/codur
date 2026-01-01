@@ -69,6 +69,20 @@ def read_json(
         return json.load(handle)
 
 
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.DOCUMENTATION)
+def json_decode(
+    content: str,
+    state: AgentState | None = None,
+) -> Any:
+    """Parse JSON content into native data."""
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as e:
+        return {
+            "error": f"JSON decode error: {str(e)}"
+        }
+
+
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR)
@@ -135,6 +149,20 @@ def read_yaml(
     )
     with open(target, "r", encoding="utf-8") as handle:
         return yaml.safe_load(handle)
+
+
+@tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.DOCUMENTATION)
+def yaml_decode(
+    content: str,
+    state: AgentState | None = None,
+) -> Any:
+    """Parse YAML content into native data."""
+    try:
+        return yaml.safe_load(content)
+    except yaml.YAMLError as e:
+        return {
+            "error": f"YAML decode error: {str(e)}"
+        }
 
 
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest import mock
 
 import pytest
@@ -130,7 +131,11 @@ class TestBuildVerificationPrompt:
                 tool_calls=[{"id": "1", "name": "run_python_file", "args": {"path": "main.py"}}]
             ),
             ToolMessage(
-                content="Output: success\nExit code: 0",
+                content=json.dumps({
+                    "tool": "run_python_file",
+                    "output": {"std_out": "success", "std_err": None, "return_code": 0},
+                    "args": {"path": "main.py"},
+                }),
                 tool_call_id="1",
                 name="run_python_file"
             ),
@@ -314,7 +319,11 @@ class TestVerificationAgentRecursionMessages:
                 tool_calls=[{"id": "call_1", "name": "run_python_file", "args": {"path": "main.py"}}]
             ),
             ToolMessage(
-                content="output: hello world\nexit code: 0",
+                content=json.dumps({
+                    "tool": "run_python_file",
+                    "output": {"std_out": "hello world", "std_err": None, "return_code": 0},
+                    "args": {"path": "main.py"},
+                }),
                 tool_call_id="call_1",
                 name="run_python_file"
             ),
@@ -324,7 +333,7 @@ class TestVerificationAgentRecursionMessages:
         # ensuring it knows the tool was already called and what it returned
         assert len(state_messages) == 4
         assert isinstance(state_messages[-1], ToolMessage)
-        assert "output: hello world" in state_messages[-1].content
+        assert "hello world" in state_messages[-1].content
 
         # Key insight: agent sees ToolMessage, so won't call same tool again
 
@@ -395,7 +404,15 @@ class TestVerificationAgentRecursionMessages:
         assert len(call_1_messages) == 2
 
         # Tool gets called, returns result
-        call_1_result = ToolMessage(content="exit 0", tool_call_id="1", name="run_python_file")
+        call_1_result = ToolMessage(
+            content=json.dumps({
+                "tool": "run_python_file",
+                "output": {"std_out": "", "std_err": None, "return_code": 0},
+                "args": {},
+            }),
+            tool_call_id="1",
+            name="run_python_file",
+        )
 
         # Second call: accumulated history INCLUDES the result
         call_2_messages = [
@@ -412,4 +429,4 @@ class TestVerificationAgentRecursionMessages:
         # Agent can see the tool was called and what it returned
         tool_results = [m for m in call_2_messages if isinstance(m, ToolMessage)]
         assert len(tool_results) == 1
-        assert "exit 0" in tool_results[0].content
+        assert '"return_code": 0' in tool_results[0].content

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional, TypedDict
 
 from codur.config import CodurConfig
+from codur.graph.state_operations import is_verbose
 
 
 class ValidateSyntaxResult(TypedDict, total=False):
@@ -17,10 +18,10 @@ class ValidateSyntaxResult(TypedDict, total=False):
 
 class RunPythonFileResult(TypedDict, total=False):
     """Result from run_python_file."""
-    output: str
+    std_out: str
     error: str
     return_code: int
-
+    std_err: str | None
 
 class RunPytestResult(TypedDict, total=False):
     """Result from run_pytest."""
@@ -91,7 +92,7 @@ def run_python_file(
     config: Optional[CodurConfig] = None,
     state: Optional[AgentState] = None,
 ) -> RunPythonFileResult:
-    """Execute a Python file and return its output.
+    """Execute a Python file and return structured output.
 
     This tool allows the LLM to run and validate code during the coding phase.
     It executes the specified Python file and captures stdout/stderr.
@@ -105,11 +106,12 @@ def run_python_file(
         state: Current agent state (injected by tool executor)
 
     Returns:
-        String with the output from running the file, or error message if execution failed.
+        RunPythonFileResult with std_out/std_err/return_code.
+        The "error" field is reserved for tool execution failures.
 
     Examples:
         run_python_file("main.py")
-        # Returns the output from executing main.py
+        # Returns std_out/std_err/return_code for main.py
 
         run_python_file("main.py", cwd="/tmp", env={"TIMEOUT": "30"})
         # Executes in /tmp with custom environment variables
@@ -157,23 +159,20 @@ def run_python_file(
                 "error": f"Error: Execution timed out after {execution_timeout} seconds"
             }
 
-        # Format result
-        output = stdout.strip() if stdout else ""
+        std_out = stdout.strip() if stdout else ""
+        std_err = stderr.strip() if stderr else ""
 
-        if return_code != 0:
-            dct: RunPythonFileResult = {
-                "return_code": return_code,
-            }
-            if stderr:
-                dct["error"] = stderr.strip()
-            if output:
-                dct["output"] = output.strip()
-            return dct
+        if is_verbose(state):
+            print(f"[dim] Return code: {return_code} Stdout:\n{std_out} [/dim]")
+            if std_err:
+                print(f"[yellow] Stderr: {std_err}[/yellow]")
 
-        return {
-            "output": output,
+        result: RunPythonFileResult = {
             "return_code": return_code,
+            "std_out": std_out,
+            "std_err": std_err if std_err else None,
         }
+        return result
 
     except Exception as e:
         return {

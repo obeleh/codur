@@ -183,21 +183,6 @@ def get_first_human_message(messages: list[BaseMessage]) -> Optional[str]:
     return None
 
 
-def get_last_human_message(messages: list[BaseMessage]) -> Optional[str]:
-    """Extract content from last HumanMessage in a list.
-
-    Args:
-        messages: List of BaseMessage objects
-
-    Returns:
-        Optional[str]: Content of last HumanMessage, or None if not found
-    """
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            return msg.content
-    return None
-
-
 def extract_messages_by_type(messages: list[BaseMessage], message_type: type) -> list[BaseMessage]:
     """Extract all messages of a specific type.
 

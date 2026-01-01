@@ -13,11 +13,16 @@ from codur.config import CodurConfig
 from codur.constants import TaskType
 from codur.graph.node_types import PlanNodeResult
 from codur.graph.state import AgentState
-from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose
+from codur.graph.state_operations import (
+    get_iterations,
+    get_llm_calls,
+    get_messages,
+    is_verbose,
+    get_first_human_message_content_from_messages
+)
 from codur.graph.utils import (
     extract_list_files_output,
     extract_read_file_paths,
-    get_last_human_message,
 )
 from codur.llm import create_llm_profile
 from codur.utils.retry import LLMRetryStrategy
@@ -126,7 +131,7 @@ def llm_plan(
             return _with_llm_calls(result)
 
     # If no file hint is available for a change request, list files for discovery.
-    last_human_msg = get_last_human_message(messages)
+    last_human_msg = get_first_human_message_content_from_messages(messages)
     if (
         not tool_results_present
         and not classification.detected_files
