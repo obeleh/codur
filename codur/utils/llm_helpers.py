@@ -229,9 +229,9 @@ def _checkup_consecutive_toolcalls(
         msg = f"You called the same tool(s) again: {tools_str}. Please proceed with the next step or explain what you're trying to achieve. Used the clarify tool to express your intent."
         if is_verbose(state):
             console.log(f"[yellow]Detected repeated tool calls: {tools_str}[/yellow]")
-        last_msg = new_messages.pop()
+        # last_msg = new_messages.pop()
         new_messages.append(HumanMessage(content=msg))
-        new_messages.append(last_msg)
+        # new_messages.append(last_msg)
 
 
 def _build_tool_descriptions_for_prompt(tool_schemas: list[dict]) -> str:
