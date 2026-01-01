@@ -3,7 +3,7 @@
 import traceback
 from typing import Optional
 
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage, ToolMessage
 from rich.console import Console
 
 from codur.graph.state import AgentState
@@ -219,7 +219,7 @@ class AgentExecutor:
         # Extract tool results from messages
         tool_results = []
         for msg in messages:
-            if isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:"):
+            if isinstance(msg, ToolMessage):
                 tool_results.append(msg.content)
 
         if tool_results:

@@ -1,13 +1,22 @@
 """Tests for explanation task routing in planning phases."""
 
+import json
 import pytest
 from unittest.mock import MagicMock
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
 from codur.graph.planning.core import pattern_plan
 from codur.graph.planning.classifier import quick_classify, text_confidence_backoff
 from codur.graph.planning.types import TaskType
 from codur.graph.planning.strategies import ExplanationStrategy
+
+
+def _tool_msg(tool: str, output, args: dict | None = None) -> ToolMessage:
+    """Helper to create a ToolMessage in JSON format."""
+    return ToolMessage(
+        content=json.dumps({"tool": tool, "output": output, "args": args or {}}),
+        tool_call_id="test",
+    )
 
 
 class TestPhase0ExplanationRouting:
@@ -336,7 +345,7 @@ class TestExplanationStrategyExecution:
             tool_results_present=True,
             messages=[
                 HumanMessage(content="Explain main.py"),
-                SystemMessage(content="Tool results:\nread_file: def main(): pass"),
+                _tool_msg("read_file", "def main(): pass", {"path": "main.py"}),
             ],
             iterations=1,
             config=config,

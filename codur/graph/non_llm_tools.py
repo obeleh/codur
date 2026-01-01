@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from typing import Optional
 
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from rich.console import Console
 
 from codur.graph.state import AgentState
 from codur.graph.node_types import PlanNodeResult
 from codur.constants import GREETING_MAX_WORDS
 from codur.graph.tool_detection import create_default_tool_detector
-from codur.graph.state_operations import get_iterations, is_verbose
+from codur.graph.state_operations import get_iterations, is_verbose, get_last_human_message, \
+    get_last_human_message_content
 from codur.utils.path_extraction import find_workspace_match
 
 
@@ -85,15 +86,11 @@ def _context_only_tool_calls(tool_calls: list[dict]) -> bool:
 
 def run_non_llm_tools(messages: list[BaseMessage], state: AgentState) -> Optional[PlanNodeResult]:
     tool_results_present = any(
-        isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:")
+        isinstance(msg, ToolMessage)
         for msg in messages
     )
 
-    last_human_msg = None
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            last_human_msg = msg.content
-            break
+    last_human_msg = get_last_human_message_content(state)
 
     verbose = is_verbose(state)
 

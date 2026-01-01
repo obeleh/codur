@@ -1,10 +1,118 @@
 """Shared helpers for graph nodes."""
 
+import json
+from dataclasses import dataclass
 from typing import Any, Optional
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, ToolMessage
 
 from codur.config import CodurConfig
 from codur.llm import create_llm_profile
+
+
+@dataclass
+class ToolOutput:
+    """Parsed tool message output."""
+    tool: str
+    output: Any
+    args: dict
+
+    @property
+    def output_str(self) -> str:
+        """Return output as string."""
+        if isinstance(self.output, str):
+            return self.output
+        return json.dumps(self.output)
+
+
+def parse_tool_message(message: ToolMessage) -> Optional[ToolOutput]:
+    """Parse a ToolMessage and extract tool name, output, and args.
+
+    Args:
+        message: ToolMessage to parse
+
+    Returns:
+        ToolOutput with tool name, output, and args, or None if parsing fails
+    """
+    try:
+        data = json.loads(message.content)
+        return ToolOutput(
+            tool=data.get("tool", ""),
+            output=data.get("output", ""),
+            args=data.get("args", {}),
+        )
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def extract_read_file_paths(messages: list[BaseMessage]) -> set[str]:
+    """Extract all file paths that have been read from tool results.
+
+    Looks for read_file and read_files tool results in ToolMessages.
+
+    Args:
+        messages: List of messages to search
+
+    Returns:
+        Set of file paths that have been read
+    """
+    read_paths: set[str] = set()
+    for msg in messages:
+        if not isinstance(msg, ToolMessage):
+            continue
+        parsed = parse_tool_message(msg)
+        if not parsed:
+            continue
+        if parsed.tool == "read_file":
+            path = parsed.args.get("path", "")
+            if path:
+                read_paths.add(path)
+        elif parsed.tool == "read_files":
+            paths = parsed.args.get("paths", [])
+            if isinstance(paths, list):
+                read_paths.update(p for p in paths if p)
+    return read_paths
+
+
+def extract_list_files_output(messages: list[BaseMessage]) -> list[str]:
+    """Extract file list from list_files tool results.
+
+    Args:
+        messages: List of messages to search
+
+    Returns:
+        List of file paths from list_files output
+    """
+    files: list[str] = []
+    for msg in messages:
+        if not isinstance(msg, ToolMessage):
+            continue
+        parsed = parse_tool_message(msg)
+        if not parsed or parsed.tool != "list_files":
+            continue
+        output = parsed.output
+        if isinstance(output, list):
+            files.extend(str(f) for f in output if f)
+    return files
+
+
+def has_tool_result(messages: list[BaseMessage], *tool_names: str) -> bool:
+    """Check if any of the specified tool results are present.
+
+    Args:
+        messages: List of messages to search
+        *tool_names: Tool names to look for (e.g., "read_file", "read_files")
+
+    Returns:
+        True if any of the specified tools have results in messages
+    """
+    tool_set = set(tool_names)
+    for msg in messages:
+        if not isinstance(msg, ToolMessage):
+            continue
+        parsed = parse_tool_message(msg)
+        if parsed and parsed.tool in tool_set:
+            return True
+    return False
 
 
 def resolve_agent_reference(raw_agent: str) -> str:

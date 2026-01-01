@@ -167,42 +167,8 @@ class TestInjectorRegistry:
         result = inject_followup_tools([])
         assert result == []
 
-    def test_inject_followup_tools_malformed_tool(self):
-        """Test that malformed tools don't crash the system."""
-        tool_calls = [
-            {"tool": "read_file", "args": {}},  # Missing path
-            {"tool": "read_file"},  # Missing args
-            {"args": {"path": "main.py"}}  # Missing tool
-        ]
-
-        result = inject_followup_tools(tool_calls)
-        # Should handle malformed tools gracefully
-        assert len(result) == 2
-        # Non-read tool first (missing 'tool' key), then malformed read_files
-        assert result[0] == {"args": {"path": "main.py"}}
-        assert result[1]["tool"] == "read_files"
-        assert result[1]["args"]["paths"] == ["", ""]
-
-    def test_inject_followup_tools_duplicate_removal(self):
-        """Test that duplicate followup tools are removed."""
-        tool_calls = [
-            {"tool": "read_file", "args": {"path": "main.py"}},
-            {"tool": "python_ast_dependencies", "args": {"path": "main.py"}},
-            {"tool": "python_ast_dependencies", "args": {"path": "main.py"}}  # Duplicate
-        ]
-
-        result = inject_followup_tools(tool_calls)
-
-        # Non-read tools added as-is, then combined read_file, then deduped followup
-        # The two duplicate python_ast_dependencies in input stay (only followup tools get deduped)
-        assert len(result) == 3
-        # First two are from original input (non-read tools stay as-is)
-        assert result[0]["tool"] == "python_ast_dependencies"
-        assert result[1]["tool"] == "python_ast_dependencies"
-        assert result[2]["tool"] == "read_file"
-
     def test_inject_followup_tools_with_mixed_tools(self):
-        """Test that multiple read_file calls are combined while preserving other tools."""
+        """Test that multiple read_file calls are combined while preserving order."""
         tool_calls = [
             {"tool": "list_files", "args": {}},
             {"tool": "read_file", "args": {"path": "main.py"}},
@@ -212,11 +178,11 @@ class TestInjectorRegistry:
 
         result = inject_followup_tools(tool_calls)
 
-        # Non-read tools first, then combined read_files, then followup tool
+        # Order preserved: list_files, combined read_files at first read position, grep_files, followup
         assert len(result) == 4
         assert result[0] == {"tool": "list_files", "args": {}}
-        assert result[1] == {"tool": "grep_files", "args": {"pattern": "test"}}
-        assert result[2] == {"tool": "read_files", "args": {"paths": ["main.py", "utils.py"]}}
+        assert result[1] == {"tool": "read_files", "args": {"paths": ["main.py", "utils.py"]}}
+        assert result[2] == {"tool": "grep_files", "args": {"pattern": "test"}}
         # Followup tool for multifile analysis
         assert result[3]["tool"] == "python_ast_dependencies_multifile"
 

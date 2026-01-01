@@ -16,7 +16,7 @@ class VerificationResult(TypedDict):
     suggestions: NotRequired[str | None]
 
 
-@tool_scenarios(TaskType.RESULT_VERIFICATION)
+@tool_scenarios(TaskType.RESULT_VERIFICATION, TaskType.META_TOOL)
 def build_verification_response(
     passed: bool,
     reasoning: str,

@@ -41,80 +41,44 @@ def get_all_injectors() -> List[ToolInjector]:
 
 def inject_followup_tools(
     tool_calls: List[Dict[str, Any]],
-    *,
-    preserve_order: bool = False,
 ) -> List[Dict[str, Any]]:
-    """Inject language-specific followup tools after read_file calls."""
-    if preserve_order:
-        # Collect read_file paths and group by injector while preserving order
-        read_file_paths: List[str] = []
-        injector_paths: Dict[ToolInjector, List[str]] = {}
-        read_placeholders: List[int] = []
-        result: List[Dict[str, Any]] = []
+    """Inject language-specific followup tools after read_file calls.
 
-        for tool in tool_calls:
-            if tool.get("tool") == "read_file":
-                path = tool.get("args", {}).get("path", "")
-                if not isinstance(path, str):
-                    continue
-                read_file_paths.append(path)
-                injector = get_injector_for_file(path)
-                if injector:
-                    if injector not in injector_paths:
-                        injector_paths[injector] = []
-                    injector_paths[injector].append(path)
-                read_placeholders.append(len(result))
-                result.append({"__read_file_placeholder__": True})
-            else:
-                result.append(tool)
+    Preserves the order of tool calls while  combining multiple read_file calls
+    into a single read_files call at the position of the first read_file.
+    """
+    read_file_paths: List[str] = []
+    injector_paths: Dict[ToolInjector, List[str]] = {}
+    read_placeholders: List[int] = []
+    result: List[Dict[str, Any]] = []
 
-        # Combine multiple read_file calls into a single multi-file operation, placed
-        # at the position of the first read_file to preserve order.
-        if read_file_paths:
-            if len(read_file_paths) > 1:
-                combined_read = {"tool": "read_files", "args": {"paths": read_file_paths}}
-            else:
-                combined_read = {"tool": "read_file", "args": {"path": read_file_paths[0]}}
-            first_index = read_placeholders[0]
-            result[first_index] = combined_read
-            for index in reversed(read_placeholders[1:]):
-                result.pop(index)
-    else:
-        # Collect read_file paths and group by injector
-        read_file_paths = []
-        injector_paths = {}
-        non_read_tools = []
+    for tool in tool_calls:
+        if tool.get("tool") == "read_file":
+            path = tool.get("args", {}).get("path", "")
+            if not isinstance(path, str):
+                continue
+            read_file_paths.append(path)
+            injector = get_injector_for_file(path)
+            if injector:
+                if injector not in injector_paths:
+                    injector_paths[injector] = []
+                injector_paths[injector].append(path)
+            read_placeholders.append(len(result))
+            result.append({"__read_file_placeholder__": True})
+        else:
+            result.append(tool)
 
-        for tool in tool_calls:
-            if tool.get("tool") == "read_file":
-                path = tool.get("args", {}).get("path", "")
-                if isinstance(path, str):
-                    read_file_paths.append(path)
-                    injector = get_injector_for_file(path)
-                    if injector:
-                        if injector not in injector_paths:
-                            injector_paths[injector] = []
-                        injector_paths[injector].append(path)
-            else:
-                non_read_tools.append(tool)
-
-        # Build result with combined read operations
-        result = []
-
-        # Add non-read tools first
-        result.extend(non_read_tools)
-
-        # Combine multiple read_file calls into a single multi-file operation
+    # Combine multiple read_file calls into a single multi-file operation, placed
+    # at the position of the first read_file to preserve order.
+    if read_file_paths:
         if len(read_file_paths) > 1:
-            result.append({
-                "tool": "read_files",
-                "args": {"paths": read_file_paths}
-            })
-        elif len(read_file_paths) == 1:
-            result.append({
-                "tool": "read_file",
-                "args": {"path": read_file_paths[0]}
-            })
+            combined_read = {"tool": "read_files", "args": {"paths": read_file_paths}}
+        else:
+            combined_read = {"tool": "read_file", "args": {"path": read_file_paths[0]}}
+        first_index = read_placeholders[0]
+        result[first_index] = combined_read
+        for index in reversed(read_placeholders[1:]):
+            result.pop(index)
 
     # Track seen tool calls by hash to avoid duplicates
     seen_hashes: set = set()

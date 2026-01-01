@@ -20,6 +20,7 @@ class TaskType(Enum):
     WEB_SEARCH = "web_search"
     UNKNOWN = "unknown"
     CODE_ANALYSIS = "code_analysis"
+    META_TOOL = "meta_tool" # Tools used to implement (agentic) logic or to communicate with other agents
 
 # General constants
 GREETING_MAX_WORDS = 3

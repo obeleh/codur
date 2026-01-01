@@ -1,16 +1,13 @@
 """Tool result analysis helpers for planning."""
 
-import ast
-from langchain_core.messages import SystemMessage, BaseMessage
+from langchain_core.messages import BaseMessage
+
+from codur.graph.utils import has_tool_result, extract_list_files_output
 
 
 def tool_results_include_read_file(messages: list[BaseMessage]) -> bool:
     """Check if tool results include a read_file output."""
-    for msg in messages:
-        if isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:"):
-            if "read_file:" in msg.content:
-                return True
-    return False
+    return has_tool_result(messages, "read_file", "read_files")
 
 
 def select_file_from_tool_results(messages: list[BaseMessage]) -> str | None:
@@ -21,22 +18,7 @@ def select_file_from_tool_results(messages: list[BaseMessage]) -> str | None:
 
 def extract_list_files(messages: list[BaseMessage]) -> list[str]:
     """Extract list of files from list_files tool output in messages."""
-    for msg in messages:
-        if not isinstance(msg, SystemMessage):
-            continue
-        if not msg.content.startswith("Tool results:"):
-            continue
-        for line in msg.content.splitlines():
-            if not line.startswith("list_files:"):
-                continue
-            payload = line.split("list_files:", 1)[1].strip()
-            try:
-                parsed = ast.literal_eval(payload)
-            except (ValueError, SyntaxError):
-                return []
-            if isinstance(parsed, list):
-                return [item for item in parsed if isinstance(item, str)]
-    return []
+    return extract_list_files_output(messages)
 
 
 def pick_preferred_python_file(files: list[str]) -> str | None:

@@ -13,7 +13,9 @@ from codur.graph.state_operations import (
     is_verbose, increment_iterations, add_messages, get_next_step_suggestion
 )
 from codur.tools.schema_generator import get_function_schemas
+from codur.tools.registry import list_tools_for_tasks
 from codur.utils.llm_helpers import create_and_invoke_with_tool_support
+from codur.constants import TaskType
 
 """
 NOTE:
@@ -29,9 +31,6 @@ console = Console()
 # Build system prompt with available tools
 def _get_system_prompt_with_tools():
     """Build system prompt with available tools listed."""
-    from codur.tools.registry import list_tools_for_tasks
-    from codur.constants import TaskType
-
     # Get tools relevant to coding tasks (include unannotated tools as fallback)
     coding_task_types = [
         TaskType.CODE_FIX,
@@ -39,6 +38,7 @@ def _get_system_prompt_with_tools():
         TaskType.CODE_VALIDATION,
         TaskType.FILE_OPERATION,
         TaskType.REFACTOR,
+        TaskType.META_TOOL,
     ]
     tools = list_tools_for_tasks(coding_task_types, include_unannotated=True)
 

@@ -3,7 +3,7 @@
 import json
 import pytest
 from unittest.mock import MagicMock, patch
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
 from codur.graph.planning.core import (
     pattern_plan,
@@ -12,6 +12,14 @@ from codur.graph.planning.core import (
     PlanningOrchestrator,
 )
 from codur.graph.planning.types import TaskType
+
+
+def _tool_msg(tool: str, output, args: dict | None = None) -> ToolMessage:
+    """Helper to create a ToolMessage in JSON format."""
+    return ToolMessage(
+        content=json.dumps({"tool": tool, "output": output, "args": args or {}}),
+        tool_call_id="test",
+    )
 
 
 class TestPlanningNodeWithCodingAgent:
@@ -365,7 +373,7 @@ class TestPlanningNodeFileDiscovery:
         state = {
             "messages": [
                 HumanMessage(content="Fix the bug in the challenge"),
-                SystemMessage(content="Tool results:\nlist_files: ['app.py', 'expected.txt']"),
+                _tool_msg("list_files", ["app.py", "expected.txt"]),
             ],
             "iterations": 1,
             "verbose": False,
@@ -381,7 +389,7 @@ class TestPlanningNodeFileDiscovery:
         state = {
             "messages": [
                 HumanMessage(content="Fix the bug in the challenge"),
-                SystemMessage(content="Tool results:\nlist_files: ['app.py', 'expected.txt']"),
+                _tool_msg("list_files", ["app.py", "expected.txt"]),
             ],
             "iterations": 1,
             "verbose": False,

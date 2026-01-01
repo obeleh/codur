@@ -1,9 +1,19 @@
 """Tests for the explaining node."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 from codur.graph.explaining import explaining_node, _build_explaining_prompt
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
+
+
+def _tool_msg(tool: str, output, args: dict | None = None) -> ToolMessage:
+    """Helper to create a ToolMessage in JSON format."""
+    return ToolMessage(
+        content=json.dumps({"tool": tool, "output": output, "args": args or {}}),
+        tool_call_id="test",
+    )
+
 
 class TestExplainingNode:
     """Test the explaining node."""
@@ -12,7 +22,7 @@ class TestExplainingNode:
         """Test basic prompt construction."""
         messages = [
             HumanMessage(content="Explain main.py"),
-            SystemMessage(content="def main():\n    pass  # Content of main.py"),
+            _tool_msg("read_file", "def main():\n    pass  # Content of main.py", {"path": "main.py"}),
             AIMessage(content="I see."),
         ]
         prompt = _build_explaining_prompt(messages)
@@ -25,7 +35,7 @@ class TestExplainingNode:
         """Test prompt construction with code content."""
         messages = [
             HumanMessage(content="What does this function do?"),
-            SystemMessage(content="def title_case(s: str) -> str:\n    return s.title()"),
+            _tool_msg("read_file", "def title_case(s: str) -> str:\n    return s.title()", {"path": "utils.py"}),
         ]
         prompt = _build_explaining_prompt(messages)
         assert "EXPLANATION REQUEST:" in prompt
@@ -36,18 +46,18 @@ class TestExplainingNode:
         """Test prompt construction with AST information."""
         messages = [
             HumanMessage(content="Explain the dependencies"),
-            SystemMessage(content="AST Analysis:\nfunction: title_case\ndependencies: str.title()"),
+            _tool_msg("python_ast_dependencies", "title_case -> str.title", {"path": "utils.py"}),
         ]
         prompt = _build_explaining_prompt(messages)
         assert "EXPLANATION REQUEST:" in prompt
         assert "CODE STRUCTURE (AST/Dependencies):" in prompt
-        assert "function: title_case" in prompt
+        assert "title_case -> str.title" in prompt
 
     def test_build_explaining_prompt_with_tool_results(self):
         """Test prompt construction with tool results."""
         messages = [
             HumanMessage(content="Show me the project structure"),
-            SystemMessage(content="Tool results:\nlist_files: ['main.py', 'test.py', 'README.md']"),
+            _tool_msg("list_files", ["main.py", "test.py", "README.md"]),
         ]
         prompt = _build_explaining_prompt(messages)
         assert "EXPLANATION REQUEST:" in prompt

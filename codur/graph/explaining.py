@@ -1,12 +1,12 @@
 "Dedicated explaining node for the codur-explaining agent."
 
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, ToolMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.node_types import ExecuteNodeResult
-from codur.graph.utils import normalize_messages
+from codur.graph.utils import normalize_messages, parse_tool_message
 from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose
 from codur.utils.llm_helpers import create_and_invoke
 
@@ -141,25 +141,29 @@ def _build_explaining_prompt(raw_messages) -> str:
             else:
                 # Additional user clarifications
                 conversation_context.append(f"User clarification: {message.content}")
+        elif isinstance(message, ToolMessage):
+            parsed = parse_tool_message(message)
+            if parsed:
+                # Categorize by tool type
+                if parsed.tool in ("read_file", "read_files"):
+                    file_contents.append(parsed.output_str)
+                elif parsed.tool in ("python_ast_dependencies", "python_ast_dependencies_multifile"):
+                    ast_info.append(parsed.output_str)
+                else:
+                    tool_results.append(f"{parsed.tool}: {parsed.output_str}")
+            else:
+                # Fallback for unparseable content
+                content = message.content
+                if "Verification failed" in content or "=== Expected Output ===" in content:
+                    continue
+                conversation_context.append(content)
         elif isinstance(message, SystemMessage):
             content = message.content
             # Filter out verification errors (not relevant for explanations)
             if "Verification failed" in content or "=== Expected Output ===" in content:
                 continue
-
-            # Categorize system messages by type
-            if "Tool results:" in content:
-                # Extract tool results
-                tool_results.append(content)
-            elif any(marker in content for marker in ["def ", "class ", "import ", "from "]):
-                # Looks like file content or code
-                file_contents.append(content)
-            elif any(marker in content for marker in ["AST", "dependencies", "function:", "class:"]):
-                # AST or dependency information
-                ast_info.append(content)
-            else:
-                # General context
-                conversation_context.append(content)
+            # Add as general context
+            conversation_context.append(content)
         elif isinstance(message, AIMessage):
             # Include previous AI responses for multi-turn conversations
             content_str = message.content if isinstance(message.content, str) else str(message.content)

@@ -9,7 +9,7 @@ import json
 from typing import Callable, Optional
 
 from codur.utils.path_extraction import extract_path_from_message, looks_like_path
-from codur.graph.planning.injectors import inject_followup_tools
+from codur.graph.planning.injectors.registry import inject_followup_tools
 
 
 ToolCallList = list[dict]
@@ -47,8 +47,7 @@ class ToolDetector:
                 all_tools.extend(result)
 
         # Inject language-specific followup tools via the injector system
-        extended = inject_followup_tools(all_tools, preserve_order=True)
-        return extended
+        return inject_followup_tools(all_tools)
 
 
 def create_default_tool_detector() -> ToolDetector:

@@ -12,7 +12,7 @@ class ClarificationResult(TypedDict):
     reasoning: str
 
 
-@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.CODE_VALIDATION, TaskType.EXPLANATION)
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.CODE_VALIDATION, TaskType.EXPLANATION, TaskType.META_TOOL)
 def clarify(
     reasoning: str,
     state: AgentState | None = None,

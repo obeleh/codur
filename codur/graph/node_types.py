@@ -24,6 +24,8 @@ class PlanNodeResult(TypedDict):
     llm_debug: NotRequired[Dict[str, Any]]
     llm_calls: NotRequired[int]
     messages: NotRequired[list[BaseMessage]]
+    next_step_suggestion: NotRequired[str]
+    classification: NotRequired[str]
 
 
 class DelegateNodeResult(TypedDict):

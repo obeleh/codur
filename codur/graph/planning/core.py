@@ -4,16 +4,15 @@ from __future__ import annotations
 
 import json
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, ToolMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.constants import TaskType
 from codur.graph.state import AgentState
 from codur.graph.node_types import PlanNodeResult
-from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose
-from codur.graph.utils import get_last_human_message
-from codur.graph.non_llm_tools import run_non_llm_tools
+from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose, get_last_human_message_content
+from codur.graph.utils import get_last_human_message, extract_read_file_paths, extract_list_files_output
 from codur.llm import create_llm_profile
 from codur.utils.retry import LLMRetryStrategy
 from codur.utils.llm_calls import invoke_llm, LLMCallLimitExceeded
@@ -62,6 +61,8 @@ def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
 
     # Step 1: Try instant resolution for trivial cases
     if config.runtime.detect_tool_calls_from_text:
+        # Lazy import to avoid circular dependency
+        from codur.graph.non_llm_tools import run_non_llm_tools
         non_llm_result = run_non_llm_tools(messages, state)
         if non_llm_result:
             if is_verbose(state):
@@ -70,7 +71,7 @@ def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
 
     # Step 2: Try classification-based strategy routing
     tool_results_present = any(
-        isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:")
+        isinstance(msg, ToolMessage)
         for msg in messages
     )
 
@@ -131,7 +132,6 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
             "next_step_suggestion": None,
         }
 
-    messages = get_messages(state)
     iterations = get_iterations(state)
 
     if is_verbose(state):
@@ -141,7 +141,6 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
     classification = state.get("classification")
 
     # Get last human message
-    from codur.graph.state_operations import get_last_human_message_content
     user_message = get_last_human_message_content(state) or ""
 
     # Build lightweight classification prompt with clear JSON schema
@@ -237,7 +236,7 @@ Respond with ONLY valid JSON matching the schema above.""")
                     "final_response": llm_result.get("reasoning", "Task classified."),
                     "iterations": iterations + 1,
                     "llm_debug": {"phase1_llm_resolved": True},
-                    "next_step_suggestion": None,
+                    "next_step_suggestion": llm_result.get("reasoning"),
                 }
             elif action == "tool":
                 # Would need to determine specific tool - for now, pass to Phase 2
@@ -285,6 +284,7 @@ class PlanningOrchestrator:
         if is_verbose(state):
             console.print("[bold blue]Planning (Phase 2: Full LLM Planning)...[/bold blue]")
 
+        # TODO: Is llm_calls begin used?
         def _with_llm_calls(result: PlanNodeResult) -> PlanNodeResult:
             result["llm_calls"] = get_llm_calls(state)
             result["next_step_suggestion"] = None
@@ -294,7 +294,7 @@ class PlanningOrchestrator:
         iterations = get_iterations(state)
 
         tool_results_present = any(
-            isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:")
+            isinstance(msg, ToolMessage)
             for msg in messages
         )
 
@@ -542,16 +542,12 @@ class PlanningOrchestrator:
                 has_file_contents = tool_results_include_read_file(messages)
 
                 # For multi-file scenarios, check if we've read all discovered files
-                discovered_files = self._extract_files_from_tool_results(messages)
+                discovered_files = extract_list_files_output(messages)
                 unread_files = []
                 if discovered_files:
                     # Check which files have NOT been read yet
-                    unread_files = [
-                        f for f in discovered_files
-                        if not any(f"read_file:" in msg.content and f in msg.content
-                                   for msg in messages
-                                   if isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:"))
-                    ]
+                    read_paths = extract_read_file_paths(messages)
+                    unread_files = [f for f in discovered_files if f not in read_paths]
 
                 if not has_file_contents:
                     # No file context yet - need to read files first
@@ -652,30 +648,6 @@ class PlanningOrchestrator:
                 "llm_debug": llm_debug,
             })
 
-
-    @staticmethod
-    def _extract_files_from_tool_results(messages: list[BaseMessage]) -> list[str]:
-        """Extract file paths from list_files tool results in message history.
-
-        Parses SystemMessage entries containing "Tool results:" to find file listings
-        from list_files tool executions. Returns a list of discovered file paths.
-        """
-        files = []
-
-        for msg in messages:
-            if isinstance(msg, SystemMessage) and msg.content.startswith("Tool results:"):
-                # Look for list_files results
-                if "list_files:" in msg.content:
-                    # Parse the file list from the tool result
-                    content = msg.content
-                    if "list_files:" in content:
-                        result_section = content.split("list_files:")[1].split("\n\n")[0]
-                        # Extract filenames (simple pattern matching)
-                        import re
-                        file_matches = re.findall(r'(\w+\.py)', result_section)
-                        files.extend(file_matches)
-
-        return list(set(files))  # Remove duplicates
 
     def _build_phase2_messages(
         self,
