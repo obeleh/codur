@@ -5,12 +5,9 @@ import pytest
 from unittest.mock import MagicMock, patch
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
-from codur.graph.planning.core import (
-    pattern_plan,
-    llm_pre_plan,
-    pattern_plan,
-    PlanningOrchestrator,
-)
+from codur.graph.planning.core import PlanningOrchestrator
+from codur.graph.planning.phases.pattern_phase import pattern_plan
+from codur.graph.planning.phases.pre_plan_phase import llm_pre_plan
 from codur.graph.planning.types import TaskType
 
 
@@ -77,18 +74,20 @@ class TestPlanningNodeWithCodingAgent:
             "verbose": False,
         }
 
-        # Mock the quick_classify function to return uncertain classification
-        with patch('codur.graph.planning.core.quick_classify') as mock_classify:
-            mock_result = MagicMock()
-            mock_result.is_confident = False
-            mock_result.task_type = TaskType.CODE_FIX
-            mock_result.confidence = 0.75
-            mock_classify.return_value = mock_result
+        response = MagicMock()
+        response.content = json.dumps({
+            "task_type": "code_fix",
+            "confidence": 0.5,
+            "detected_files": [],
+            "suggested_action": "delegate",
+            "reasoning": "Needs full planning",
+        })
 
+        with patch("codur.graph.planning.phases.pre_plan_phase.create_and_invoke", return_value=response):
             result = llm_pre_plan(state, config)
 
-            assert result is not None
-            assert result["next_action"] == "continue_to_llm_plan"
+        assert result is not None
+        assert result["next_action"] == "continue_to_llm_plan"
 
 
 class TestPlanningNodeCodeFixDetection:
@@ -167,7 +166,7 @@ class TestPlanningNodeAgentSelection:
         }
 
         # Mock the LLM to return a coding agent selection
-        with patch('codur.graph.planning.core.create_llm_profile') as mock_llm:
+        with patch('codur.graph.planning.phases.plan_phase.create_llm_profile') as mock_llm:
             mock_model = MagicMock()
             mock_response = MagicMock()
             mock_response.content = json.dumps({

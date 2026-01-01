@@ -14,11 +14,9 @@ from codur.graph.tools import tool_node
 from codur.graph.coding_agent import coding_node
 from codur.graph.explaining import explaining_node
 from codur.graph.routing import should_continue, should_delegate
-from codur.graph.planning import (
-    pattern_plan_node,
-    llm_pre_plan_node,
-    llm_plan_node,
-)
+from codur.graph.planning.core import PlanningOrchestrator
+from codur.graph.planning.phases.pattern_phase import pattern_plan
+from codur.graph.planning.phases.pre_plan_phase import llm_pre_plan
 from codur.config import CodurConfig
 from codur.constants import (
     AGENT_CODING,
@@ -90,11 +88,11 @@ def create_agent_graph(config: CodurConfig):
 
     # Add nodes - Three-phase planning architecture
     # Phase 0: Pattern-based classification and discovery
-    workflow.add_node("pattern_plan", lambda state: pattern_plan_node(state, config))
+    workflow.add_node("pattern_plan", lambda state: pattern_plan(state, config))
     # Phase 1: LLM-based classification (config-gated, enabled by default)
-    workflow.add_node("llm_pre_plan", lambda state: llm_pre_plan_node(state, config))
+    workflow.add_node("llm_pre_plan", lambda state: llm_pre_plan(state, config))
     # Phase 2: Full LLM planning
-    workflow.add_node("llm_plan", lambda state: llm_plan_node(state, llm, config))
+    workflow.add_node("llm_plan", lambda state: PlanningOrchestrator(config).llm_plan(state, llm))
     workflow.add_node("delegate", lambda state: delegate_node(state, config))
     workflow.add_node("tool", lambda state: tool_node(state, config))
     workflow.add_node("coding", lambda state: coding_node(state, config))
