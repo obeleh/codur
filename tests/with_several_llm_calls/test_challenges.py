@@ -242,16 +242,16 @@ def test_challenge_06_title_case_exceptions() -> None:
     _test_challenge_with_expected_output(CHALLENGES_DIR / "06-title-case-exceptions")
 
 
-def test_challenge_07_markdown_table_formatter() -> None:
-    """Test challenge: 07-markdown-table-formatter"""
-    _test_challenge_with_expected_output(CHALLENGES_DIR / "07-markdown-table-formatter")
+def test_challenge_09_markdown_table_formatter() -> None:
+    """Test challenge: 09-markdown-table-formatter"""
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "09-markdown-table-formatter")
 
 
-def test_challenge_08_distance() -> None:
-    """Test challenge: 08-distance"""
-    _test_challenge_with_expected_output(CHALLENGES_DIR / "08-distance")
+def test_challenge_07_distance() -> None:
+    """Test challenge: 07-distance"""
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "07-distance")
 
 
-def test_challenge_09_implement_palindrome() -> None:
-    """Test challenge: 09-implement-palindrome (pytest verification, not output)"""
-    _test_challenge_agent_response_only(CHALLENGES_DIR / "09-implement-palindrome")
+def test_challenge_08_implement_palindrome() -> None:
+    """Test challenge: 08-implement-palindrome (pytest verification, not output)"""
+    _test_challenge_agent_response_only(CHALLENGES_DIR / "08-implement-palindrome")
