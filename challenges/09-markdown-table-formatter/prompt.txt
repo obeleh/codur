@@ -8,6 +8,6 @@ Your implementation must:
    - `|:---:|`: Center align
 3. Calculate the required width for each column based on the longest cell content in that column (header or body).
 4. Reformat the table with correct padding (1 space on each side of content) and alignment.
-5. Ensure the separator row uses dashes to match the column width and preserves the colons for alignment.
+5. Ensure the separator row uses dashes to match the column width (including the 1-space padding on each side) and preserves the colons for alignment (including the leading colon for `:---`).
 
 Run `python main.py` to test your solution. Compare the output against @expected.txt
