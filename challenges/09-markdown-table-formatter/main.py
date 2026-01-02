@@ -15,6 +15,8 @@ def format_table(markdown_table: str) -> str:
     4. Leading and trailing pipes must be preserved and aligned.
     5. Strip whitespace from cell content before determining width.
     6. In case of center alignment with odd extra space, favor right padding.
+
+    Look good at the expected output in the test cases.
     """
     # TODO: Implement parsing and formatting logic.
     # Currently just returns input, which will fail the tests.
