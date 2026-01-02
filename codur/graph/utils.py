@@ -1,47 +1,11 @@
 """Shared helpers for graph nodes."""
-
-import json
-from dataclasses import dataclass
 from typing import Any, Optional
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, ToolMessage
 
 from codur.config import CodurConfig
+from codur.graph.state_operations import parse_tool_message
 from codur.llm import create_llm_profile
 
-
-@dataclass
-class ToolOutput:
-    """Parsed tool message output."""
-    tool: str
-    output: Any
-    args: dict
-
-    @property
-    def output_str(self) -> str:
-        """Return output as string."""
-        if isinstance(self.output, str):
-            return self.output
-        return json.dumps(self.output)
-
-
-def parse_tool_message(message: ToolMessage) -> Optional[ToolOutput]:
-    """Parse a ToolMessage and extract tool name, output, and args.
-
-    Args:
-        message: ToolMessage to parse
-
-    Returns:
-        ToolOutput with tool name, output, and args, or None if parsing fails
-    """
-    try:
-        data = json.loads(message.content)
-        return ToolOutput(
-            tool=data.get("tool", ""),
-            output=data.get("output", ""),
-            args=data.get("args", {}),
-        )
-    except (json.JSONDecodeError, TypeError):
-        return None
 
 
 def extract_read_file_paths(messages: list[BaseMessage]) -> set[str]:
@@ -139,33 +103,6 @@ def resolve_agent_profile(config: CodurConfig, agent_name: str) -> tuple[str, Op
             return profile.name, profile.config
     return agent_name, None
 
-
-def normalize_messages(messages: Any) -> list[BaseMessage]:
-    """Coerce message-like inputs into LangChain BaseMessage objects.
-
-    Args:
-        messages: List of messages in various formats (BaseMessage, dict, or str)
-
-    Returns:
-        List of LangChain BaseMessage objects
-    """
-    normalized: list[BaseMessage] = []
-    for message in messages or []:
-        if isinstance(message, BaseMessage):
-            normalized.append(message)
-            continue
-        if isinstance(message, dict):
-            role = message.get("role", "user")
-            content = message.get("content", "")
-            if role == "assistant":
-                normalized.append(AIMessage(content=content))
-            elif role == "system":
-                normalized.append(SystemMessage(content=content))
-            else:
-                normalized.append(HumanMessage(content=content))
-            continue
-        normalized.append(HumanMessage(content=str(message)))
-    return normalized
 
 
 def get_first_human_message(messages: list[BaseMessage]) -> Optional[str]:

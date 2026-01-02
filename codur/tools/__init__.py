@@ -92,8 +92,10 @@ from codur.tools.validation import (
     run_python_file,
     run_pytest,
 )
-from codur.tools.verification_response import (
+from codur.tools.meta_tools import (
     build_verification_response,
+    clarify,
+    done,
 )
 from codur.tools.ast_utils import (
     find_function_lines,
@@ -130,9 +132,6 @@ from codur.tools.psutil_tools import (
 from codur.tools.project_discovery import (
     discover_entry_points,
     get_primary_entry_point,
-)
-from codur.tools.clarification import (
-    clarify,
 )
 
 __all__ = [
@@ -224,4 +223,5 @@ __all__ = [
     "discover_entry_points",
     "get_primary_entry_point",
     "clarify",
+    "done",
 ]

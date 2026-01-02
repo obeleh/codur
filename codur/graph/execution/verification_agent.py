@@ -1,20 +1,22 @@
 """Dedicated verification node for the codur-verification agent."""
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+import json
+
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.node_types import ExecuteNodeResult
-from codur.graph.utils import normalize_messages
 from codur.graph.state_operations import (
     get_llm_calls,
     get_messages,
     is_verbose,
     add_messages,
+    normalize_messages
 )
+from codur.tools.meta_tools import VerificationResult
 from codur.tools.schema_generator import get_function_schemas
 from codur.tools.tool_annotations import ToolSideEffect
-from codur.tools.verification_response import VerificationResult
 from codur.utils.llm_helpers import create_and_invoke_with_tool_support
 
 
@@ -173,12 +175,12 @@ build_verification_response(
 - If tests exist (test_*.py files), prioritize running them over direct execution
 - If expected output files exist, use them for comparison
 - Always provide evidence (tool results) for your decision
-- Be explicit about what you checked and why
 - If a tool returns an error, treat that as verification failure evidence
 - run_python_file returns std_out/std_err/return_code; non-zero return_code or std_err indicates failure in the python script. error field is reserved for tool execution failures.
 - Focus on behavior verification: does the code do what the user asked for?
 - If the original request is vague or does not specify success criteria, infer reasonable expectations based on common practices, sometimes this means code runs without errors
 - Sometimes tools that were already run (eg. list_files, run_pytest, run_python_file) provide enough information to make a decision without further execution
+- In the build_verification_response highlight what was wrong or missing and then put steps that help towards fixing the issue.
 """
 
 # Initialize system prompt with tools
@@ -255,12 +257,22 @@ def verification_agent_node(
     except Exception as exc:
         if verbose:
             console.log(f"[yellow]Verification invocation failed: {exc}[/yellow]")
-        # Fallback: create error message with VERIFICATION: FAIL format
-        error_msg = AIMessage(content=f"""**VERIFICATION: FAIL**
-Reasoning: Verification agent encountered an error: {str(exc)}
-Expected: Successful verification execution
-Actual: Exception during verification
-Suggestions: Check agent configuration and tool availability""")
+        # Fallback: create ToolMessage with VerificationResult for consistent parsing
+        error_result: VerificationResult = {
+            "passed": False,
+            "reasoning": f"Verification agent encountered an error: {str(exc)}",
+            "expected": "Successful verification execution",
+            "actual": "Exception during verification",
+            "suggestions": "Check agent configuration and tool availability",
+        }
+        tool_result = {"tool": "build_verification_response", "output": error_result}
+        tool_result_json = json.dumps(tool_result)
+        tool_call_id = str(hash(tool_result_json))
+        error_msg = ToolMessage(
+            content=tool_result_json,
+            tool_call_id=tool_call_id,
+            name="build_verification_response",
+        )
 
         return {
             "agent_outcome": {

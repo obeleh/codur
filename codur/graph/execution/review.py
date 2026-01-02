@@ -25,7 +25,6 @@ from .verification_agent import verification_agent_node
 
 console = Console()
 
-# TODO: llm parameter is currently unused, do we want to pass it to verification_agent_node?
 def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> ReviewNodeResult:
     """Review node: Check if the result is satisfactory.
 
@@ -164,5 +163,5 @@ def _format_verification_response(last_message: BaseMessage) -> str:
             response += f"\nError: {loaded['error']}"
         response += f"\n{output['expected']} vs\n{output['actual']}"
     except Exception as ex:
-        print(f"!!!!!!!! {format_exc(ex)}")
+        print(f"_format_verification_response error: {format_exc(ex)}")
     return response

@@ -1,7 +1,9 @@
-from typing import TYPE_CHECKING, Optional
+import json
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Optional, Any
 
-from langchain_core.messages import BaseMessage, HumanMessage
-from codur.graph.utils import normalize_messages
+from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage, AIMessage, SystemMessage
+
 
 if TYPE_CHECKING:
     # Avoid circular imports for type checking
@@ -10,6 +12,71 @@ if TYPE_CHECKING:
     from codur.graph.state import AgentState
     from codur.graph.node_types import ExecuteNodeResult
     from codur.config import CodurConfig
+
+
+
+def normalize_messages(messages: Any) -> list[BaseMessage]:
+    """Coerce message-like inputs into LangChain BaseMessage objects.
+
+    Args:
+        messages: List of messages in various formats (BaseMessage, dict, or str)
+
+    Returns:
+        List of LangChain BaseMessage objects
+    """
+    normalized: list[BaseMessage] = []
+    for message in messages or []:
+        if isinstance(message, BaseMessage):
+            normalized.append(message)
+            continue
+        if isinstance(message, dict):
+            role = message.get("role", "user")
+            content = message.get("content", "")
+            if role == "assistant":
+                normalized.append(AIMessage(content=content))
+            elif role == "system":
+                normalized.append(SystemMessage(content=content))
+            else:
+                normalized.append(HumanMessage(content=content))
+            continue
+        normalized.append(HumanMessage(content=str(message)))
+    return normalized
+
+
+@dataclass
+class ToolOutput:
+    """Parsed tool message output."""
+    tool: str
+    output: Any
+    args: dict
+
+    @property
+    def output_str(self) -> str:
+        """Return output as string."""
+        if isinstance(self.output, str):
+            return self.output
+        return json.dumps(self.output)
+
+
+def parse_tool_message(message: ToolMessage) -> Optional[ToolOutput]:
+    """Parse a ToolMessage and extract tool name, output, and args.
+
+    Args:
+        message: ToolMessage to parse
+
+    Returns:
+        ToolOutput with tool name, output, and args, or None if parsing fails
+    """
+    try:
+        data = json.loads(message.content)
+        return ToolOutput(
+            tool=data.get("tool", ""),
+            output=data.get("output", ""),
+            args=data.get("args", {}),
+        )
+    except (json.JSONDecodeError, TypeError):
+        return None
+
 
 # ============================================================================
 # Verbose Logging Helpers
@@ -250,9 +317,14 @@ def has_tool_call_of_type(state: "AgentState", tool_type: str) -> bool:
     """Check if any tool call matches the given type."""
     return any(call.get("tool") == tool_type for call in get_tool_calls(state))
 
-def get_tool_calls_by_type(state: "AgentState", tool_type: str) -> list:
-    """Get all tool calls of a specific type."""
-    return [call for call in get_tool_calls(state) if call.get("tool") == tool_type]
+
+def get_last_tool_call_from_messages(messages: list[BaseMessage]) -> Optional[ToolOutput]:
+    """Get the last tool call made, if any."""
+    for msg in reversed(messages):
+        if isinstance(msg, ToolMessage):
+            parsed = parse_tool_message(msg)
+            return parsed
+    return None
 
 # ============================================================================
 # Response & Final Output

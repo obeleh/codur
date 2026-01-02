@@ -1,6 +1,5 @@
-"""Verification response tool for structured verification results."""
-
-from typing import NotRequired, TypedDict
+"""Clarification tool for LLM self-explanation."""
+from typing import TypedDict, NotRequired
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
@@ -14,6 +13,31 @@ class VerificationResult(TypedDict):
     expected: NotRequired[str | None]
     actual: NotRequired[str | None]
     suggestions: NotRequired[str | None]
+
+
+class ClarificationResult(TypedDict):
+    """Structured clarification result."""
+    reasoning: str
+
+
+@tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.CODE_VALIDATION, TaskType.EXPLANATION, TaskType.META_TOOL)
+def clarify(
+    reasoning: str,
+    state: AgentState | None = None,
+) -> ClarificationResult:
+    """Allow the LLM to explain its reasoning or thought process.
+
+    Use this tool to communicate your reasoning, clarify ambiguity,
+    or explain why you're taking a particular approach.
+
+    Args:
+        reasoning: Explanation of your reasoning or thought process
+        state: Agent state (ignored)
+
+    Returns:
+        ClarificationResult with the reasoning echoed back
+    """
+    return ClarificationResult(reasoning=reasoning)
 
 
 @tool_scenarios(TaskType.RESULT_VERIFICATION, TaskType.META_TOOL)
@@ -52,3 +76,19 @@ def build_verification_response(
         actual=actual,
         suggestions=suggestions,
     )
+
+
+@tool_scenarios(TaskType.META_TOOL)
+def done(reasoning: str) -> ClarificationResult:
+    """Indicate that the agent has completed its task.
+
+    Use this tool to signal that you have finished your work
+    and are ready to provide the final response.
+
+    Args:
+        reasoning: Explanation of why the task is complete
+
+    Returns:
+        ClarificationResult with the reasoning echoed back
+    """
+    return ClarificationResult(reasoning=reasoning)

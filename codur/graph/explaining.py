@@ -6,8 +6,7 @@ from rich.console import Console
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.node_types import ExecuteNodeResult
-from codur.graph.utils import normalize_messages, parse_tool_message
-from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose
+from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose, parse_tool_message, normalize_messages
 from codur.utils.llm_helpers import create_and_invoke
 
 console = Console()

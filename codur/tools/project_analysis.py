@@ -141,6 +141,18 @@ def python_dependency_graph(
 ) -> dict:
     """
     Build a Python module dependency graph and return DOT output.
+
+    Args:
+        root: Root directory to analyze (defaults to current working directory)
+        paths: Specific paths to analyze (files or directories). If None, analyzes entire root
+        include_external: Include external (non-project) module dependencies
+        include_styling: Add visual styling to DOT output (shapes, colors, etc)
+        exclude_modules: Module names or prefixes to exclude from the graph
+        exclude_folders: Folder names to exclude from scanning
+        max_nodes: Maximum number of nodes to include (0 for unlimited)
+        max_edges: Maximum number of edges to include (0 for unlimited)
+        allow_outside_root: Allow analyzing paths outside the root directory
+        state: Agent state for configuration (internal)
     """
     root_path = resolve_root(root)
     config = get_config_from_state(state)
@@ -414,6 +426,18 @@ def deep_python_dependency_graph(
 ) -> dict:
     """
     Build a deep dependency graph including classes, methods, and functions.
+
+    Args:
+        root: Root directory to analyze (defaults to current working directory)
+        paths: Specific paths to analyze (files or directories). If None, analyzes entire root
+        include_external: Include external (non-project) module dependencies
+        include_styling: Add visual styling to DOT output (shapes, colors, edge labels)
+        exclude_modules: Module names or prefixes to exclude from the graph
+        exclude_folders: Folder names to exclude from scanning
+        max_nodes: Maximum number of nodes to include (0 for unlimited)
+        max_edges: Maximum number of edges to include (0 for unlimited)
+        allow_outside_root: Allow analyzing paths outside the root directory
+        state: Agent state for configuration (internal)
     """
     root_path = resolve_root(root)
     config = get_config_from_state(state)
@@ -553,6 +577,16 @@ def python_unused_code(
 ) -> dict:
     """
     Identify unused code using vulture.
+
+    Args:
+        root: Root directory to analyze (defaults to current working directory)
+        paths: Specific paths to analyze (files or directories). If None, analyzes entire root
+        exclude_modules: Module names or prefixes to exclude from analysis
+        exclude_folders: Folder names to exclude from scanning
+        min_confidence: Minimum confidence level (0-100) for reporting unused code
+        sort_by_size: Sort results by code size instead of alphabetically
+        allow_outside_root: Allow analyzing paths outside the root directory
+        state: Agent state for configuration (internal)
     """
     root_path = resolve_root(root)
     config = get_config_from_state(state)
@@ -775,7 +809,37 @@ def code_quality(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
-    """Run Prospector and return structured code-quality results."""
+    """
+    Run Prospector and return structured code-quality results.
+
+    Args:
+        root: Root directory to analyze (defaults to current working directory)
+        paths: Specific paths to check (files or directories). If None, analyzes entire root
+        tools: Only run these specific tools (e.g., ['pylint', 'pyflakes'])
+        with_tools: Add these tools to the default set
+        without_tools: Exclude these tools from the default set
+        profile: Use a predefined Prospector profile (e.g., 'strictness_medium')
+        profile_path: Paths to custom profile YAML files
+        strictness: Set the strictness level ('veryhigh', 'high', 'medium', 'low', 'verylow')
+        uses: Specify libraries/frameworks in use (e.g., ['django', 'celery'])
+        autodetect: Automatically detect libraries and frameworks
+        blending: Blend together settings from multiple tools
+        doc_warnings: Report missing or malformed docstrings
+        test_warnings: Report warnings in test files
+        member_warnings: Report warnings about class/instance members
+        no_style_warnings: Disable style-related warnings
+        full_pep8: Enable all PEP8 checks (overrides some other settings)
+        max_line_length: Maximum line length for style checks
+        absolute_paths: Use absolute paths in output instead of relative
+        no_external_config: Ignore project-level config files (.pylintrc, setup.cfg, etc.)
+        pylint_config_file: Path to a specific pylint configuration file
+        show_profile: Include profile information in output
+        exclude_folders: Folder names to exclude from analysis
+        exclude_patterns: File patterns to exclude (e.g., ['*_test.py'])
+        max_messages: Maximum number of messages to return (0 for unlimited)
+        allow_outside_root: Allow analyzing paths outside the root directory
+        state: Agent state for configuration (internal)
+    """
     root_path = resolve_root(root)
     config = get_config_from_state(state)
 

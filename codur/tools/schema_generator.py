@@ -159,6 +159,20 @@ def function_to_json_schema(func: callable) -> dict:
         # Extract description from docstring
         param_desc = _extract_param_description(func, param_name)
 
+        # Handle array items for list types
+        items_schema = None
+        if param_type == "array":
+            # Extract item type from list[T]
+            args = get_args(annotation)
+            if args:
+                # Get first type argument (for list[T], args is (T,))
+                item_type = args[0]
+                item_json_type = _python_type_to_json_type(item_type)
+                items_schema = {"type": item_json_type}
+            else:
+                # Fallback if we can't determine item type
+                items_schema = {"type": "string"}
+
         # Build property schema (allow null for Optional)
         json_type: str | list[str]
         if is_optional:
@@ -169,6 +183,10 @@ def function_to_json_schema(func: callable) -> dict:
             "type": json_type,
             "description": param_desc or f"Parameter {param_name}"
         }
+
+        # Add items field for arrays
+        if items_schema is not None:
+            properties[param_name]["items"] = items_schema
 
         # Add to required if no default value and not optional
         if param.default == inspect.Parameter.empty and not is_optional:

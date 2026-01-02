@@ -43,6 +43,7 @@ class ExecuteNodeResult(TypedDict):
     messages: list[BaseMessage]
     llm_calls: NotRequired[int]
     next_step_suggestion: NotRequired[str]
+    selected_agent: NotRequired[str]
 
 
 class ReviewNodeResult(TypedDict):

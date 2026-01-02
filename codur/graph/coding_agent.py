@@ -5,17 +5,21 @@ from rich.console import Console
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
 from codur.graph.node_types import ExecuteNodeResult
-from codur.graph.utils import normalize_messages
 from codur.graph.state_operations import (
     get_iterations,
     get_llm_calls,
     get_messages,
-    is_verbose, increment_iterations, add_messages, get_next_step_suggestion
+    is_verbose,
+    increment_iterations,
+    add_messages,
+    get_next_step_suggestion,
+    get_last_tool_call_from_messages,
+    normalize_messages
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.tools.registry import list_tools_for_tasks
 from codur.utils.llm_helpers import create_and_invoke_with_tool_support
-from codur.constants import TaskType
+from codur.constants import TaskType, ACTION_END
 
 """
 NOTE:
@@ -46,12 +50,15 @@ def _get_system_prompt_with_tools():
     file_operation_tools = []
     code_analysis_tools = []
     validation_tools = []
+    meta_tools = []
     other_tools = []
 
     for tool in tools:
         name = tool['name']
         scenarios = tool.get('scenarios', [])
 
+        if TaskType.META_TOOL in scenarios:
+            meta_tools.append(name)
         if TaskType.FILE_OPERATION in scenarios:
             file_operation_tools.append(name)
         elif TaskType.CODE_VALIDATION in scenarios:
@@ -70,6 +77,9 @@ You have access to the following tools. Call them directly - they will be execut
 **Code Analysis & Modification**: {', '.join(sorted(code_analysis_tools))}
 **Validation & Testing**: {', '.join(sorted(validation_tools))}
 **Other Tools**: {', '.join(sorted(other_tools)) if other_tools else 'None'}
+**Meta Tools**: {', '.join(sorted(meta_tools))}
+  Meta tools are useful to communicate with the agent framework itself.
+  If you are done you can call the done tool
 
 **CRITICAL**: Only use tools from this list. Do NOT invent or create new tools.
 All code modification tools (replace_function, write_file, etc.) require a 'path' parameter.
@@ -100,6 +110,8 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
     - Validation and execution are faster and more efficient than reading the entire file back
     - Only run pytest if there are tests
     - Make fixes based on validation/execution results (if any)
+- If the output of the code was not as expected, include a "clarify" tool call that contains next steps for improvement
+- When retrying after a failed verification, focus on fixing the specific issues mentioned
 """
 
 # Initialize system prompt with tools
@@ -184,7 +196,35 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
             "next_step_suggestion": None,
         }
 
-    if recursion_depth < 3:
+    # Meta tool handling
+    # Get Last tool to detect "done"
+    last_tool_call = get_last_tool_call_from_messages(new_messages)
+    if last_tool_call.tool == "done":
+        return {
+            "agent_outcome": {
+                "agent": agent_name,
+                "result": last_tool_call.args["reasoning"],
+                "status": "success",
+            },
+            "llm_calls": get_llm_calls(state),
+            "messages": new_messages,
+            "next_step_suggestion": None,
+            "selected_agent": "codur-verification"
+        }
+    elif last_tool_call.tool == "build_verification_response":
+        return {
+            "agent_outcome": {
+                "agent": agent_name,
+                "result": "verification response built",
+                "status": "success",
+            },
+            "llm_calls": get_llm_calls(state),
+            "messages": new_messages,
+            "next_action": ACTION_END
+        }
+
+
+    if recursion_depth <= 3:
         # inject messages into state for next iteration
         # unfortunately mutations to state do not persist across agent nodes
         add_messages(state, new_messages)

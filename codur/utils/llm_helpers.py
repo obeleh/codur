@@ -200,8 +200,8 @@ def create_and_invoke_with_tool_support(
     execution_result = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="brief")
     new_messages.extend(execution_result.messages)
 
-    if tool_calls:
-        _checkup_consecutive_toolcalls(new_messages, state, tool_calls)
+    # if tool_calls:
+    #     _checkup_consecutive_toolcalls(new_messages, state, tool_calls)
 
     return new_messages, execution_result
 
