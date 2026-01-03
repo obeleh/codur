@@ -86,8 +86,10 @@ def is_verbose(state: "AgentState") -> bool:
     """Check if verbose logging is enabled in state."""
     return state.get("verbose", False)
 
-def get_config(state: "AgentState") -> "CodurConfig | None":
+def get_config(state: "AgentState | None") -> "CodurConfig | None":
     """Get the runtime configuration attached to state, if any."""
+    if state is None:
+        return None
     return state.get("config")
 
 # ============================================================================
