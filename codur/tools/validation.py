@@ -6,8 +6,13 @@ import subprocess
 from pathlib import Path
 from typing import Optional, TypedDict
 
+from rich.console import Console
+
 from codur.config import CodurConfig
 from codur.graph.state_operations import is_verbose, get_config
+
+
+console = Console()
 
 
 class ValidateSyntaxResult(TypedDict, total=False):
@@ -162,9 +167,9 @@ def run_python_file(
         std_err = stderr.strip() if stderr else ""
 
         if is_verbose(state):
-            print(f"[dim] Return code: {return_code} Stdout:\n{std_out} [/dim]")
+            console.log(f"[dim] Return code: {return_code} Stdout:\n{std_out} [/dim]")
             if std_err:
-                print(f"[yellow] Stderr: {std_err}[/yellow]")
+                console.log(f"[yellow] Stderr: {std_err}[/yellow]")
 
         result: RunPythonFileResult = {
             "return_code": return_code,

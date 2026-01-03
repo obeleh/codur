@@ -6,6 +6,7 @@ Codur CLI - Command-line interface for the coding agent
 import warnings
 import os
 from tabnanny import verbose
+from traceback import format_exc
 
 warnings.filterwarnings(
     "ignore",
@@ -113,7 +114,7 @@ def _run_prompt(
             console.print(result.get("final_response", "No response generated"))
 
     except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {str(e)}", style="red")
+        console.print(f"[bold red]Error:[/bold red] {format_exc()}", style="red")
         raise typer.Exit(1)
 
 
@@ -449,7 +450,7 @@ def interactive(
         except KeyboardInterrupt:
             console.print("\n[yellow]Interrupted. Type 'quit' to exit.[/yellow]")
         except Exception as e:
-            console.print(f"[red]Error: {str(e)}[/red]")
+            console.print(f"[red]Error: {format_exc(e)}[/red]")
 
 
 @app.command()

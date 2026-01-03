@@ -116,7 +116,7 @@ llm:
   default_profile: groq-openai-oss-120b
   default_temperature: 0.5
   planning_temperature: 0.3   # Lower temperature for more deterministic JSON output in planning
-  generation_temperature: 0.3 # Normal temperature for code generation
+  generation_temperature: 0.2 # Normal temperature for code generation
 
   profiles:
     groq-openai-oss-120b:

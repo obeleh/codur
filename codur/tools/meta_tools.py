@@ -79,7 +79,7 @@ def build_verification_response(
 
 
 @tool_scenarios(TaskType.META_TOOL)
-def done(reasoning: str) -> ClarificationResult:
+def done(reasoning: str, state: "AgentState"=None) -> ClarificationResult:
     """Indicate that the agent has completed its task.
 
     Use this tool to signal that you have finished your work

@@ -138,7 +138,7 @@ def create_and_invoke_with_tool_support(
             tool_schemas,
             temperature=temperature,
         )
-        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, tool_names, state)
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages)
 
         try:
             response = invoke_llm(
@@ -178,7 +178,7 @@ def create_and_invoke_with_tool_support(
 
         # Prepend system message
         new_messages = [SystemMessage(content=system_message_content)] + list(new_messages)
-        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, tool_names, state)
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages)
 
         # Create LLM with json_mode
         llm = _create_llm(
@@ -199,39 +199,7 @@ def create_and_invoke_with_tool_support(
 
     execution_result = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="brief")
     new_messages.extend(execution_result.messages)
-
-    # if tool_calls:
-    #     _checkup_consecutive_toolcalls(new_messages, state, tool_calls)
-
     return new_messages, execution_result
-
-
-def _checkup_consecutive_toolcalls(
-    new_messages: list[BaseMessage],
-    state: AgentState | None,
-    tool_calls: list[dict]
-) -> None:
-    # When the same tool was called in the previous iteration, prompt for next steps to avoid loops
-    current_tool_names = {tc.get("tool") for tc in tool_calls}
-    previous_messages = get_messages(state)
-    # Find the most recent tool messages from the previous iteration
-    previous_tool_names = set()
-    for msg in reversed(previous_messages):
-        if isinstance(msg, ToolMessage):
-            previous_tool_names.add(msg.name)
-        elif previous_tool_names:
-            # Stop when we hit a non-tool message after finding tool messages
-            break
-
-    repeated_tools = current_tool_names & previous_tool_names
-    if repeated_tools:
-        tools_str = ", ".join(repeated_tools)
-        msg = f"You called the same tool(s) again: {tools_str}. Please proceed with the next step or explain what you're trying to achieve. Used the clarify tool to express your intent."
-        if is_verbose(state):
-            console.log(f"[yellow]Detected repeated tool calls: {tools_str}[/yellow]")
-        # last_msg = new_messages.pop()
-        new_messages.append(HumanMessage(content=msg))
-        # new_messages.append(last_msg)
 
 
 def _build_tool_descriptions_for_prompt(tool_schemas: list[dict]) -> str:

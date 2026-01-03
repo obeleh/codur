@@ -3,6 +3,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
+from codur.graph.message_summary import prepend_summary
 from codur.graph.state import AgentState
 from codur.graph.node_types import ExecuteNodeResult
 from codur.graph.state_operations import (
@@ -18,6 +19,7 @@ from codur.graph.state_operations import (
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.tools.registry import list_tools_for_tasks
+from codur.utils.llm_calls import LLMCallLimitExceeded
 from codur.utils.llm_helpers import create_and_invoke_with_tool_support
 from codur.constants import TaskType, ACTION_END
 
@@ -71,7 +73,7 @@ def _get_system_prompt_with_tools():
     tools_section = f"""
 ## Available Tools
 
-You have access to the following tools. Call them directly - they will be executed automatically.
+You have access to the following tools. (only use them if needed):
 
 **File Operations**: {', '.join(sorted(file_operation_tools))}
 **Code Analysis & Modification**: {', '.join(sorted(code_analysis_tools))}
@@ -111,6 +113,7 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
     - Only run pytest if there are tests
     - Make fixes based on validation/execution results (if any)
 - If the output of the code was not as expected, include a "clarify" tool call that contains next steps for improvement
+- But if the code worked as expected, use the "done" tool to finish. Or use "build_verification_response" if you feel this should be the last step before done.
 - When retrying after a failed verification, focus on fixing the specific issues mentioned
 """
 
@@ -118,12 +121,15 @@ Your mission: Solve coding requests with correct, efficient, and robust implemen
 CODING_AGENT_SYSTEM_PROMPT = _get_system_prompt_with_tools()
 
 
-def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> ExecuteNodeResult:
+@prepend_summary
+def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_depth=0) -> ExecuteNodeResult:
     """Run the codur-coding agent with a structured coding prompt.
 
     Args:
         state: Current graph state with messages, iterations, etc.
         config: Runtime configuration
+        summary: Summary of previous messages (injected by decorator)
+        recursion_depth: Current recursion depth for nested invocations
 
     Returns:
         ExecuteNodeResult with agent_outcome
@@ -137,7 +143,7 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
         console.print(f"[bold blue]Running codur-coding node (iteration {iterations})...[/bold blue]")
 
     # Build context-aware prompt
-    prompt = _build_coding_prompt(get_messages(state), iterations)
+    # prompt = _build_coding_prompt(get_messages(state), iterations)
 
     tool_schemas = get_function_schemas()  # All 70+ tools
 
@@ -146,10 +152,10 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
         if suggestion:
             if verbose:
                 console.print(f"[dim]Incorporating next step suggestion into prompt:[/dim] {suggestion}")
-            prompt += f"\n\nNext Step Suggestion: {suggestion}"
+            summary += f"\n\nNext Step Suggestion: {suggestion}"
         new_messages = [
-            SystemMessage(content=CODING_AGENT_SYSTEM_PROMPT),
-            HumanMessage(content=prompt),
+            SystemMessage(content=CODING_AGENT_SYSTEM_PROMPT + "\n\n" + summary),
+            # HumanMessage(content=summary),
         ]
     else:
         new_messages = []
@@ -165,6 +171,8 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
             state=state,
         )
     except Exception as exc:
+        if isinstance(exc, LLMCallLimitExceeded):
+            raise
         # Fallback on error
         if verbose:
             console.log(f"[yellow]Primary invocation failed: {exc}[/yellow]")
@@ -229,7 +237,12 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
         # inject messages into state for next iteration
         # unfortunately mutations to state do not persist across agent nodes
         add_messages(state, new_messages)
-        nested_outcome = coding_node(state, config, recursion_depth + 1)
+        nested_outcome = coding_node(
+            state=state,
+            config=config,
+            summary=summary,
+            recursion_depth=recursion_depth + 1
+        )
         nested_outcome["messages"] = new_messages + nested_outcome["messages"]
         return nested_outcome
 

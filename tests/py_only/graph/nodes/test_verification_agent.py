@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 from unittest import mock
 
-import pytest
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, ToolMessage
 
-from codur.graph.execution.verification_agent import _build_verification_prompt, get_execution_result
+from codur.graph.verification_agent import _build_verification_prompt, get_execution_result
 
 
 class TestParseVerificationResult:

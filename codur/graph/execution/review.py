@@ -19,9 +19,9 @@ from codur.graph.state_operations import (
     get_agent_outcome,
     get_outcome_result,
     get_error_hashes,
-    get_first_human_message_content,
+    get_first_human_message_content, get_last_tool_call, ToolOutput,
 )
-from .verification_agent import verification_agent_node
+from codur.graph.verification_agent import verification_agent_node
 
 console = Console()
 
@@ -73,6 +73,17 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         "fix", "bug", "error", "debug", "issue", "broken", "incorrect", "wrong",
         "implement", "write", "create", "complete", "build"
     ])
+
+    last_tool_call = get_last_tool_call(state)
+    if last_tool_call:
+        assert isinstance(last_tool_call, ToolOutput)
+        if last_tool_call.tool == "build_verification_response" and last_tool_call.args["passed"]:
+            return {
+                "final_response": last_tool_call.args["reasoning"],
+                "next_action": ACTION_END,
+                "next_step_suggestion": None,
+            }
+
 
     # Try verification if it's a fix task and we haven't exceeded iterations
     if is_fix_task and iterations < max_iterations - 1:
@@ -157,11 +168,12 @@ def _format_verification_response(last_message: BaseMessage) -> str:
     response = last_message.content
     try:
         loaded = json.loads(response)
-        output = loaded["output"]
-        response = f"passed: {output['passed']}"
+        if "output" in loaded:
+            output = loaded["output"]
+            response += f"passed: {output['passed']}"
+            response += f"\n{output['expected']} vs\n{output['actual']}"
         if "error" in loaded:
             response += f"\nError: {loaded['error']}"
-        response += f"\n{output['expected']} vs\n{output['actual']}"
-    except Exception as ex:
-        print(f"_format_verification_response error: {format_exc(ex)}")
+    except Exception:
+        print(f"_format_verification_response error: {format_exc()}")
     return response

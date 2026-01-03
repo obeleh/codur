@@ -5,6 +5,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
+from codur.graph.message_summary import prepend_summary
 from codur.graph.state import AgentState
 from codur.graph.node_types import ExecuteNodeResult
 from codur.graph.state_operations import (
@@ -176,7 +177,7 @@ build_verification_response(
 - If expected output files exist, use them for comparison
 - Always provide evidence (tool results) for your decision
 - If a tool returns an error, treat that as verification failure evidence
-- run_python_file returns std_out/std_err/return_code; non-zero return_code or std_err indicates failure in the python script. error field is reserved for tool execution failures.
+- run_python_file returns std_out/std_err/return_code; non-zero return_code or std_err indicates failure in the python script. error field is reserved for tool execution failures. If the pythonscript returns a non-zero return_code, immediately call build_verification_response to record a failure.
 - Focus on behavior verification: does the code do what the user asked for?
 - If the original request is vague or does not specify success criteria, infer reasonable expectations based on common practices, sometimes this means code runs without errors
 - Sometimes tools that were already run (eg. list_files, run_pytest, run_python_file) provide enough information to make a decision without further execution
@@ -187,9 +188,11 @@ build_verification_response(
 VERIFICATION_AGENT_SYSTEM_PROMPT = _get_system_prompt_with_tools()
 
 
+@prepend_summary
 def verification_agent_node(
     state: AgentState,
     config: CodurConfig,
+    summary: str,
     recursion_depth: int = 0
 ) -> ExecuteNodeResult:
     """Run verification agent to determine if implementation satisfies requirements.
@@ -202,6 +205,7 @@ def verification_agent_node(
 
     Args:
         state: Current graph state with message history
+        summary: Message summary for context based on prior interactions
         config: Runtime configuration
         recursion_depth: Current recursion depth for tool execution loop (default: 0)
 
@@ -216,7 +220,7 @@ def verification_agent_node(
         console.print(f"[bold cyan]Running verification agent{depth_info}...[/bold cyan]")
 
     # Build verification prompt with original request context
-    prompt = _build_verification_prompt(get_messages(state))
+    # prompt = _build_verification_prompt(get_messages(state))
 
     # Get only safe, read-only tools that match the system prompt's task types
     # This ensures the LLM only sees tools we've told it about
@@ -238,8 +242,8 @@ def verification_agent_node(
 
     if recursion_depth == 0:
         new_messages = [
-            SystemMessage(content=VERIFICATION_AGENT_SYSTEM_PROMPT),
-            HumanMessage(content=prompt),
+            SystemMessage(content=VERIFICATION_AGENT_SYSTEM_PROMPT + "\n\n" + summary),
+            # HumanMessage(content=summary),
         ]
     else:
         new_messages = []
@@ -296,7 +300,12 @@ def verification_agent_node(
         add_messages(state, new_messages)
 
         # Recurse to let agent see tool results and make final decision
-        nested_outcome = verification_agent_node(state, config, recursion_depth + 1)
+        nested_outcome = verification_agent_node(
+            state=state,
+            config=config,
+            summary=summary,
+            recursion_depth=recursion_depth + 1
+        )
         nested_outcome["messages"] = new_messages + nested_outcome["messages"]
         return nested_outcome
 

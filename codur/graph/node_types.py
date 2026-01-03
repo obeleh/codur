@@ -58,3 +58,7 @@ class PlanningDecision(TypedDict):
     reasoning: NotRequired[str]
     response: NotRequired[Optional[str]]
     tool_calls: NotRequired[list[ToolCall]]
+
+
+class SummaryNodeResult(TypedDict):
+    agent_summaries: list[str]

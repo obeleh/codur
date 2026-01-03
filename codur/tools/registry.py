@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import inspect
 import shutil
-from typing import Any
+from typing import Any, Callable
 
 import codur.tools as tool_module
 from codur.constants import TaskType
@@ -14,18 +14,23 @@ from codur.tools.tool_annotations import (
     tool_scenarios,
     get_tool_scenarios,
     ToolSideEffect,
-    get_tool_side_effects,
+    get_tool_side_effects, SUMMARY_ATTR,
 )
 
 
+TOOL_MAP: dict[str, Callable] = {}
+
+
 def _iter_tool_functions() -> dict[str, Any]:
+    global TOOL_MAP
+    if TOOL_MAP:
+        return TOOL_MAP
     """Collect callable tool exports from codur.tools.__all__."""
-    tools: dict[str, Any] = {}
     for name in getattr(tool_module, "__all__", []):
         obj = getattr(tool_module, name, None)
         if callable(obj):
-            tools[name] = obj
-    return tools
+            TOOL_MAP[name] = obj
+    return TOOL_MAP
 
 
 def _summary(doc: str | None) -> str:
@@ -230,3 +235,18 @@ def get_tool_by_name(name: str) -> callable | None:
     """
     tools = _iter_tool_functions()
     return tools.get(name)
+
+
+def get_tool_summary_format(name: str) -> str | None:
+    """Get tool summary format annotation by name.
+
+    Args:
+        name: Tool name (e.g., "read_file")
+
+    Returns:
+        Summary format string or None if not found
+    """
+    func = get_tool_by_name(name)
+    if not func:
+        return None
+    return getattr(func, SUMMARY_ATTR, None)

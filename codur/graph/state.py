@@ -28,6 +28,8 @@ class AgentState(TypedDict):
         max_llm_calls: Maximum allowed LLM invocations
         error_hashes: Hashes of errors seen for deduplication
         local_repair_attempted: Whether a local repair was attempted
+        next_step_suggestion: Suggestion for the next step
+        agent_summaries: Summaries of agent actions
     """
     messages: Annotated[Sequence[BaseMessage], operator.add]
     next_action: str
@@ -43,6 +45,7 @@ class AgentState(TypedDict):
     error_hashes: list
     local_repair_attempted: bool
     next_step_suggestion: str | None
+    agent_summaries: list[str]
 
 
 class AgentStateData(dict):

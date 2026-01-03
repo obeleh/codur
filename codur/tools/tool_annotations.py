@@ -11,6 +11,7 @@ SCENARIOS_ATTR = "_scenarios"
 CONTEXT_ATTR = "_tool_contexts"
 GUARDS_ATTR = "_tool_guards"
 SIDE_EFFECTS_ATTR = "_tool_side_effects"
+SUMMARY_ATTR = "_tool_summary_format"
 
 
 class ToolContext(Enum):
@@ -228,3 +229,13 @@ def get_tool_side_effects(func: Callable[..., Any]) -> list[ToolSideEffect]:
     if isinstance(value, (tuple, set)):
         return [item for item in value if isinstance(item, ToolSideEffect)]
     return [value] if isinstance(value, ToolSideEffect) else []
+
+
+def summary_format(_summary_format: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+
+    """Annotate a tool with execution context metadata."""
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        setattr(func, SUMMARY_ATTR, _summary_format)
+        return func
+
+    return decorator

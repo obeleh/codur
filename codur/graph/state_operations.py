@@ -326,6 +326,13 @@ def get_last_tool_call_from_messages(messages: list[BaseMessage]) -> Optional[To
             return parsed
     return None
 
+
+def get_last_tool_call(state: "AgentState") -> Optional[ToolOutput]:
+    """Get the last tool call made from state, if any."""
+    messages = get_messages(state)
+    return get_last_tool_call_from_messages(messages)
+
+
 # ============================================================================
 # Response & Final Output
 # ============================================================================
