@@ -37,6 +37,7 @@ def _validate_with_dedent(code: str) -> tuple[bool, Optional[str]]:
 
 
 class CodeModificationResult(TypedDict, total=False):
+    """Result payload for code modification operations."""
     ok: bool
     operation: str
     path: str
@@ -62,6 +63,7 @@ def _build_result(
     inserted_line: int | None = None,
     inserted_lines: int | None = None,
 ) -> CodeModificationResult:
+    """Build a consistent result dict for code modification tools."""
     dct: CodeModificationResult = {
         "ok": ok,
         "operation": operation,
@@ -424,6 +426,7 @@ def replace_file_content(
 
 
 def _extract_function_name(new_code: str) -> Optional[str]:
+    """Return the first top-level function name from parsed code."""
     try:
         tree = ast.parse(new_code)
     except SyntaxError:

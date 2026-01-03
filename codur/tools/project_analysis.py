@@ -14,9 +14,9 @@ from typing import Iterator
 
 from codur.constants import DEFAULT_MAX_RESULTS, TaskType
 from codur.graph.state import AgentState
+from codur.graph.state_operations import get_config
 from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
 from codur.utils.ignore_utils import (
-    get_config_from_state,
     get_exclude_dirs,
     is_gitignored,
     load_gitignore,
@@ -35,6 +35,7 @@ def _iter_python_files(
     exclude_folders: list[str] | None = None,
     config: object | None = None,
 ) -> list[Path]:
+    """Collect Python files under root honoring ignore rules."""
     files: list[Path] = []
     default_excludes = get_exclude_dirs(config)
     include_hidden = should_include_hidden(config)
@@ -75,6 +76,7 @@ def _iter_python_files(
 
 
 def _module_name_for_path(path: Path, root: Path) -> str:
+    """Convert a file path to a dotted module name."""
     try:
         rel = path.relative_to(root)
     except ValueError:
@@ -90,6 +92,7 @@ def _module_name_for_path(path: Path, root: Path) -> str:
 
 
 def _resolve_internal_module(name: str, internal_modules: set[str]) -> str | None:
+    """Return the closest matching internal module prefix for a name."""
     if not name:
         return None
     if name in internal_modules:
@@ -103,6 +106,7 @@ def _resolve_internal_module(name: str, internal_modules: set[str]) -> str | Non
 
 
 def _base_package(current_module: str, is_package: bool, level: int) -> str:
+    """Resolve the base package for a relative import level."""
     if level == 0:
         return ""
     if is_package:
@@ -117,6 +121,7 @@ def _base_package(current_module: str, is_package: bool, level: int) -> str:
 
 
 def _is_excluded_module(name: str, excludes: list[str] | None) -> bool:
+    """Return True if a module name matches exclusion patterns."""
     if not excludes:
         return False
     for ex in excludes:
@@ -155,7 +160,7 @@ def python_dependency_graph(
         state: Agent state for configuration (internal)
     """
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     file_paths: list[Path] = []
 
     if paths:
@@ -288,6 +293,7 @@ def python_dependency_graph(
 
 
 class _DeepGraphVisitor(ast.NodeVisitor):
+    """AST visitor that collects nodes and edges for a deep dependency graph."""
     def __init__(
         self,
         module_name: str,
@@ -295,6 +301,7 @@ class _DeepGraphVisitor(ast.NodeVisitor):
         include_external: bool,
         is_package: bool,
     ):
+        """Initialize the visitor with module and resolution context."""
         self.module_name = module_name
         self.internal_modules = internal_modules
         self.include_external = include_external
@@ -313,6 +320,7 @@ class _DeepGraphVisitor(ast.NodeVisitor):
         })
 
     def _resolve_name(self, name: str) -> str | None:
+        """Resolve a name using recorded imports and internal modules."""
         if name in self.imports:
             return self.imports[name]
         # Basic check if it matches a top-level internal module
@@ -321,6 +329,7 @@ class _DeepGraphVisitor(ast.NodeVisitor):
         return None
 
     def visit_Import(self, node: ast.Import) -> None:
+        """Track import statements and add import edges."""
         for alias in node.names:
             resolved = _resolve_internal_module(alias.name, self.internal_modules)
             if resolved:
@@ -331,6 +340,7 @@ class _DeepGraphVisitor(ast.NodeVisitor):
                 self.edges.add((self.module_name, alias.name, "import_external"))
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        """Track from-import statements and add import edges."""
         level = node.level or 0
         base = _base_package(self.module_name, self.is_package, level)
         module_part = node.module or ""
@@ -362,6 +372,7 @@ class _DeepGraphVisitor(ast.NodeVisitor):
                     self.edges.add((self.module_name, external_name, "import_external"))
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        """Record class nodes and inheritance edges."""
         node_id = f"{self.scope_stack[-1]}.{node.name}"
         self.nodes.append({
             "id": node_id,
@@ -391,6 +402,7 @@ class _DeepGraphVisitor(ast.NodeVisitor):
         self.scope_stack.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        """Record function or method nodes and descend into body."""
         parent_type = "module"
         # Heuristic: if parent ID contains more dots than module name, likely inside class/func
         if self.scope_stack[-1] != self.module_name:
@@ -409,6 +421,7 @@ class _DeepGraphVisitor(ast.NodeVisitor):
         self.scope_stack.pop()
     
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        """Delegate async functions to the shared function handler."""
         self.visit_FunctionDef(node)
 
 
@@ -440,7 +453,7 @@ def deep_python_dependency_graph(
         state: Agent state for configuration (internal)
     """
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     file_paths: list[Path] = []
 
     if paths:
@@ -589,7 +602,7 @@ def python_unused_code(
         state: Agent state for configuration (internal)
     """
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     file_paths: list[Path] = []
 
     if paths:
@@ -652,6 +665,7 @@ def python_unused_code(
 
 @contextmanager
 def _temporary_argv(args: list[str]) -> Iterator[None]:
+    """Temporarily replace sys.argv for a context."""
     original = sys.argv[:]
     sys.argv = args
     try:
@@ -661,6 +675,7 @@ def _temporary_argv(args: list[str]) -> Iterator[None]:
 
 
 def _serialize_summary(summary: dict) -> dict:
+    """Normalize prospector summary output for JSON response."""
     serialized = {}
     for key, value in summary.items():
         if hasattr(value, "isoformat"):
@@ -671,6 +686,7 @@ def _serialize_summary(summary: dict) -> dict:
 
 
 def _serialize_message(message, root_path: Path, absolute_paths: bool) -> dict:
+    """Normalize prospector message output for JSON response."""
     loc = message.location
     path_obj = None
     absolute_path = None
@@ -725,6 +741,7 @@ def _build_prospector_args(
     ignore_paths: list[str] | None,
     ignore_patterns: list[str] | None,
 ) -> list[str]:
+    """Build command-line args for running prospector."""
     args = ["prospector"]
     if not autodetect:
         args.append("--no-autodetect")
@@ -841,7 +858,7 @@ def code_quality(
         state: Agent state for configuration (internal)
     """
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
 
     try:
         from prospector.config import ProspectorConfig

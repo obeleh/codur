@@ -42,6 +42,7 @@ _WT_NON_NEW = _WT_FLAGS & ~pygit2.GIT_STATUS_WT_NEW
 
 
 def _open_repo(root: str | Path | None) -> pygit2.Repository:
+    """Open the git repository discovered from root."""
     root_path = resolve_root(root)
     repo_path = pygit2.discover_repository(str(root_path))
     if repo_path is None:
@@ -50,6 +51,7 @@ def _open_repo(root: str | Path | None) -> pygit2.Repository:
 
 
 def _resolve_config(config: CodurConfig | None, state: AgentState | None) -> CodurConfig:
+    """Resolve a CodurConfig from explicit config or agent state."""
     if config is not None:
         return config
     if state is not None and hasattr(state, "get_config"):
@@ -60,6 +62,7 @@ def _resolve_config(config: CodurConfig | None, state: AgentState | None) -> Cod
 
 
 def _require_git_write_enabled(config: CodurConfig) -> None:
+    """Ensure git write tools are enabled in configuration."""
     require_tool_permission(
         config,
         "tools.allow_git_write",
@@ -69,6 +72,7 @@ def _require_git_write_enabled(config: CodurConfig) -> None:
 
 
 def _repo_workdir(repo: pygit2.Repository) -> Path:
+    """Return the resolved workdir for a non-bare repository."""
     if not repo.workdir:
         raise ValueError("Bare repositories are not supported")
     return Path(repo.workdir).resolve()
@@ -80,6 +84,7 @@ def _resolve_repo_path(
     root: str | Path | None,
     allow_outside_root: bool,
 ) -> tuple[Path, Path]:
+    """Resolve an absolute path and its repo-relative path."""
     base_root = resolve_root(root) if root else repo_root
     abs_path = resolve_path(raw_path, base_root, allow_outside_root=allow_outside_root)
     try:
@@ -95,6 +100,7 @@ def _resolve_signature(
     email: str | None,
     role: str,
 ) -> pygit2.Signature:
+    """Resolve a commit signature from inputs or repo defaults."""
     if name and email:
         return pygit2.Signature(name, email)
     try:

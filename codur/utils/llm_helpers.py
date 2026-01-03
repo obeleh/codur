@@ -138,7 +138,7 @@ def create_and_invoke_with_tool_support(
             tool_schemas,
             temperature=temperature,
         )
-        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, tool_names)
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, tool_names, state)
 
         try:
             response = invoke_llm(
@@ -178,7 +178,7 @@ def create_and_invoke_with_tool_support(
 
         # Prepend system message
         new_messages = [SystemMessage(content=system_message_content)] + list(new_messages)
-        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, tool_names)
+        messages_for_llm = message_shortening_pipeline(get_messages(state) + new_messages, tool_names, state)
 
         # Create LLM with json_mode
         llm = _create_llm(
@@ -218,7 +218,7 @@ def _checkup_consecutive_toolcalls(
     previous_tool_names = set()
     for msg in reversed(previous_messages):
         if isinstance(msg, ToolMessage):
-            previous_tool_names.add(msg.tool_name)
+            previous_tool_names.add(msg.name)
         elif previous_tool_names:
             # Stop when we hit a non-tool message after finding tool messages
             break

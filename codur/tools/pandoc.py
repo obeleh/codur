@@ -10,6 +10,7 @@ from pathlib import Path
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.graph.state_operations import get_config
 from codur.tools.tool_annotations import (
     ToolContext,
     ToolSideEffect,
@@ -17,7 +18,6 @@ from codur.tools.tool_annotations import (
     tool_scenarios,
     tool_side_effects,
 )
-from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.validation import validate_file_access
 
@@ -56,7 +56,7 @@ def convert_document(
     validate_file_access(
         source,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=allow_outside_root,
     )

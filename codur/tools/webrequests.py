@@ -32,6 +32,7 @@ except ImportError:  # pragma: no cover - optional dependency
 
 
 def _collapse_whitespace(text: str) -> str:
+    """Normalize whitespace by collapsing blank lines and spaces."""
     text = text.replace("\r\n", "\n")
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -39,6 +40,7 @@ def _collapse_whitespace(text: str) -> str:
 
 
 def _basic_title(html: str) -> str:
+    """Extract the HTML document title when possible."""
     if BeautifulSoup is None:
         return ""
     soup = BeautifulSoup(html, "html.parser")
@@ -47,6 +49,7 @@ def _basic_title(html: str) -> str:
 
 
 def _clean_html_basic(html: str) -> str:
+    """Remove obvious non-content tags from HTML."""
     if BeautifulSoup is None:
         return html
     soup = BeautifulSoup(html, "html.parser")
@@ -56,6 +59,7 @@ def _clean_html_basic(html: str) -> str:
 
 
 def _clean_html_serp(html: str) -> str:
+    """Aggressively strip noisy elements from HTML for SERP-like pages."""
     if BeautifulSoup is None:
         return html
     soup = BeautifulSoup(html, "html.parser")
@@ -129,6 +133,7 @@ def _clean_html_serp(html: str) -> str:
 
 
 def _extract_text_from_html(html: str) -> str:
+    """Extract visible text from HTML."""
     if BeautifulSoup is not None:
         soup = BeautifulSoup(html, "html.parser")
         for tag in soup(["script", "style", "noscript", "svg"]):
@@ -140,6 +145,7 @@ def _extract_text_from_html(html: str) -> str:
 
 
 def _html_to_markdown(html: str) -> str:
+    """Convert HTML to markdown or text depending on dependencies."""
     if _markdownify is not None:
         return _collapse_whitespace(_markdownify(html, heading_style="ATX"))
     if BeautifulSoup is not None:
@@ -148,6 +154,7 @@ def _html_to_markdown(html: str) -> str:
 
 
 def _extract_readability(html: str) -> dict[str, str]:
+    """Extract main content using readability-lxml."""
     if Document is None:
         raise RuntimeError("readability-lxml is not installed")
     doc = Document(html)
@@ -161,6 +168,7 @@ def _extract_readability(html: str) -> dict[str, str]:
 
 
 def _extract_basic(html: str) -> dict[str, str]:
+    """Extract basic title/text/html from raw HTML."""
     return {
         "title": _basic_title(html),
         "text": _extract_text_from_html(html),
@@ -170,6 +178,7 @@ def _extract_basic(html: str) -> dict[str, str]:
 
 
 def _extract_serp(html: str) -> dict[str, str]:
+    """Extract content using aggressive SERP cleanup."""
     cleaned = _clean_html_serp(html)
     return {
         "title": _basic_title(html),
@@ -180,6 +189,7 @@ def _extract_serp(html: str) -> dict[str, str]:
 
 
 def _extract_main(html: str, mode: str) -> dict[str, str]:
+    """Choose an extraction strategy based on mode."""
     normalized = (mode or "auto").lower().strip()
     if normalized == "readability":
         if Document is None:
@@ -206,6 +216,7 @@ def _resolve_cleanup_level(
     clean: bool,
     extract_mode: str,
 ) -> str:
+    """Resolve effective cleanup level from flags."""
     if cleanup_level:
         return cleanup_level
     if not clean:
@@ -214,6 +225,7 @@ def _resolve_cleanup_level(
 
 
 def _resolve_output_format(requested: str | None) -> str:
+    """Normalize output format to markdown or text."""
     normalized = (requested or "markdown").lower().strip()
     if normalized in {"markdown", "md"}:
         return "markdown"

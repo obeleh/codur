@@ -7,6 +7,7 @@ import json
 from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
 from codur.graph.state_operations import parse_tool_message
 from codur.tools.registry import get_tools_with_side_effects
+from codur.utils.history_summary import summarize_message_history
 
 
 def _format_tool_call(msg: ToolMessage, max_args_len: int = 200) -> str:
@@ -18,10 +19,10 @@ def _format_tool_call(msg: ToolMessage, max_args_len: int = 200) -> str:
         if len(args_str) > max_args_len:
             args_str = args_str[:max_args_len] + "..."
         return f"- {parsed.tool} with args {args_str}"
-    return f"- {msg.tool_name or 'unknown'}"
+    return f"- {msg.name or 'unknown'}"
 
 
-def message_shortening_pipeline(messages: list[BaseMessage], known_tool_names: list[str] | None=None) -> list[BaseMessage]:
+def message_shortening_pipeline(messages: list[BaseMessage], known_tool_names: list[str] | None=None, state: "AgentState"=None) -> list[BaseMessage]:
     """
     Returns all tool calls that were _after_ a mutation tool call.
     Mutation tool calls: ToolSideEffect.FILE_MUTATION and ToolSideEffect.STATE_CHANGE
@@ -62,29 +63,32 @@ def message_shortening_pipeline(messages: list[BaseMessage], known_tool_names: l
         message = messages[idx]
         if isinstance(message, ToolMessage):
             # filter out tools that would be unknown to the LLM
-            if known_tool_names and message.tool_name not in known_tool_names:
+            if known_tool_names and message.name not in known_tool_names:
                 continue
             tool_calls_to_inject.append(message)
 
     system_message = messages[last_system_idx]
     messages_after_system = tool_calls_to_inject + messages[last_system_idx + 1:]
+    messages_before_system = messages[:last_system_idx]
 
-    formatted_tool_calls = []
-    for msg in messages_after_system:
-        if isinstance(msg, ToolMessage):
-            formatted_tool_calls.append(_format_tool_call(msg))
+    # formatted_tool_calls = []
+    # for msg in messages_after_system:
+    #     if isinstance(msg, ToolMessage):
+    #         formatted_tool_calls.append(_format_tool_call(msg))
+    #
+    # do_not_recall_tool_msg = (
+    #     f"Called tools in context:\n{chr(10).join(formatted_tool_calls)}\n\n"
+    #     "If you need to re-call with the same arguments, use the \"clarify\" tool first to explain why."
+    # )
 
-    do_not_recall_tool_msg = (
-        f"Called tools in context:\n{chr(10).join(formatted_tool_calls)}\n\n"
-        "GOOD: Use the tool results already in context to inform your response.\n"
-        "BAD: Calling the same tool again with identical arguments.\n\n"
-        "Only re-call a tool if the arguments have changed. "
-        "If you need to re-call with the same arguments, use the \"clarify\" tool first to explain why."
-    )
+    if not getattr(system_message, "summary_injected", False):
+        summary = summarize_message_history(
+            messages_before_system,
+            state,
+        )
 
-    system_message = SystemMessage(
-        content=system_message.content + "\n\n" + do_not_recall_tool_msg
-    )
+        system_message.content += ("\n\n" + summary)
+        system_message.summary_injected = True
 
     # Output: system message + preserved tool calls + messages after system message
     messages_out = [system_message] + messages_after_system

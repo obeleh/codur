@@ -10,9 +10,9 @@ from typing import List, Dict, Any
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.graph.state_operations import get_config
 from codur.tools.tool_annotations import tool_scenarios
 from codur.utils.path_utils import resolve_path, resolve_root
-from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.validation import validate_file_access
 
 
@@ -48,7 +48,7 @@ def markdown_outline(
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=effective_allow_outside_root,
     )
@@ -104,7 +104,7 @@ def markdown_extract_sections(
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=effective_allow_outside_root,
     )
@@ -184,7 +184,7 @@ def markdown_extract_tables(
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=effective_allow_outside_root,
     )

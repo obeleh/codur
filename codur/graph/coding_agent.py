@@ -212,6 +212,7 @@ def coding_node(state: AgentState, config: CodurConfig, recursion_depth=0) -> Ex
             "selected_agent": "codur-verification"
         }
     elif last_tool_call.tool == "build_verification_response":
+        console.log("[green]Building verification response as requested by agent...[/green]")
         return {
             "agent_outcome": {
                 "agent": agent_name,

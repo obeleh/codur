@@ -16,6 +16,7 @@ from codur.tools.tool_annotations import ToolSideEffect, tool_scenarios, tool_si
 
 
 def _run(coro):
+    """Run a coroutine, erroring if already inside an event loop."""
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -24,6 +25,7 @@ def _run(coro):
 
 
 def _resolve_config(config: CodurConfig | None, state: AgentState | None) -> CodurConfig:
+    """Resolve a CodurConfig from explicit config or agent state."""
     if config is not None:
         return config
     if state is not None and hasattr(state, "get_config"):
@@ -34,6 +36,7 @@ def _resolve_config(config: CodurConfig | None, state: AgentState | None) -> Cod
 
 
 def _get_server(config: CodurConfig, server: str) -> StdioServerParameters:
+    """Resolve MCP server parameters from configuration."""
     if server not in config.mcp_servers:
         raise ValueError(f"Unknown MCP server: {server}")
     cfg = config.mcp_servers[server]
@@ -46,6 +49,7 @@ def _get_server(config: CodurConfig, server: str) -> StdioServerParameters:
 
 
 async def _with_session(config: CodurConfig, server: str, fn):
+    """Open an MCP session and run the provided coroutine."""
     params = _get_server(config, server)
     async with stdio_client(params) as (read_stream, write_stream):
         session = ClientSession(read_stream, write_stream)
@@ -60,6 +64,7 @@ def list_mcp_tools(
     config: CodurConfig | None = None,
     state: AgentState | None = None,
 ) -> list[dict]:
+    """List tools exposed by an MCP server."""
     config = _resolve_config(config, state)
     async def _list(session: ClientSession):
         result = await session.list_tools()
@@ -77,6 +82,7 @@ def call_mcp_tool(
     config: CodurConfig | None = None,
     state: AgentState | None = None,
 ) -> dict:
+    """Invoke a tool on an MCP server."""
     config = _resolve_config(config, state)
     async def _call(session: ClientSession):
         result = await session.call_tool(tool, arguments=arguments)
@@ -92,6 +98,7 @@ def list_mcp_resources(
     config: CodurConfig | None = None,
     state: AgentState | None = None,
 ) -> dict:
+    """List resources available from an MCP server."""
     config = _resolve_config(config, state)
     async def _list(session: ClientSession):
         result = await session.list_resources()
@@ -107,6 +114,7 @@ def list_mcp_resource_templates(
     config: CodurConfig | None = None,
     state: AgentState | None = None,
 ) -> dict:
+    """List resource templates available from an MCP server."""
     config = _resolve_config(config, state)
     async def _list(session: ClientSession):
         result = await session.list_resource_templates()
@@ -123,6 +131,7 @@ def read_mcp_resource(
     config: CodurConfig | None = None,
     state: AgentState | None = None,
 ) -> dict:
+    """Read a specific resource from an MCP server."""
     config = _resolve_config(config, state)
     async def _read(session: ClientSession):
         result = await session.read_resource(types.AnyUrl(uri))

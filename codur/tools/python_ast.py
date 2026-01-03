@@ -6,13 +6,14 @@ import ast
 from pathlib import Path
 from codur.constants import DEFAULT_MAX_RESULTS, TaskType
 from codur.graph.state import AgentState
+from codur.graph.state_operations import get_config
 from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
-from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.validation import validate_file_access
 DEFAULT_AST_MAX_NODES = 2000
 
 def _node_label(node: ast.AST) -> str:
+    """Return a short label for display in the AST graph."""
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
         return node.name
     if isinstance(node, ast.Name):
@@ -29,6 +30,7 @@ def _node_label(node: ast.AST) -> str:
     return ""
 
 def _node_location(node: ast.AST) -> dict:
+    """Extract line/column metadata from an AST node if present."""
     info = {}
     if hasattr(node, "lineno"):
         info["lineno"] = getattr(node, "lineno")
@@ -56,7 +58,7 @@ def python_ast_graph(
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=allow_outside_root,
     )
@@ -99,6 +101,7 @@ def python_ast_graph(
     }
 
 def _format_args(args: ast.arguments) -> list[str]:
+    """Format function arguments into a simple signature list."""
     items: list[str] = []
     for arg in args.posonlyargs:
         items.append(arg.arg)
@@ -117,6 +120,7 @@ def _format_args(args: ast.arguments) -> list[str]:
     return items
 
 def _safe_unparse(node: ast.AST) -> str:
+    """Safely unparse a node, falling back to a simple repr."""
     if hasattr(ast, "unparse"):
         try:
             return ast.unparse(node)
@@ -142,7 +146,7 @@ def python_ast_outline(
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=allow_outside_root,
     )
@@ -208,7 +212,7 @@ def python_ast_dependencies(
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=allow_outside_root,
     )

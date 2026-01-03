@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from codur.tools.verification_response import build_verification_response, VerificationResult
+from codur.tools.meta_tools import build_verification_response, VerificationResult
 from codur.constants import TaskType
 from codur.tools.tool_annotations import get_tool_scenarios
 

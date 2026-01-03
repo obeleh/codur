@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, TypedDict
 
 from codur.config import CodurConfig
-from codur.graph.state_operations import is_verbose
+from codur.graph.state_operations import is_verbose, get_config
 
 
 class ValidateSyntaxResult(TypedDict, total=False):
@@ -45,7 +45,6 @@ from codur.tools.tool_annotations import (
     tool_side_effects,
 )
 from codur.utils.config_helpers import get_cli_timeout
-from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.text_helpers import truncate_chars
 from codur.utils.validation import require_directory_exists
@@ -232,7 +231,7 @@ def run_pytest(
     if env:
         process_env.update(env)
 
-    config = get_config_from_state(state)
+    config = get_config(state)
     effective_timeout = int(timeout) if timeout is not None else get_cli_timeout(config)
     max_output_chars = (
         int(getattr(getattr(config, "tools", None), "default_max_bytes", DEFAULT_MAX_BYTES))

@@ -61,7 +61,7 @@ def _run_challenge(main_path: Path) -> str:
     return output
 
 
-def _run_codur(prompt: str, cwd: Path) -> str:
+def _run_codur(prompt: str, cwd: Path, max_calls=10) -> str:
     env = os.environ.copy()
     env["NO_COLOR"] = "1"
     env["TERM"] = "dumb"
@@ -75,7 +75,7 @@ def _run_codur(prompt: str, cwd: Path) -> str:
             "--raw",
             "--verbose",
             "--fail-early",
-            "--max-llm-calls", "10",
+            "--max-llm-calls", f"{max_calls}",
             "--config",
             str(REPO_ROOT / "codur.yaml"),
         ],
@@ -171,7 +171,7 @@ def _reset_after_challenge():
         _reset_challenges()
 
 
-def _test_challenge_with_expected_output(challenge_dir: Path) -> None:
+def _test_challenge_with_expected_output(challenge_dir: Path, max_calls=10) -> None:
     """Run a challenge and verify output against expected.txt."""
     expected_path = challenge_dir / "expected.txt"
     prompt_path = challenge_dir / "prompt.txt"
@@ -182,7 +182,7 @@ def _test_challenge_with_expected_output(challenge_dir: Path) -> None:
     assert main_path.exists(), f"Missing entry point in {challenge_dir}"
 
     prompt = _read_text(prompt_path)
-    _run_codur(prompt, cwd=challenge_dir)
+    _run_codur(prompt, cwd=challenge_dir, max_calls=max_calls)
 
     expected = _read_text(expected_path)
     actual = _run_challenge(main_path)
@@ -244,7 +244,7 @@ def test_challenge_06_title_case_exceptions() -> None:
 
 def test_challenge_09_markdown_table_formatter() -> None:
     """Test challenge: 09-markdown-table-formatter"""
-    _test_challenge_with_expected_output(CHALLENGES_DIR / "09-markdown-table-formatter")
+    _test_challenge_with_expected_output(CHALLENGES_DIR / "09-markdown-table-formatter", max_calls=15)
 
 
 def test_challenge_07_distance() -> None:

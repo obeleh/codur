@@ -151,12 +151,3 @@ def is_gitignored(path: Path, root: Path, spec: Optional["PathSpec"], *, is_dir:
         return spec.match_file(rel_path) or spec.match_file(f"{rel_path}/")
     return spec.match_file(rel_path)
 
-
-def get_config_from_state(state: object | None) -> object | None:
-    if state is None:
-        return None
-    if hasattr(state, "get_config"):
-        return state.get_config()
-    if isinstance(state, dict):
-        return state.get("config")
-    return None

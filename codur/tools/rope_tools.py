@@ -14,6 +14,7 @@ from rope.refactor.rename import Rename
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.graph.state_operations import get_config
 from codur.tools.tool_annotations import (
     ToolContext,
     ToolSideEffect,
@@ -21,7 +22,6 @@ from codur.tools.tool_annotations import (
     tool_scenarios,
     tool_side_effects,
 )
-from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.path_utils import resolve_root, resolve_path
 from codur.utils.validation import (
     require_directory_exists,
@@ -47,7 +47,7 @@ def rope_find_usages(
     state: AgentState | None = None,
 ) -> dict:
     """Find usages of the symbol at a location using rope."""
-    config = get_config_from_state(state)
+    config = get_config(state)
     project, resource, project_root, target, content = _open_project_resource(
         path, root, allow_outside_root, config=config
     )
@@ -96,7 +96,7 @@ def rope_find_definition(
     state: AgentState | None = None,
 ) -> dict:
     """Find the definition location for the symbol at a position."""
-    config = get_config_from_state(state)
+    config = get_config(state)
     project, resource, project_root, target, content = _open_project_resource(
         path, root, allow_outside_root, config=config
     )
@@ -151,7 +151,7 @@ def rope_rename_symbol(
     """Rename a symbol using rope and apply changes to the project."""
     if not new_name:
         raise ValueError("new_name is required")
-    config = get_config_from_state(state)
+    config = get_config(state)
     project, resource, project_root, target, content = _open_project_resource(
         path, root, allow_outside_root, config=config
     )
@@ -201,7 +201,7 @@ def rope_move_module(
     """Move a module file to a destination directory and update imports."""
     if not destination_dir:
         raise ValueError("destination_dir is required")
-    config = get_config_from_state(state)
+    config = get_config(state)
     project, resource, project_root, target, _content = _open_project_resource(
         path, root, allow_outside_root, config=config
     )
@@ -250,7 +250,7 @@ def rope_extract_method(
     """Extract a code region into a new method."""
     if not extracted_name:
         raise ValueError("extracted_name is required")
-    config = get_config_from_state(state)
+    config = get_config(state)
     project, resource, project_root, target, content = _open_project_resource(
         path, root, allow_outside_root, config=config
     )
@@ -302,6 +302,7 @@ def _open_project_resource(
     allow_outside_root: bool,
     config: object | None = None,
 ) -> tuple[Project, object, Path, Path, str]:
+    """Open a rope Project and resource for a file path."""
     root_path = resolve_root(root)
     require_directory_exists(root_path, message=f"Project root does not exist: {root_path}")
     target = resolve_path(path, root_path, allow_outside_root=allow_outside_root)
@@ -326,6 +327,7 @@ def _open_project_resource(
 
 
 def _select_project_root(root_path: Path, target: Path, allow_outside_root: bool) -> Path:
+    """Pick the rope project root based on target and workspace rules."""
     if root_path == target or root_path in target.parents:
         return root_path
     if allow_outside_root:
@@ -346,6 +348,7 @@ def _offset_from_position(
     offset: int | None,
     symbol: str | None = None,
 ) -> int:
+    """Resolve a byte offset from line/column, offset, or symbol."""
     if offset is not None:
         if offset < 0 or offset > len(content):
             raise ValueError("offset is out of range")
@@ -372,6 +375,7 @@ def _offset_from_position(
 
 
 def _line_col_from_offset(content: str, offset: int) -> tuple[int, int]:
+    """Convert a byte offset into 1-based line and 0-based column."""
     if offset < 0 or offset > len(content):
         raise ValueError("offset is out of range")
     line = content.count("\n", 0, offset) + 1
@@ -381,6 +385,7 @@ def _line_col_from_offset(content: str, offset: int) -> tuple[int, int]:
 
 
 def _extract_identifier(content: str, offset: int) -> Optional[str]:
+    """Extract a Python identifier surrounding an offset."""
     if not content:
         return None
     if offset >= len(content):
@@ -407,10 +412,12 @@ def _extract_identifier(content: str, offset: int) -> Optional[str]:
 
 
 def _is_identifier_char(char: str) -> bool:
+    """Return True if a character is valid in a Python identifier."""
     return char.isalnum() or char == "_"
 
 
 def _offset_from_symbol(content: str, symbol: str) -> int:
+    """Find the first occurrence of a symbol in content."""
     if not symbol:
         raise ValueError("symbol must be provided")
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", symbol):
@@ -426,6 +433,7 @@ def _resources_from_paths(
     project_root: Path,
     resource_paths: list[str] | None,
 ) -> Optional[list]:
+    """Resolve optional resource paths into rope resources."""
     if not resource_paths:
         return None
     resources = []
@@ -443,12 +451,14 @@ def _locations_to_dicts(
     max_results: int,
     config: object | None = None,
 ) -> list[dict]:
+    """Convert rope location objects to serializable dicts."""
     if max_results > 0:
         locations = locations[:max_results]
     return [_location_to_dict(project_root, loc, config=config) for loc in locations]
 
 
 def _location_to_dict(project_root: Path, location, config: object | None = None) -> dict:
+    """Serialize a single rope location into a dict."""
     path = Path(project_root) / location.resource.path
     validate_file_access(
         path,

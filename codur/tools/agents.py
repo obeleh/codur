@@ -19,6 +19,7 @@ def _handoff_to_executor(
     state: AgentState,
     config: CodurConfig
 ) -> str:
+    """Run an agent executor and return its outcome string."""
     from codur.graph.state_operations import add_llm_call, get_outcome
     from codur.graph.execution import AgentExecutor
     executor = AgentExecutor(state, config, agent_name=agent)
@@ -43,8 +44,6 @@ def agent_call(
     state: AgentState,
     config: CodurConfig,
 ) -> str:
-    from codur.graph.state_operations import add_message
-
     """Invoke an agent with a coding challenge and optional file context.
 
     Used by the planner to directly invoke agents with file contents after reading them.
@@ -58,6 +57,7 @@ def agent_call(
     Returns:
         Agent response string
     """
+    from codur.graph.state_operations import add_message
     add_message(state, HumanMessage(content=challenge))
     return _handoff_to_executor(state=state, agent=agent, config=config)
 

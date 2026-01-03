@@ -15,8 +15,9 @@ from ripgrepy import Ripgrepy, RipGrepNotFound
 
 from codur.constants import DEFAULT_MAX_RESULTS, TaskType
 from codur.graph.state import AgentState
+from codur.graph.state_operations import get_config
 from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
-from codur.utils.ignore_utils import get_config_from_state, get_exclude_dirs, should_respect_gitignore
+from codur.utils.ignore_utils import get_exclude_dirs, should_respect_gitignore
 from codur.utils.path_utils import resolve_root
 
 _DEFAULT_MAX_DEPTH = 50
@@ -24,11 +25,13 @@ _DEFAULT_MAX_COUNT = 10_000
 
 
 def _resolve_exclude_dirs(state: AgentState | None) -> Iterable[str]:
-    config = get_config_from_state(state)
+    """Return exclude directory names from tool state config."""
+    config = get_config(state)
     return get_exclude_dirs(config)
 
 
 def _rg_available() -> bool:
+    """Return True if ripgrep is available on PATH."""
     return shutil.which("rg") is not None
 
 
@@ -43,6 +46,7 @@ def _apply_common_flags(
     exclude_dirs: Iterable[str],
     respect_gitignore: bool,
 ) -> None:
+    """Apply shared ripgrep flags based on tool parameters."""
     rg.json()
     if not respect_gitignore:
         rg.no_ignore()
@@ -67,6 +71,7 @@ def _apply_common_flags(
 
 
 def _relative_match_path(path_text: str, root_path: Path) -> str:
+    """Return path relative to root if possible."""
     if not path_text:
         return path_text
     path = Path(path_text)
@@ -79,6 +84,7 @@ def _relative_match_path(path_text: str, root_path: Path) -> str:
 
 
 def _expand_globs(globs: Iterable[str]) -> list[str]:
+    """Expand globs with useful prefixed variants."""
     expanded: list[str] = []
     seen: set[str] = set()
     for glob in globs:
@@ -93,6 +99,7 @@ def _expand_globs(globs: Iterable[str]) -> list[str]:
 
 
 def _maybe_prefix_glob(glob: str) -> list[str]:
+    """Add **/ prefix for globs that target subpaths."""
     negated = glob.startswith("!")
     raw = glob[1:] if negated else glob
     if raw.startswith(("**/", "/")):
@@ -104,6 +111,7 @@ def _maybe_prefix_glob(glob: str) -> list[str]:
 
 
 def _parse_ripgrep_json(output: str, root_path: Path, max_results: int) -> list[dict]:
+    """Parse ripgrep JSON output into result dicts."""
     if not output.strip():
         return []
     results: list[dict] = []
@@ -136,6 +144,7 @@ def _parse_ripgrep_json(output: str, root_path: Path, max_results: int) -> list[
 
 
 def _iter_files(root: Path, exclude_dirs: Iterable[str]) -> Iterable[Path]:
+    """Yield all files under root excluding named directories."""
     exclude_set = set(exclude_dirs)
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in exclude_set]
@@ -144,6 +153,7 @@ def _iter_files(root: Path, exclude_dirs: Iterable[str]) -> Iterable[Path]:
 
 
 def _is_text_file(path: Path) -> bool:
+    """Heuristic check for text files based on null bytes."""
     try:
         with open(path, "rb") as handle:
             sample = handle.read(2048)
@@ -159,6 +169,7 @@ def _python_grep_files(
     case_sensitive: bool,
     exclude_dirs: Iterable[str],
 ) -> list[dict]:
+    """Fallback regex search in Python without ripgrep."""
     flags = 0 if case_sensitive else re.IGNORECASE
     regex = re.compile(pattern, flags)
     results: list[dict] = []
@@ -198,7 +209,7 @@ def ripgrep_search(
         return []
     root_path = resolve_root(root)
     exclude_dirs = _resolve_exclude_dirs(state)
-    respect_gitignore = should_respect_gitignore(get_config_from_state(state))
+    respect_gitignore = should_respect_gitignore(get_config(state))
     if not _rg_available():
         raise ValueError("ripgrep not found")
     try:

@@ -11,10 +11,10 @@ from typing import Iterable, TypedDict
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.graph.state_operations import get_config
 from codur.tools.tool_annotations import tool_scenarios
 from codur.utils.path_utils import resolve_root
 from codur.utils.ignore_utils import (
-    get_config_from_state,
     get_exclude_dirs,
     is_gitignored,
     load_gitignore,
@@ -23,12 +23,14 @@ from codur.utils.ignore_utils import (
 )
 
 class EntryPointInfo(TypedDict):
+    """Metadata about a discovered entry point."""
     path: str
     priority: int
     reason: str
 
 
 class EntryPointsResult(TypedDict):
+    """Result payload for discover_entry_points."""
     ok: bool
     entries: list[EntryPointInfo]
     primary: str | None
@@ -36,6 +38,7 @@ class EntryPointsResult(TypedDict):
 
 
 class PrimaryEntryPointResult(TypedDict):
+    """Result payload for resolve_primary_entry_point."""
     ok: bool
     path: str | None
     message: str
@@ -50,6 +53,7 @@ def _filter_dirnames(
     exclude_dirs: set[str],
     gitignore_spec: object | None,
 ) -> None:
+    """Filter os.walk dirnames in-place based on config rules."""
     rel_dir = Path(dirpath).relative_to(root)
     filtered: list[str] = []
     for dirname in dirnames:
@@ -122,7 +126,7 @@ def discover_entry_points(
         String with list of entry points, one per line with priority indicator
     """
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
 
     entry_points = []
 
@@ -192,7 +196,7 @@ def get_primary_entry_point(
         Filename of the primary entry point, or error message if none found
     """
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
 
     # Check standard entry points in priority order
     main_py = root_path / "main.py"

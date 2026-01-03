@@ -42,6 +42,7 @@ class ToolSideEffect(Enum):
 
 
 def _normalize_scenarios(values: Iterable[Any]) -> list[TaskType]:
+    """Flatten and validate TaskType values for tool_scenarios."""
     scenarios: list[TaskType] = []
     for value in values:
         if value is None:
@@ -57,6 +58,7 @@ def _normalize_scenarios(values: Iterable[Any]) -> list[TaskType]:
 
 
 def _normalize_contexts(values: Iterable[Any]) -> list[ToolContext]:
+    """Flatten and validate ToolContext values for tool_contexts."""
     contexts: list[ToolContext] = []
     for value in values:
         if value is None:
@@ -72,6 +74,7 @@ def _normalize_contexts(values: Iterable[Any]) -> list[ToolContext]:
 
 
 def _normalize_guards(values: Iterable[Any]) -> list[ToolGuard]:
+    """Flatten and validate ToolGuard values for tool_guards."""
     guards: list[ToolGuard] = []
     for value in values:
         if value is None:
@@ -87,6 +90,7 @@ def _normalize_guards(values: Iterable[Any]) -> list[ToolGuard]:
 
 
 def _normalize_side_effects(values: Iterable[Any]) -> list[ToolSideEffect]:
+    """Flatten and validate ToolSideEffect values for tool_side_effects."""
     side_effects: list[ToolSideEffect] = []
     for value in values:
         if value is None:

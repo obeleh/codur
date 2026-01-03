@@ -19,6 +19,7 @@ from codur.tools.tool_annotations import (
 
 
 def _iter_tool_functions() -> dict[str, Any]:
+    """Collect callable tool exports from codur.tools.__all__."""
     tools: dict[str, Any] = {}
     for name in getattr(tool_module, "__all__", []):
         obj = getattr(tool_module, name, None)
@@ -28,6 +29,7 @@ def _iter_tool_functions() -> dict[str, Any]:
 
 
 def _summary(doc: str | None) -> str:
+    """Return the first non-empty line of a docstring."""
     if not doc:
         return ""
     for line in doc.strip().splitlines():
@@ -38,6 +40,7 @@ def _summary(doc: str | None) -> str:
 
 
 def _format_signature(func: Any) -> str:
+    """Return a signature string excluding internal tool parameters."""
     signature = inspect.signature(func)
     filtered = []
     internal_params = {"root", "allow_outside_root", "state", "config"}
@@ -49,6 +52,7 @@ def _format_signature(func: Any) -> str:
 
 
 def _rg_available() -> bool:
+    """Return True if ripgrep is available on PATH."""
     return shutil.which("rg") is not None
 
 

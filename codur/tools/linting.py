@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Iterable
 
 from codur.constants import TaskType
+from codur.graph.state_operations import get_config
 from codur.utils.ignore_utils import (
-    get_config_from_state,
     get_exclude_dirs,
     is_gitignored,
     load_gitignore,
@@ -24,6 +24,7 @@ from codur.utils.path_utils import resolve_root, resolve_path
 
 
 def _iter_python_files(root: Path, config: object | None = None) -> Iterable[Path]:
+    """Yield Python files under root honoring ignore settings."""
     exclude_dirs = get_exclude_dirs(config)
     include_hidden = should_include_hidden(config)
     gitignore_spec = load_gitignore(root) if should_respect_gitignore(config) else None
@@ -51,6 +52,7 @@ def _iter_python_files(root: Path, config: object | None = None) -> Iterable[Pat
 
 
 def _lint_file(path: Path) -> list[dict]:
+    """Lint a single file by parsing its AST."""
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as handle:
             source = handle.read()
@@ -81,6 +83,7 @@ def lint_python_files(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
+    """Lint a list of Python files and return parse errors."""
     root_path = resolve_root(root)
     errors: list[dict] = []
     checked = 0
@@ -101,8 +104,9 @@ def lint_python_tree(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
+    """Lint all Python files under root and return parse errors."""
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     errors: list[dict] = []
     checked = 0
     for path in _iter_python_files(root_path, config=config):

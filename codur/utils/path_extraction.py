@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Optional
 
 from codur.graph.state import AgentState
+from codur.graph.state_operations import get_config
 from codur.utils.ignore_utils import (
-    get_config_from_state,
     get_exclude_dirs,
     is_gitignored,
     is_hidden_path,
@@ -105,7 +105,7 @@ def find_workspace_match(raw_text: str, state: AgentState | None = None) -> Opti
                 candidates.append(cleaned)
 
     cwd = Path.cwd()
-    config = get_config_from_state(state)
+    config = get_config(state)
     exclude_dirs = get_exclude_dirs(config)
     include_hidden = should_include_hidden(config)
     gitignore_spec = load_gitignore(cwd) if should_respect_gitignore(config) else None

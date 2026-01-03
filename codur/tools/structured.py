@@ -13,6 +13,7 @@ import yaml
 
 from codur.constants import TaskType
 from codur.graph.state import AgentState
+from codur.graph.state_operations import get_config
 from codur.tools.tool_annotations import (
     ToolContext,
     ToolSideEffect,
@@ -21,17 +22,18 @@ from codur.tools.tool_annotations import (
     tool_side_effects,
 )
 from codur.utils.path_utils import resolve_path, resolve_root
-from codur.utils.ignore_utils import get_config_from_state
 from codur.utils.validation import validate_file_access
 
 
 class StructuredWriteResult(TypedDict):
+    """Result payload for structured write operations."""
     format: str
     path: str
     bytes_written: int
 
 
 def _set_nested_value(data: Any, key_path: str | list[str], value: Any) -> Any:
+    """Set a nested value on a mapping using a dotted or list path."""
     if isinstance(key_path, str):
         parts = [part for part in key_path.split(".") if part]
     else:
@@ -57,11 +59,12 @@ def read_json(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> Any:
+    """Read a JSON file and return parsed data."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=allow_outside_root,
     )
@@ -95,6 +98,7 @@ def write_json(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> StructuredWriteResult:
+    """Write data to a JSON file."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "w", encoding="utf-8") as handle:
@@ -114,11 +118,12 @@ def set_json_value(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
+    """Set a nested JSON value and write the file back."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=allow_outside_root,
     )
@@ -139,11 +144,12 @@ def read_yaml(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> Any:
+    """Read a YAML file and return parsed data."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=allow_outside_root,
     )
@@ -176,6 +182,7 @@ def write_yaml(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> StructuredWriteResult:
+    """Write data to a YAML file."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "w", encoding="utf-8") as handle:
@@ -194,11 +201,12 @@ def set_yaml_value(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
+    """Set a nested YAML value and write the file back."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=allow_outside_root,
     )
@@ -218,11 +226,12 @@ def read_ini(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
+    """Read an INI file into a nested dict."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=allow_outside_root,
     )
@@ -244,6 +253,7 @@ def write_ini(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> StructuredWriteResult:
+    """Write a nested dict to an INI file."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     parser = configparser.ConfigParser()
@@ -266,11 +276,12 @@ def set_ini_value(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
+    """Set an INI option value and write the file back."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     validate_file_access(
         target,
         resolve_root(root),
-        get_config_from_state(state),
+        get_config(state),
         operation="read",
         allow_outside_root=allow_outside_root,
     )

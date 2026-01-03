@@ -12,9 +12,9 @@ from typing import Iterable, Literal, TypedDict
 
 from codur.graph.state import AgentState
 from codur.constants import DEFAULT_MAX_BYTES, DEFAULT_MAX_RESULTS, TaskType
+from codur.graph.state_operations import get_config
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.ignore_utils import (
-    get_config_from_state,
     get_exclude_dirs,
     is_gitignored,
     load_gitignore,
@@ -33,6 +33,7 @@ from codur.tools.tool_annotations import (
 )
 
 class FileWriteResult(TypedDict):
+    """Result payload for write_file."""
     action: Literal["write"]
     path: str
     bytes_written: int
@@ -40,30 +41,35 @@ class FileWriteResult(TypedDict):
 
 
 class FileAppendResult(TypedDict):
+    """Result payload for append_file."""
     action: Literal["append"]
     path: str
     bytes_written: int
 
 
 class FileDeleteResult(TypedDict):
+    """Result payload for delete_file."""
     action: Literal["delete"]
     path: str
     deleted: bool
 
 
 class FileCopyResult(TypedDict):
+    """Result payload for copy_file."""
     action: Literal["copy"]
     source: str
     destination: str
 
 
 class FileMoveResult(TypedDict):
+    """Result payload for move_file."""
     action: Literal["move"]
     source: str
     destination: str
 
 
 class FileCopyToDirResult(TypedDict):
+    """Result payload for copy_file_to_dir."""
     action: Literal["copy_to_dir"]
     source: str
     destination_dir: str
@@ -71,6 +77,7 @@ class FileCopyToDirResult(TypedDict):
 
 
 class FileMoveToDirResult(TypedDict):
+    """Result payload for move_file_to_dir."""
     action: Literal["move_to_dir"]
     source: str
     destination_dir: str
@@ -78,6 +85,7 @@ class FileMoveToDirResult(TypedDict):
 
 
 class BatchWriteFileResult(TypedDict):
+    """Per-file result entry for write_files."""
     path: str
     ok: bool
     bytes_written: int | None
@@ -85,6 +93,7 @@ class BatchWriteFileResult(TypedDict):
 
 
 class BatchWriteFilesResult(TypedDict):
+    """Batch result payload for write_files."""
     results: list[BatchWriteFileResult]
 
 
@@ -97,6 +106,7 @@ def _filter_dirnames(
     exclude_dirs: set[str],
     gitignore_spec: object | None,
 ) -> None:
+    """Filter os.walk dirnames in-place based on config rules."""
     rel_dir = Path(dirpath).relative_to(root)
     filtered: list[str] = []
     for dirname in dirnames:
@@ -112,6 +122,7 @@ def _filter_dirnames(
 
 
 def _iter_files(root: Path, config: object | None = None) -> Iterable[Path]:
+    """Yield files under root honoring ignore and hidden rules."""
     exclude_dirs = get_exclude_dirs(config)
     include_hidden = should_include_hidden(config)
     gitignore_spec = load_gitignore(root) if should_respect_gitignore(config) else None
@@ -150,9 +161,10 @@ def read_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> str:
+    """Read a file with size limits and ignore rules applied."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     validate_file_access(
         target,
         root_path,
@@ -179,6 +191,7 @@ def write_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> FileWriteResult:
+    """Write content to a file, optionally creating parent dirs."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     existed = target.exists()
     if create_dirs:
@@ -203,6 +216,7 @@ def append_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> FileAppendResult:
+    """Append content to a file, creating it if needed."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "a", encoding="utf-8") as handle:
@@ -223,6 +237,7 @@ def delete_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> FileDeleteResult:
+    """Delete a file at the given path."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
     target.unlink()
     return {
@@ -243,6 +258,7 @@ def copy_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> FileCopyResult:
+    """Copy a file from source to destination."""
     source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
     destination_path = resolve_path(destination, root, allow_outside_root=allow_outside_root)
     if create_dirs:
@@ -266,6 +282,7 @@ def move_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> FileMoveResult:
+    """Move a file from source to destination."""
     source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
     destination_path = resolve_path(destination, root, allow_outside_root=allow_outside_root)
     if create_dirs:
@@ -289,6 +306,7 @@ def copy_file_to_dir(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> FileCopyToDirResult:
+    """Copy a file into a destination directory."""
     source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
     dest_dir_path = resolve_path(destination_dir, root, allow_outside_root=allow_outside_root)
     if create_dirs:
@@ -314,6 +332,7 @@ def move_file_to_dir(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> FileMoveToDirResult:
+    """Move a file into a destination directory."""
     source_path = resolve_path(source, root, allow_outside_root=allow_outside_root)
     dest_dir_path = resolve_path(destination_dir, root, allow_outside_root=allow_outside_root)
     if create_dirs:
@@ -336,12 +355,13 @@ def list_files(
     max_results: int = DEFAULT_MAX_RESULTS,
     state: AgentState | None = None,
 ) -> list[str]:
+    """List files under a root, honoring ignore settings."""
     if path and root:
         raise ValueError("Specify either 'path' or 'root', not both.")
     if path:
         root = path
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     results: list[str] = []
     for file_path in _iter_files(root_path, config):
         results.append(str(file_path.relative_to(root_path)))
@@ -357,8 +377,9 @@ def list_dirs(
     max_results: int = DEFAULT_MAX_RESULTS,
     state: AgentState | None = None,
 ) -> list[str]:
+    """List directories under a root, honoring ignore settings."""
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     exclude_dirs = get_exclude_dirs(config)
     include_hidden = should_include_hidden(config)
     gitignore_spec = load_gitignore(root_path) if should_respect_gitignore(config) else None
@@ -390,8 +411,9 @@ def file_tree(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> list[str]:
+    """Return a depth-limited tree listing under a root or path."""
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     exclude_dirs = get_exclude_dirs(config)
     include_hidden = should_include_hidden(config)
     gitignore_spec = load_gitignore(root_path) if should_respect_gitignore(config) else None
@@ -444,8 +466,9 @@ def search_files(
     case_sensitive: bool = False,
     state: AgentState | None = None,
 ) -> list[str]:
+    """Search for files by name substring under root."""
     root_path = resolve_root(root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     results: list[str] = []
     needle = query if case_sensitive else query.lower()
     for file_path in _iter_files(root_path, config):
@@ -470,8 +493,9 @@ def replace_in_file(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
+    """Replace regex pattern matches in a file."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     validate_file_access(
         target,
         resolve_root(root),
@@ -495,8 +519,9 @@ def line_count(
     allow_outside_root: bool = False,
     state: AgentState | None = None,
 ) -> dict:
+    """Count lines in a file."""
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     validate_file_access(
         target,
         resolve_root(root),
@@ -526,7 +551,7 @@ def inject_lines(
     if line < 1:
         raise ValueError("line must be >= 1")
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     validate_file_access(
         target,
         resolve_root(root),
@@ -561,7 +586,7 @@ def replace_lines(
     if start_line < 1 or end_line < start_line:
         raise ValueError("start_line must be >= 1 and <= end_line")
     target = resolve_path(path, root, allow_outside_root=allow_outside_root)
-    config = get_config_from_state(state)
+    config = get_config(state)
     validate_file_access(
         target,
         resolve_root(root),
@@ -589,6 +614,7 @@ def replace_lines(
 
 
 def _split_content_lines(content: str) -> list[str]:
+    """Split content into lines while preserving line endings."""
     if content == "":
         return []
     return content.splitlines(keepends=True)
