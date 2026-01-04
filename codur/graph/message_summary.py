@@ -1,8 +1,10 @@
 from langchain_core.messages import SystemMessage, BaseMessage
 
 from codur.graph.state import AgentState
-from codur.graph.state_operations import get_config, get_messages
+from codur.graph.state_operations import get_config, get_messages, get_tool_calls_parsed, ToolOutput, \
+    get_parsed_tool_calls_from_messages
 from codur.llm import create_llm_profile
+from codur.tools.registry import get_tool_summary_format
 from codur.utils.llm_calls import invoke_llm
 
 PROMPT = """
@@ -16,23 +18,6 @@ It is very important to include the tool results in the summary. But please foll
 Do not call any tools yourself!
 
 Tool result format:
-
-<tool_name>: <tool args>
-```
-<tool_result_content>
-```
-
-For file tool_calls:
-<file_name>:
-```
-<file_content>
-```
-
-For python_ast_dependencies
-```
-a -> b
-b -> c
-```
 """
 
 
@@ -42,8 +27,18 @@ def get_messages_to_summarize(state: AgentState) -> list[BaseMessage]:
     for idx, message in enumerate(messages):
         if isinstance(message, SystemMessage):
             last_system_idx = idx
-
     return messages[last_system_idx:]
+
+
+def get_tool_formats(messages: list[BaseMessage]) -> str:
+    tool_formats = []
+    for tool_msg in get_parsed_tool_calls_from_messages(messages):
+        assert isinstance(tool_msg, ToolOutput)
+        fmt = get_tool_summary_format(tool_msg.tool)
+        fmt = f"for {tool_msg.tool}:\n{fmt}\n"
+        tool_formats.append(fmt)
+
+    return "\n".join(tool_formats)
 
 
 def create_summary(state: AgentState) -> str:
@@ -56,11 +51,12 @@ def create_summary(state: AgentState) -> str:
         temperature=0.0,
     )
 
-    system_message = SystemMessage(
-        content=PROMPT
-    )
-
     messages = get_messages_to_summarize(state)
+    tool_formats = get_tool_formats(messages)
+
+    system_message = SystemMessage(
+        content=PROMPT + "\n\n" + tool_formats
+    )
 
     response = invoke_llm(
         llm,

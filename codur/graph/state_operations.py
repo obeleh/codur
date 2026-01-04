@@ -301,26 +301,28 @@ def set_selected_agent(state: "AgentState", agent: str) -> None:
 # Tool Call Management
 # ============================================================================
 
+# TODO: Deprecate, use
 def get_tool_calls(state: "AgentState") -> list:
     """Get the list of tool calls."""
     return state.get("tool_calls", [])
 
-def set_tool_calls(state: "AgentState", tool_calls: list) -> None:
-    """Set the list of tool calls."""
-    state["tool_calls"] = tool_calls
 
-def add_tool_call(state: "AgentState", tool_call: dict) -> None:
-    """Add a single tool call to the list."""
-    tool_calls = get_tool_calls(state)
-    tool_calls.append(tool_call)
-    set_tool_calls(state, tool_calls)
+def get_tool_calls_parsed(state: "AgentState") -> list[ToolOutput]:
+    """Get the list of parsed tool calls."""
+    messages = get_messages(state)
+    return get_parsed_tool_calls_from_messages(messages)
 
-def has_tool_call_of_type(state: "AgentState", tool_type: str) -> bool:
-    """Check if any tool call matches the given type."""
-    return any(call.get("tool") == tool_type for call in get_tool_calls(state))
+def get_parsed_tool_calls_from_messages(messages: list[BaseMessage]) -> list[ToolOutput]:
+    parsed_calls: list[ToolOutput] = []
+    for msg in messages:
+        if isinstance(msg, ToolMessage):
+            parsed = parse_tool_message(msg)
+            if parsed:
+                parsed_calls.append(parsed)
+    return parsed_calls
 
 
-def get_last_tool_call_from_messages(messages: list[BaseMessage]) -> Optional[ToolOutput]:
+def get_last_tool_output_from_messages(messages: list[BaseMessage]) -> Optional[ToolOutput]:
     """Get the last tool call made, if any."""
     for msg in reversed(messages):
         if isinstance(msg, ToolMessage):
@@ -329,10 +331,10 @@ def get_last_tool_call_from_messages(messages: list[BaseMessage]) -> Optional[To
     return None
 
 
-def get_last_tool_call(state: "AgentState") -> Optional[ToolOutput]:
+def get_last_tool_output(state: "AgentState") -> Optional[ToolOutput]:
     """Get the last tool call made from state, if any."""
     messages = get_messages(state)
-    return get_last_tool_call_from_messages(messages)
+    return get_last_tool_output_from_messages(messages)
 
 
 # ============================================================================

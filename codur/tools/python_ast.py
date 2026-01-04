@@ -7,10 +7,30 @@ from pathlib import Path
 from codur.constants import DEFAULT_MAX_RESULTS, TaskType
 from codur.graph.state import AgentState
 from codur.graph.state_operations import get_config
-from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
+from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios, summary_format
 from codur.utils.path_utils import resolve_path, resolve_root
 from codur.utils.validation import validate_file_access
 DEFAULT_AST_MAX_NODES = 2000
+
+AST_GRAPH_SUMMARY_FORMAT = """AST graph for <file_name>
+node_count: <node_count>
+edge_count: <edge_count>
+truncated: <truncated>"""
+
+AST_OUTLINE_SUMMARY_FORMAT = """AST outline for <file_name>
+count: <count>
+truncated: <truncated>
+<output>"""
+
+AST_DEPENDENCIES_SUMMARY_FORMAT = """<file_name> dependencies:
+```
+<output>
+```"""
+
+AST_DEPENDENCIES_MULTIFILE_SUMMARY_FORMAT = """dependencies by file:
+<file_name>:
+<output>
+"""
 
 def _node_label(node: ast.AST) -> str:
     """Return a short label for display in the AST graph."""
@@ -42,6 +62,7 @@ def _node_location(node: ast.AST) -> dict:
         info["end_col_offset"] = getattr(node, "end_col_offset")
     return info
 
+@summary_format(AST_GRAPH_SUMMARY_FORMAT)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR, TaskType.CODE_ANALYSIS)
 def python_ast_graph(
@@ -128,6 +149,7 @@ def _safe_unparse(node: ast.AST) -> str:
             return node.__class__.__name__
     return ast.dump(node, include_attributes=False)
 
+@summary_format(AST_OUTLINE_SUMMARY_FORMAT)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR, TaskType.CODE_ANALYSIS)
 def python_ast_outline(
@@ -196,6 +218,7 @@ def python_ast_outline(
         "definitions": results,
     }
 
+@summary_format(AST_DEPENDENCIES_SUMMARY_FORMAT)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR, TaskType.CODE_ANALYSIS)
 def python_ast_dependencies(
@@ -278,6 +301,7 @@ def python_ast_dependencies(
     return sorted(list(dependencies))
 
 
+@summary_format(AST_DEPENDENCIES_MULTIFILE_SUMMARY_FORMAT)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR, TaskType.CODE_ANALYSIS)
 def python_ast_dependencies_multifile(

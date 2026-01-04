@@ -243,7 +243,6 @@ def verification_agent_node(
     if recursion_depth == 0:
         new_messages = [
             SystemMessage(content=VERIFICATION_AGENT_SYSTEM_PROMPT + "\n\n" + summary),
-            # HumanMessage(content=summary),
         ]
     else:
         new_messages = []
@@ -324,33 +323,6 @@ def verification_agent_node(
         dct["next_step_suggestion"] = verification_outcome["suggestions"]
 
     return dct
-
-
-def _build_verification_prompt(messages) -> str:
-    """Build verification prompt from message history.
-
-    Extracts:
-    - Original user request (first HumanMessage)
-    - Implementation history (AIMessages, SystemMessages with code changes)
-    - Any prior verification attempts
-    - Tool execution results (ToolMessages from recursive calls)
-    """
-
-    normalized = normalize_messages(messages)
-
-    original_request = None
-    tool_results = []
-
-    for msg in normalized:
-        if isinstance(msg, HumanMessage) and original_request is None:
-            original_request = msg.content
-
-    if original_request is None:
-        original_request = normalized[-1].content if normalized else "No original request found in message history"
-
-    return f"""## Original User Request
-        {original_request}
-    """
 
 
 def get_execution_result(execution_result) -> VerificationResult:

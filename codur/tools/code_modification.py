@@ -16,6 +16,7 @@ from codur.tools.tool_annotations import (
     ToolContext,
     ToolGuard,
     ToolSideEffect,
+    summary_format,
     tool_contexts,
     tool_guards,
     tool_scenarios,
@@ -84,6 +85,7 @@ def _build_result(
         dct["inserted_lines"] = inserted_lines
     return dct
 
+@summary_format("replaced function <function_name> in <path>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR)
@@ -177,6 +179,7 @@ def replace_function(
         )
 
 
+@summary_format("replaced class <class_name> in <path>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.REFACTOR)
@@ -266,6 +269,7 @@ def replace_class(
         )
 
 
+@summary_format("replaced method <class_name>.<method_name> in <path>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.REFACTOR)
@@ -357,6 +361,7 @@ def replace_method(
         )
 
 
+@summary_format("replaced content of file <path>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_guards(ToolGuard.TEST_OVERWRITE)
 @tool_contexts(ToolContext.FILESYSTEM)
@@ -437,6 +442,7 @@ def _extract_function_name(new_code: str) -> Optional[str]:
     return None
 
 
+@summary_format("injected function <function_name> into <path>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_GENERATION, TaskType.CODE_FIX)

@@ -45,6 +45,7 @@ from codur.graph.state import AgentState
 from codur.tools.tool_annotations import (
     ToolContext,
     ToolSideEffect,
+    summary_format,
     tool_contexts,
     tool_scenarios,
     tool_side_effects,
@@ -55,6 +56,32 @@ from codur.utils.text_helpers import truncate_chars
 from codur.utils.validation import require_directory_exists
 
 
+VALIDATE_PYTHON_SYNTAX_SUMMARY_FORMAT = """python syntax valid: <valid>
+<error>"""
+
+STD_OUT_STDERR_ERR = """stdout:
+```
+<std_out>
+if there is a stderr, include it below:
+```
+stderr:
+```
+<std_err>
+```
+if there was an error, include it below:
+```
+<error>
+```"""
+
+RUN_PYTHON_FILE_SUMMARY_FORMAT = f"python run: <path> with return_code: <return_code>\n{STD_OUT_STDERR_ERR}"
+
+
+RUN_PYTEST_SUMMARY_FORMAT = f"""pytest run: <command>
+success: <success>
+{STD_OUT_STDERR_ERR}"""
+
+
+@summary_format(VALIDATE_PYTHON_SYNTAX_SUMMARY_FORMAT)
 @tool_scenarios(
     TaskType.CODE_FIX,
     TaskType.CODE_GENERATION,
@@ -86,6 +113,7 @@ def validate_python_syntax(code: str) -> ValidateSyntaxResult:
         return {"valid": False, "error": f"Parse error: {str(e)}"}
 
 
+@summary_format(RUN_PYTHON_FILE_SUMMARY_FORMAT)
 @tool_side_effects(ToolSideEffect.CODE_EXECUTION)
 @tool_scenarios(TaskType.CODE_VALIDATION, TaskType.CODE_FIX)
 def run_python_file(
@@ -184,6 +212,7 @@ def run_python_file(
         }
 
 
+@summary_format(RUN_PYTEST_SUMMARY_FORMAT)
 @tool_side_effects(ToolSideEffect.CODE_EXECUTION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_VALIDATION, TaskType.CODE_FIX, TaskType.REFACTOR)

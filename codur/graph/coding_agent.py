@@ -1,5 +1,5 @@
 """Dedicated coding node for the codur-coding agent."""
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.messages import SystemMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
@@ -9,13 +9,11 @@ from codur.graph.node_types import ExecuteNodeResult
 from codur.graph.state_operations import (
     get_iterations,
     get_llm_calls,
-    get_messages,
     is_verbose,
     increment_iterations,
     add_messages,
     get_next_step_suggestion,
-    get_last_tool_call_from_messages,
-    normalize_messages
+    get_last_tool_output_from_messages
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.tools.registry import list_tools_for_tasks
@@ -142,9 +140,6 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
     if verbose:
         console.print(f"[bold blue]Running codur-coding node (iteration {iterations})...[/bold blue]")
 
-    # Build context-aware prompt
-    # prompt = _build_coding_prompt(get_messages(state), iterations)
-
     tool_schemas = get_function_schemas()  # All 70+ tools
 
     if recursion_depth == 0:
@@ -155,7 +150,6 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
             summary += f"\n\nNext Step Suggestion: {suggestion}"
         new_messages = [
             SystemMessage(content=CODING_AGENT_SYSTEM_PROMPT + "\n\n" + summary),
-            # HumanMessage(content=summary),
         ]
     else:
         new_messages = []
@@ -206,7 +200,7 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
 
     # Meta tool handling
     # Get Last tool to detect "done"
-    last_tool_call = get_last_tool_call_from_messages(new_messages)
+    last_tool_call = get_last_tool_output_from_messages(new_messages)
     if last_tool_call.tool == "done":
         return {
             "agent_outcome": {
@@ -256,70 +250,3 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
         "messages": new_messages,
         "next_step_suggestion": None,
     }
-
-
-def _build_coding_prompt(raw_messages, iterations: int = 0) -> str:
-    """Build context-aware prompt from graph state messages."""
-    messages = normalize_messages(raw_messages)
-
-    challenge = None
-    verification_errors = []
-    previous_attempts = []
-    context_parts = []
-
-    for message in messages:
-        if isinstance(message, HumanMessage) and challenge is None:
-            challenge = message.content
-        elif isinstance(message, SystemMessage):
-            content = message.content
-            if "Verification failed" in content or "=== Expected Output ===" in content:
-                verification_errors.append(content)
-            else:
-                context_parts.append(content)
-        elif isinstance(message, AIMessage):
-            previous_attempts.append(message.content)
-        elif isinstance(message, HumanMessage):
-            context_parts.append(message.content)
-
-    if challenge is None:
-        challenge = messages[-1].content if messages else "No task provided."
-
-    if verification_errors:
-        return _build_retry_prompt(challenge, verification_errors[-1], iterations)
-    else:
-        return challenge
-
-
-def _build_retry_prompt(challenge: str, verification_error: str, iterations: int) -> str:
-    """Build focused prompt for retry attempts with error context."""
-    prompt_parts = [
-        f"CODING CHALLENGE (Retry Attempt {iterations}):",
-        challenge,
-        "",
-        "PREVIOUS ATTEMPT FAILED VERIFICATION:",
-        verification_error,
-        "",
-        "INSTRUCTIONS FOR THIS RETRY:",
-    ]
-
-    if iterations <= 2:
-        prompt_parts.append(
-            "- Carefully compare the Expected vs Actual output above\n"
-            "- Identify the specific difference (missing line, wrong format, logic error)\n"
-            "- Fix the precise issue using targeted replacement tools if possible"
-        )
-    else:
-        prompt_parts.append(
-            "- Multiple attempts have failed. Be very systematic:\n"
-            "- Check common bugs: off-by-one, edge cases, string formatting\n"
-            "- Review the logic carefully and ensure your JSON response is valid"
-        )
-
-    return "\n".join(prompt_parts)
-
-
-def _unify_result_message(result: str | list[str]) -> str:
-    """Unify result message into a single string."""
-    if isinstance(result, list):
-        return "\n".join(result)
-    return result

@@ -29,8 +29,21 @@ from codur.tools.tool_annotations import (
     tool_contexts,
     tool_guards,
     tool_scenarios,
-    tool_side_effects,
+    tool_side_effects, summary_format,
 )
+
+
+READFILE_SUMMARY_FORMAT = """<file_name>:
+```
+<file_content>
+```"""
+
+READFILES_SUMMARY_FORMAT = """files read:
+<file_name>:
+```
+<file_content>
+```"""
+
 
 class FileWriteResult(TypedDict):
     """Result payload for write_file."""
@@ -145,6 +158,7 @@ def _iter_files(root: Path, config: object | None = None) -> Iterable[Path]:
             yield Path(dirpath) / filename
 
 
+@summary_format(READFILE_SUMMARY_FORMAT)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(
     TaskType.EXPLANATION,
@@ -178,7 +192,7 @@ def read_file(
         return data[:max_bytes] + "\n... [truncated]"
     return data
 
-
+@summary_format("<file_name> written")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_guards(ToolGuard.TEST_OVERWRITE)
 @tool_contexts(ToolContext.FILESYSTEM)
@@ -206,6 +220,7 @@ def write_file(
     }
 
 
+@summary_format("text appended to <file_name>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.DOCUMENTATION)
@@ -228,6 +243,7 @@ def append_file(
     }
 
 
+@summary_format("<file_name> deleted")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
@@ -247,6 +263,7 @@ def delete_file(
     }
 
 
+@summary_format("<source> copied to <destination>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
@@ -271,6 +288,7 @@ def copy_file(
     }
 
 
+@summary_format("<source> moved to <destination>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
@@ -295,6 +313,7 @@ def move_file(
     }
 
 
+@summary_format("<source> copied to <destination_dir>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
@@ -321,6 +340,7 @@ def copy_file_to_dir(
     }
 
 
+@summary_format("<source> moved to <destination_dir>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION)
@@ -347,6 +367,7 @@ def move_file_to_dir(
     }
 
 
+@summary_format("files listed under <root>\n<output>")
 @tool_contexts(ToolContext.SEARCH)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def list_files(
@@ -370,6 +391,7 @@ def list_files(
     return results
 
 
+@summary_format("directories listed under <root>\n<output>")
 @tool_contexts(ToolContext.SEARCH)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION)
 def list_dirs(
@@ -401,6 +423,7 @@ def list_dirs(
     return results
 
 
+@summary_format("file tree under <path>\n<output>")
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION, TaskType.DOCUMENTATION)
 def file_tree(
@@ -457,6 +480,7 @@ def file_tree(
     return results
 
 
+@summary_format("files matching <query> under <root>\n<output>")
 @tool_contexts(ToolContext.SEARCH)
 @tool_scenarios(TaskType.FILE_OPERATION, TaskType.EXPLANATION)
 def search_files(
@@ -481,6 +505,7 @@ def search_files(
     return results
 
 
+@summary_format("<replacements> replacements in <file_name>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR, TaskType.DOCUMENTATION)
@@ -511,6 +536,7 @@ def replace_in_file(
     return {"path": str(target), "replacements": num_replaced}
 
 
+@summary_format("<file_name> has <lines> lines")
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.EXPLANATION, TaskType.FILE_OPERATION)
 def line_count(
@@ -536,6 +562,7 @@ def line_count(
     return {"path": str(target), "lines": count}
 
 
+@summary_format("<inserted_lines> lines inserted at <line> in <file_name>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR, TaskType.DOCUMENTATION)
@@ -570,6 +597,7 @@ def inject_lines(
     return {"path": str(target), "line": line, "inserted_lines": len(insert_lines)}
 
 
+@summary_format("lines <start_line>-<end_line> replaced in <file_name>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(TaskType.CODE_FIX, TaskType.CODE_GENERATION, TaskType.REFACTOR, TaskType.DOCUMENTATION)
@@ -620,6 +648,7 @@ def _split_content_lines(content: str) -> list[str]:
     return content.splitlines(keepends=True)
 
 
+@summary_format(READFILES_SUMMARY_FORMAT)
 @tool_contexts(ToolContext.FILESYSTEM)
 @tool_scenarios(
     TaskType.EXPLANATION,
@@ -647,6 +676,7 @@ def read_files(
     return results
 
 
+@summary_format("write_files results:\n<output>")
 @tool_side_effects(ToolSideEffect.FILE_MUTATION)
 @tool_guards(ToolGuard.TEST_OVERWRITE)
 @tool_contexts(ToolContext.FILESYSTEM)
