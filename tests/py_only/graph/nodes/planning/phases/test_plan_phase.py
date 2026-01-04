@@ -6,7 +6,9 @@ from unittest.mock import MagicMock
 import pytest
 from langchain_core.messages import HumanMessage, ToolMessage
 
+from codur.constants import TaskType
 from codur.graph.planning.phases.plan_phase import llm_plan
+from codur.graph.planning.types import ClassificationResult
 
 
 def _tool_msg(tool: str, output, args: dict | None = None) -> ToolMessage:
@@ -24,11 +26,20 @@ def config():
 
 
 def test_llm_plan_lists_files_on_change_request(config):
+    classification = ClassificationResult(
+        task_type=TaskType.CODE_FIX,
+        confidence=0.9,
+        detected_files=[],
+        detected_action=None,
+        reasoning="test",
+        candidates=[],
+    )
     state = {
         "messages": [HumanMessage(content="Fix the bug")],
         "iterations": 0,
         "verbose": False,
         "config": config,
+        "classification": classification,
     }
 
     result = llm_plan(config, MagicMock(), MagicMock(), MagicMock(), state, MagicMock())
@@ -38,6 +49,14 @@ def test_llm_plan_lists_files_on_change_request(config):
 
 
 def test_llm_plan_selects_file_from_list_files(config):
+    classification = ClassificationResult(
+        task_type=TaskType.CODE_FIX,
+        confidence=0.9,
+        detected_files=[],
+        detected_action=None,
+        reasoning="test",
+        candidates=[],
+    )
     state = {
         "messages": [
             HumanMessage(content="Fix the bug"),
@@ -46,6 +65,7 @@ def test_llm_plan_selects_file_from_list_files(config):
         "iterations": 1,
         "verbose": False,
         "config": config,
+        "classification": classification,
     }
 
     result = llm_plan(config, MagicMock(), MagicMock(), MagicMock(), state, MagicMock())

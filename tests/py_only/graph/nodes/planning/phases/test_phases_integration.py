@@ -34,11 +34,7 @@ def test_phase2_uses_existing_classification(config):
         "classification": classification,
     }
 
-    with patch(
-        "codur.graph.planning.phases.plan_phase.quick_classify",
-        side_effect=AssertionError("quick_classify should not run"),
-    ):
-        result = llm_plan(config, MagicMock(), MagicMock(), MagicMock(), state, MagicMock())
+    result = llm_plan(config, MagicMock(), MagicMock(), MagicMock(), state, MagicMock())
 
     assert result["next_action"] == "tool"
     assert result["tool_calls"] == [{"tool": "list_files", "args": {}}]

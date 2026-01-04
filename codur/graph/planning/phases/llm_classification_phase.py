@@ -59,6 +59,7 @@ def llm_classification(state: AgentState, config: CodurConfig) -> PlanNodeResult
         return {
             "next_action": "continue_to_llm_plan",
             "iterations": get_iterations(state),
+            "classification": state.get("classification"),
             "next_step_suggestion": None,
         }
 

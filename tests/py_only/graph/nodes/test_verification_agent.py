@@ -7,7 +7,7 @@ from unittest import mock
 
 from langchain_core.messages import AIMessage, SystemMessage, HumanMessage, ToolMessage
 
-from codur.graph.verification_agent import _build_verification_prompt, get_execution_result
+from codur.graph.verification_agent import get_execution_result
 
 
 class TestParseVerificationResult:
@@ -112,79 +112,6 @@ class TestParseVerificationResult:
 
         # Should default to False when passed field is missing
         assert result["passed"] is False
-
-
-class TestBuildVerificationPrompt:
-    """Tests for _build_verification_prompt function.
-
-    The function extracts the original user request from message history.
-    Tool results are passed via ToolMessages in the conversation, not in the prompt text.
-    """
-
-    def test_extracts_original_request_with_tool_results(self):
-        """Test: Extracts original request even when tool results are present."""
-        messages = [
-            HumanMessage(content="Verify this implementation"),
-            AIMessage(
-                content="Running tool",
-                tool_calls=[{"id": "1", "name": "run_python_file", "args": {"path": "main.py"}}]
-            ),
-            ToolMessage(
-                content=json.dumps({
-                    "tool": "run_python_file",
-                    "output": {"std_out": "success", "std_err": None, "return_code": 0},
-                    "args": {"path": "main.py"},
-                }),
-                tool_call_id="1",
-                name="run_python_file"
-            ),
-        ]
-
-        prompt = _build_verification_prompt(messages)
-
-        # Should extract original request
-        assert "Verify this implementation" in prompt
-
-    def test_extracts_original_request_simple(self):
-        """Test: Extracts original request from simple message list."""
-        messages = [
-            HumanMessage(content="Verify this implementation"),
-        ]
-
-        prompt = _build_verification_prompt(messages)
-
-        # Should include original request
-        assert "Verify this implementation" in prompt
-        assert "## Original User Request" in prompt
-
-    def test_extracts_first_human_message_as_original(self):
-        """Test: Uses first HumanMessage as original request."""
-        messages = [
-            HumanMessage(content="First request"),
-            # First tool
-            AIMessage(content="Running discovery", tool_calls=[
-                {"id": "1", "name": "discover_entry_points", "args": {}}
-            ]),
-            ToolMessage(
-                content="Found: main.py, test_main.py",
-                tool_call_id="1",
-                name="discover_entry_points"
-            ),
-            # Second tool
-            AIMessage(content="Running tests", tool_calls=[
-                {"id": "2", "name": "run_pytest", "args": {}}
-            ]),
-            ToolMessage(
-                content="Tests passed: 5/5",
-                tool_call_id="2",
-                name="run_pytest"
-            ),
-        ]
-
-        prompt = _build_verification_prompt(messages)
-
-        # Should use first human message as original request
-        assert "First request" in prompt
 
 
 class TestVerificationAgentFailureScenarios:

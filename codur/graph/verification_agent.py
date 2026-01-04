@@ -219,9 +219,6 @@ def verification_agent_node(
         depth_info = f" (recursion depth: {recursion_depth})" if recursion_depth > 0 else ""
         console.print(f"[bold cyan]Running verification agent{depth_info}...[/bold cyan]")
 
-    # Build verification prompt with original request context
-    # prompt = _build_verification_prompt(get_messages(state))
-
     # Get only safe, read-only tools that match the system prompt's task types
     # This ensures the LLM only sees tools we've told it about
     from codur.constants import TaskType

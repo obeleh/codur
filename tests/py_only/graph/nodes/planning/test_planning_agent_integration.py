@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from codur.graph.planning.core import PlanningOrchestrator
 from codur.graph.planning.phases.pattern_phase import pattern_plan
 from codur.graph.planning.phases.llm_classification_phase import llm_classification
-from codur.graph.planning.types import TaskType
+from codur.graph.planning.types import TaskType, ClassificationResult
 
 
 def _tool_msg(tool: str, output, args: dict | None = None) -> ToolMessage:
@@ -156,6 +156,14 @@ class TestPlanningNodeAgentSelection:
 
     def test_plan_selects_coding_agent_for_fix_task(self, config):
         """Test that planning selects coding agent for fix tasks."""
+        classification = ClassificationResult(
+            task_type=TaskType.CODE_FIX,
+            confidence=0.9,
+            detected_files=[],
+            detected_action=None,
+            reasoning="test",
+            candidates=[],
+        )
         state = {
             "messages": [
                 HumanMessage(content="Fix the title_case function in main.py")
@@ -163,6 +171,7 @@ class TestPlanningNodeAgentSelection:
             "iterations": 0,
             "verbose": False,
             "config": config,
+            "classification": classification,
         }
 
         # Mock the LLM to return a coding agent selection
@@ -385,6 +394,14 @@ class TestPlanningNodeFileDiscovery:
         assert result["tool_calls"] == [{"tool": "read_file", "args": {"path": "app.py"}}]
 
     def test_llm_plan_selects_app_py_from_list(self, config):
+        classification = ClassificationResult(
+            task_type=TaskType.CODE_FIX,
+            confidence=0.9,
+            detected_files=[],
+            detected_action=None,
+            reasoning="test",
+            candidates=[],
+        )
         state = {
             "messages": [
                 HumanMessage(content="Fix the bug in the challenge"),
@@ -393,6 +410,7 @@ class TestPlanningNodeFileDiscovery:
             "iterations": 1,
             "verbose": False,
             "config": config,
+            "classification": classification,
         }
 
         orchestrator = PlanningOrchestrator(config)
