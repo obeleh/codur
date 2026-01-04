@@ -10,7 +10,7 @@ Strategies contribute in three places:
 - Optional Phase 0 resolution via `execute` (fast discovery or short-circuit)
 - Phase 2 prompt building via `build_planning_prompt`
 
-Phase 1 LLM pre-plan is a separate classifier and does not use strategies.
+Phase 1 LLM classification is a separate classifier and does not use strategies.
 
 ## Creating a new strategy
 

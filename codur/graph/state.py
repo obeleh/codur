@@ -9,6 +9,7 @@ from langchain_core.messages import BaseMessage
 import operator
 
 from codur.config import CodurConfig
+from codur.graph.planning.types import ClassificationResult
 
 
 class AgentState(TypedDict):
@@ -46,6 +47,7 @@ class AgentState(TypedDict):
     local_repair_attempted: bool
     next_step_suggestion: str | None
     agent_summaries: list[str]
+    classification: ClassificationResult | None
 
 
 class AgentStateData(dict):

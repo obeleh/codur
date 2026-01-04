@@ -3,7 +3,7 @@ import json
 from traceback import format_exc
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, ToolMessage
 from rich.console import Console
 
 from codur.graph.state import AgentState
@@ -19,11 +19,32 @@ from codur.graph.state_operations import (
     get_agent_outcome,
     get_outcome_result,
     get_error_hashes,
-    get_first_human_message_content, get_last_tool_call, ToolOutput,
+    get_first_human_message_content, get_last_tool_output, ToolOutput, get_messages, get_last_tool_output_from_messages,
+    is_coding_agent_session,
 )
 from codur.graph.verification_agent import verification_agent_node
 
 console = Console()
+
+def handle_verification_tool_output(messages: list[BaseMessage]) -> ReviewNodeResult | None:
+    last_tool_output = get_last_tool_output_from_messages(messages)
+    if last_tool_output:
+        assert isinstance(last_tool_output, ToolOutput)
+        if last_tool_output.tool == "build_verification_response":
+
+            if last_tool_output.args["passed"]:
+                return {
+                    "final_response": last_tool_output.args["reasoning"],
+                    "next_action": ACTION_END,
+                    "next_step_suggestion": None,
+                }
+            else:
+                return {
+                    "final_response": last_tool_output.args["reasoning"],
+                    "next_action": ACTION_CONTINUE,
+                    "next_step_suggestion": None,
+                }
+
 
 def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> ReviewNodeResult:
     """Review node: Check if the result is satisfactory.
@@ -65,87 +86,17 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
             "next_step_suggestion": None,
         }
 
-    # Check if this was a bug fix / debug task by looking at original message
-    original_task = get_first_human_message_content(state)
-    original_task_lower = original_task.lower() if original_task else ""
-
-    is_fix_task = original_task_lower and any(keyword in original_task_lower for keyword in [
-        "fix", "bug", "error", "debug", "issue", "broken", "incorrect", "wrong",
-        "implement", "write", "create", "complete", "build"
-    ])
-
-    last_tool_call = get_last_tool_call(state)
-    if last_tool_call:
-        assert isinstance(last_tool_call, ToolOutput)
-        if last_tool_call.tool == "build_verification_response" and last_tool_call.args["passed"]:
-            return {
-                "final_response": last_tool_call.args["reasoning"],
-                "next_action": ACTION_END,
-                "next_step_suggestion": None,
-            }
-
+    messages = get_messages(state)
+    result = handle_verification_tool_output(messages)
+    if result:
+        return result
 
     # Try verification if it's a fix task and we haven't exceeded iterations
-    if is_fix_task and iterations < max_iterations - 1:
+    if is_coding_agent_session(state) and iterations < max_iterations - 1:
         verification_outcome = verification_agent_node(state, config)
-
-        if verification_outcome["agent_outcome"]["status"] == "success":
-            if is_verbose(state):
-                console.print(f"[green]✓ Verification passed![/green]")
-                result = verification_outcome["agent_outcome"]["result"]
-                console.print(f"[dim]{verification_outcome['agent_outcome']['result']}[/dim]")
-            return {
-                "final_response": result,
-                "next_action": ACTION_END,
-                "next_step_suggestion": None,
-            }
-        else:
-            messages = verification_outcome["messages"]
-            last_message = messages[-1] if messages else "No last message?"
-
-            current_error_hash = hash(last_message.content)
-            error_history = get_error_hashes(state)
-
-            # If same error appears 2+ times in recent history, agent is stuck
-            if error_history and current_error_hash in error_history[-3:]:
-                if is_verbose(state):
-                    console.print(f"[red]✗ Repeated error detected - agent is stuck, stopping[/red]")
-                return {
-                    "final_response": result,
-                    "next_action": ACTION_END,
-                    "next_step_suggestion": None,
-                }
-
-            # Track this error for future checks
-            error_history.append(current_error_hash)
-
-            # Verification failed - decide whether to retry with coding or replan
-            # After 3 failed attempts, route back to planning for a fresh approach
-            should_replan = iterations >= 3
-
-            if is_verbose(state):
-                if should_replan:
-                    console.print(f"[yellow]⚠ Verification failed - routing back to planning for fresh approach[/yellow]")
-                else:
-                    console.print(f"[yellow]⚠ Verification failed - will retry with coding agent[/yellow]")
-
-                response = _format_verification_response(last_message)
-                console.print(f"[dim]{response}[/dim]")
-
-            result_dict = {
-                "final_response": result,
-                "next_action": ACTION_CONTINUE,
-                "messages": messages,
-                "error_hashes": error_history,
-                "next_step_suggestion": verification_outcome.get("next_step_suggestion"),
-            }
-
-            # After 3 failed attempts, clear selected_agent to route back to planning
-            # This allows the planner to try a different approach
-            if should_replan:
-                result_dict["selected_agent"] = None
-
-            return result_dict
+        result = handle_verification_tool_output(verification_outcome["messages"])
+        if result:
+            return result
 
     # Accept result if:
     # - Not a fix task

@@ -3,6 +3,8 @@
 from typing import Dict, Any, TypedDict, NotRequired, Literal, Optional
 from langchain_core.messages import BaseMessage
 
+from codur.graph.planning.types import ClassificationResult
+
 
 class ToolCall(TypedDict):
     tool: str
@@ -25,7 +27,7 @@ class PlanNodeResult(TypedDict):
     llm_calls: NotRequired[int]
     messages: NotRequired[list[BaseMessage]]
     next_step_suggestion: NotRequired[str]
-    classification: NotRequired[str]
+    classification: NotRequired[ClassificationResult]
 
 
 class DelegateNodeResult(TypedDict):

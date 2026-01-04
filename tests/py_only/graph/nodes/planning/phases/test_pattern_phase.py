@@ -67,5 +67,5 @@ def test_pattern_phase_continues_when_strategy_returns_none(config):
         ):
             result = pattern_plan(state, config)
 
-    assert result["next_action"] == "continue_to_llm_pre_plan"
+    assert result["next_action"] == "continue_to_llm_classification"
     assert result["classification"] is classification

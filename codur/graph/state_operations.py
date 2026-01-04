@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional, Any
 
 from langchain_core.messages import BaseMessage, HumanMessage, ToolMessage, AIMessage, SystemMessage
 
+from codur.constants import TaskType
 
 if TYPE_CHECKING:
     # Avoid circular imports for type checking
@@ -348,3 +349,12 @@ def get_final_response(state: "AgentState") -> Optional[str]:
 def set_final_response(state: "AgentState", response: Optional[str]) -> None:
     """Set the final response."""
     state["final_response"] = response
+
+# Other
+
+def is_coding_agent_session(state: "AgentState") -> bool:
+    """Check if the current session is a coding agent session."""
+    classification = state.get("classification", {})
+    if not classification:
+        return False
+    return classification.task_type in {TaskType.CODE_GENERATION, TaskType.CODE_FIX, TaskType.REFACTOR}

@@ -4,7 +4,7 @@ This document explains how Codur works at a high level and how to make changes s
 
 ## How the application works
 
-- The LangGraph workflow runs: pattern_plan -> llm_pre_plan -> llm_plan -> (tool | delegate | coding | explaining) -> execute -> review -> loop.
+- The LangGraph workflow runs: pattern_plan -> llm_classification -> llm_plan -> (tool | delegate | coding | explaining) -> execute -> review -> loop.
 - Planning is JSON-based and uses Groq by default, but all providers and profiles are configuration driven.
 - The coding agent prefers native tool calling with schemas and falls back to JSON tool calls when native tooling is unavailable.
 - Tools execute through a centralized tool executor and receive AgentState for context.

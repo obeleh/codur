@@ -1,4 +1,4 @@
-"""Phase 1: LLM-based pre-planning."""
+"""Phase 1: LLM-based classification."""
 
 from __future__ import annotations
 
@@ -6,7 +6,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from rich.console import Console
 
 from codur.config import CodurConfig
+from codur.constants import TaskType
 from codur.graph.node_types import PlanNodeResult
+from codur.graph.planning.types import ClassificationResult
 from codur.graph.state import AgentState
 from codur.graph.state_operations import (
     get_iterations,
@@ -19,7 +21,29 @@ from codur.utils.llm_helpers import create_and_invoke
 console = Console()
 
 
-def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
+def _parse_classification_result(data: dict) -> ClassificationResult:
+    """Parses the raw dictionary from LLM into a ClassificationResult."""
+    raw_type = data.get("task_type", "").lower()
+
+    # Handle mappings if necessary
+    if raw_type == "complex_refactor":
+        task_type = TaskType.REFACTOR
+    else:
+        try:
+            task_type = TaskType(raw_type)
+        except ValueError:
+            task_type = TaskType.UNKNOWN
+
+    return ClassificationResult(
+        task_type=task_type,
+        confidence=float(data.get("confidence", 0.0)),
+        detected_files=data.get("detected_files", []),
+        detected_action=data.get("suggested_action"),
+        reasoning=data.get("reasoning", ""),
+    )
+
+
+def llm_classification(state: AgentState, config: CodurConfig) -> PlanNodeResult:
     """Phase 1: LLM-based quick classification (experimental, gated by config).
 
     When enabled (config.planning.use_llm_pre_plan=True), uses a fast LLM
@@ -28,14 +52,13 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
 
     When disabled (default), passes directly to Phase 2 for full planning.
     """
-    # If LLM pre-plan is disabled, skip directly to full planning
+    # If LLM classification is disabled, skip directly to full planning
     if not config.planning.use_llm_pre_plan:
         if is_verbose(state):
-            console.print("[dim]LLM pre-plan disabled, passing to full planning[/dim]")
+            console.print("[dim]LLM classification disabled, passing to full planning[/dim]")
         return {
             "next_action": "continue_to_llm_plan",
             "iterations": get_iterations(state),
-            "classification": state.get("classification"),
             "next_step_suggestion": None,
         }
 
@@ -45,7 +68,7 @@ def llm_pre_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
         console.print("[bold blue]Planning (Phase 1: LLM Classification)...[/bold blue]")
 
     # Get classification from Phase 0 if available
-    classification = state.get("classification")
+    classification: ClassificationResult = state.get("classification")
 
     # Get last human message
     user_message = get_last_human_message_content(state) or ""
@@ -118,32 +141,34 @@ Respond with ONLY valid JSON matching the schema above.""")
             profile_name=config.llm.default_profile,
             json_mode=True,
             temperature=0.2,  # Low temperature for deterministic classification
-            invoked_by="planning.llm_pre_plan",
+            invoked_by="planning.llm_classification",
             state=state,
         )
 
         # Parse LLM response
         parser = JSONResponseParser()
-        llm_result = parser.parse(response.content)
-        if llm_result is None:
-            raise ValueError("Failed to parse LLM pre-plan JSON response")
+        raw_result = parser.parse(response.content)
+        if raw_result is None:
+            raise ValueError("Failed to parse LLM classification JSON response")
+
+        classification = _parse_classification_result(raw_result)
 
         if is_verbose(state):
-            console.print(f"[dim]LLM classification: {llm_result.get('task_type')} "
-                         f"(confidence: {llm_result.get('confidence', 0):.0%})[/dim]")
+            console.print(f"[dim]LLM classification: {classification.task_type.value} "
+                         f"(confidence: {classification.confidence:.0%})[/dim]")
 
         # Check confidence
-        confidence = llm_result.get("confidence", 0)
-        if confidence >= 0.8:
+        if classification.is_confident:
             # High confidence - route based on suggested action
-            action = llm_result.get("suggested_action", "delegate")
+            action = classification.detected_action or "delegate"
             if action == "respond":
                 return {
                     "next_action": "end",
-                    "final_response": llm_result.get("reasoning", "Task classified."),
+                    "final_response": classification.reasoning,
                     "iterations": iterations + 1,
                     "llm_debug": {"phase1_llm_resolved": True},
-                    "next_step_suggestion": llm_result.get("reasoning"),
+                    "next_step_suggestion": classification.reasoning,
+                    "classification": classification,
                 }
             elif action == "tool":
                 # Would need to determine specific tool - for now, pass to Phase 2
@@ -158,7 +183,7 @@ Respond with ONLY valid JSON matching the schema above.""")
 
     except Exception as exc:
         if is_verbose(state):
-            console.print(f"[yellow]LLM pre-plan failed: {exc}[/yellow]")
+            console.print(f"[yellow]LLM classification failed: {exc}[/yellow]")
 
     # Pass to Phase 2 for full analysis
     return {

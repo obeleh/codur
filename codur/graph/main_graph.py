@@ -16,7 +16,7 @@ from codur.graph.explaining import explaining_node
 from codur.graph.routing import should_continue, should_delegate
 from codur.graph.planning.core import PlanningOrchestrator
 from codur.graph.planning.phases.pattern_phase import pattern_plan
-from codur.graph.planning.phases.pre_plan_phase import llm_pre_plan
+from codur.graph.planning.phases.llm_classification_phase import llm_classification
 from codur.config import CodurConfig
 from codur.constants import (
     AGENT_CODING,
@@ -30,21 +30,21 @@ from codur.llm import create_llm, create_llm_profile
 from codur.graph.state_operations import get_next_action, get_selected_agent
 
 
-def should_continue_to_llm_pre_plan(state: AgentState) -> str:
-    """Route from pattern_plan to llm_pre_plan."""
+def should_continue_to_llm_classification(state: AgentState) -> str:
+    """Route from pattern_plan to llm_classification."""
     next_action = get_next_action(state)
-    if next_action == "continue_to_llm_pre_plan":
-        return "llm_pre_plan"
+    if next_action == "continue_to_llm_classification":
+        return "llm_classification"
     # If resolved in pattern_plan, route based on the decision
     return _route_based_on_decision(state)
 
 
 def should_continue_to_llm_plan(state: AgentState) -> str:
-    """Route from llm-pre-plan to llm-plan."""
+    """Route from llm-classification to llm-plan."""
     next_action = get_next_action(state)
     if next_action == "continue_to_llm_plan":
         return "llm_plan"
-    # If resolved in llm-pre-plan, route based on the decision
+    # If resolved in llm-classification, route based on the decision
     return _route_based_on_decision(state)
 
 
@@ -90,7 +90,7 @@ def create_agent_graph(config: CodurConfig):
     # Phase 0: Pattern-based classification and discovery
     workflow.add_node("pattern_plan", lambda state: pattern_plan(state, config))
     # Phase 1: LLM-based classification (config-gated, enabled by default)
-    workflow.add_node("llm_pre_plan", lambda state: llm_pre_plan(state, config))
+    workflow.add_node("llm_classification", lambda state: llm_classification(state, config))
     # Phase 2: Full LLM planning
     workflow.add_node("llm_plan", lambda state: PlanningOrchestrator(config).llm_plan(state, llm))
     workflow.add_node("delegate", lambda state: delegate_node(state, config))
@@ -103,12 +103,12 @@ def create_agent_graph(config: CodurConfig):
     # Set entry point to first planning phase
     workflow.set_entry_point("pattern_plan")
 
-    # Phase transitions: pattern_plan → llm_pre_plan (optional) → llm_plan
+    # Phase transitions: pattern_plan → llm_classification (optional) → llm_plan
     workflow.add_conditional_edges(
         "pattern_plan",
-        should_continue_to_llm_pre_plan,
+        should_continue_to_llm_classification,
         {
-            "llm_pre_plan": "llm_pre_plan",
+            "llm_classification": "llm_classification",
             "delegate": "delegate",
             "tool": "tool",
             "coding": "coding",
@@ -118,7 +118,7 @@ def create_agent_graph(config: CodurConfig):
     )
 
     workflow.add_conditional_edges(
-        "llm_pre_plan",
+        "llm_classification",
         should_continue_to_llm_plan,
         {
             "llm_plan": "llm_plan",
@@ -164,10 +164,10 @@ def create_agent_graph(config: CodurConfig):
     )
 
     # Compile the graph with increased recursion limit for trial-error loops
-    # Initial path (LLM pre-plan disabled):
+    # Initial path (LLM classification disabled):
     #   pattern_plan → llm_plan → delegate → execute → review (5 nodes)
-    # Initial path (LLM pre-plan enabled):
-    #   pattern_plan → llm_pre_plan → llm_plan → delegate → execute → review (6 nodes)
+    # Initial path (LLM classification enabled):
+    #   pattern_plan → llm_classification → llm_plan → delegate → execute → review (6 nodes)
     # Retries: llm_plan → delegate → execute → review → continue (4 nodes per retry)
     # With max_iterations=10 and max_tool_iterations=5 per agent:
     # Estimate: 6 (initial) + 10 * 4 (retries) + (5 tool iterations * 2) = 66 nodes

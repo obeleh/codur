@@ -24,13 +24,13 @@ def _format_candidates(candidates, limit: int = 5) -> str:
 
 
 def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
-    """Phase 0: Pattern-based pre-planning (no LLM calls).
+    """Phase 0: Pattern-based planning (no LLM calls).
 
     Combines fast pattern matching with classification-based strategies:
     1. Instant resolution for trivial cases (greetings, basic file ops)
     2. Pattern classification with task-specific routing strategies
 
-    If resolved, routes directly. If uncertain, passes to llm-pre-plan.
+    If resolved, routes directly. If uncertain, passes to llm-classification.
     """
     messages = get_messages(state)
     iterations = get_iterations(state)
@@ -74,15 +74,16 @@ def pattern_plan(state: AgentState, config: CodurConfig) -> PlanNodeResult:
     if result:
         if is_verbose(state):
             console.print(f"[green]✓ Pattern resolved via strategy[/green] {result}")
+        result["classification"] = classification  # Pass to next phase for context
         return result
 
     # No pattern match - pass to next phase
     if is_verbose(state):
-        next_phase = "LLM pre-plan" if config.planning.use_llm_pre_plan else "full LLM planning"
+        next_phase = "LLM classification" if config.planning.use_llm_pre_plan else "full LLM planning"
         console.print(f"[dim]No patterns matched, moving to {next_phase}[/dim]")
 
     return {
-        "next_action": "continue_to_llm_pre_plan",
+        "next_action": "continue_to_llm_classification",
         "iterations": iterations,
         "classification": classification,  # Pass to next phase for context
         "next_step_suggestion": None,

@@ -1,4 +1,4 @@
-"""Tests for LLM pre-plan phase."""
+"""Tests for LLM classification phase."""
 
 import json
 from unittest.mock import MagicMock, patch
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.messages import HumanMessage
 
-from codur.graph.planning.phases.pre_plan_phase import llm_pre_plan
+from codur.graph.planning.phases.llm_classification_phase import llm_classification
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def config():
     return config
 
 
-def test_llm_pre_plan_skips_when_disabled(config):
+def test_llm_classification_skips_when_disabled(config):
     config.planning.use_llm_pre_plan = False
     classification = MagicMock()
     state = {
@@ -30,13 +30,13 @@ def test_llm_pre_plan_skips_when_disabled(config):
         "classification": classification,
     }
 
-    result = llm_pre_plan(state, config)
+    result = llm_classification(state, config)
 
     assert result["next_action"] == "continue_to_llm_plan"
     assert result["classification"] is classification
 
 
-def test_llm_pre_plan_responds_on_high_confidence(config):
+def test_llm_classification_responds_on_high_confidence(config):
     response = MagicMock()
     response.content = json.dumps({
         "task_type": "greeting",
@@ -52,17 +52,17 @@ def test_llm_pre_plan_responds_on_high_confidence(config):
     }
 
     with patch(
-        "codur.graph.planning.phases.pre_plan_phase.create_and_invoke",
+        "codur.graph.planning.phases.llm_classification_phase.create_and_invoke",
         return_value=response,
     ):
-        result = llm_pre_plan(state, config)
+        result = llm_classification(state, config)
 
     assert result["next_action"] == "end"
     assert result["final_response"] == "Simple greeting"
     assert result["llm_debug"]["phase1_llm_resolved"] is True
 
 
-def test_llm_pre_plan_continues_on_error(config):
+def test_llm_classification_continues_on_error(config):
     classification = MagicMock()
     state = {
         "messages": [HumanMessage(content="Fix the bug")],
@@ -72,10 +72,10 @@ def test_llm_pre_plan_continues_on_error(config):
     }
 
     with patch(
-        "codur.graph.planning.phases.pre_plan_phase.create_and_invoke",
+        "codur.graph.planning.phases.llm_classification_phase.create_and_invoke",
         side_effect=RuntimeError("boom"),
     ):
-        result = llm_pre_plan(state, config)
+        result = llm_classification(state, config)
 
     assert result["next_action"] == "continue_to_llm_plan"
     assert result["classification"] is classification

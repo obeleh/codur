@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
 from codur.graph.planning.core import PlanningOrchestrator
 from codur.graph.planning.phases.pattern_phase import pattern_plan
-from codur.graph.planning.phases.pre_plan_phase import llm_pre_plan
+from codur.graph.planning.phases.llm_classification_phase import llm_classification
 from codur.graph.planning.types import TaskType
 
 
@@ -33,8 +33,8 @@ class TestPlanningNodeWithCodingAgent:
         config.planning.use_llm_pre_plan = True  # Default: LLM-based classification
         return config
 
-    def test_textual_pre_plan_no_match_continues_to_llm(self, config):
-        """Test that textual pre-plan continues to llm-pre-plan when no pattern matches."""
+    def test_textual_plan_no_match_continues_to_llm(self, config):
+        """Test that textual plan continues to llm-classification when no pattern matches."""
         state = {
             "messages": [
                 HumanMessage(content="Can you help me optimize the algorithm performance?")
@@ -46,11 +46,11 @@ class TestPlanningNodeWithCodingAgent:
         result = pattern_plan(state, config)
 
         assert result is not None
-        assert result["next_action"] == "continue_to_llm_pre_plan"
+        assert result["next_action"] == "continue_to_llm_classification"
         assert result["iterations"] == 0
 
-    def test_textual_pre_plan_with_greeting_resolves(self, config):
-        """Test that textual pre-plan detects and resolves greetings."""
+    def test_textual_plan_with_greeting_resolves(self, config):
+        """Test that textual plan detects and resolves greetings."""
         config.runtime.detect_tool_calls_from_text = True
         state = {
             "messages": [HumanMessage(content="Hello!")],
@@ -60,12 +60,12 @@ class TestPlanningNodeWithCodingAgent:
 
         result = pattern_plan(state, config)
 
-        # Should either resolve or continue to llm-pre-plan
+        # Should either resolve or continue to llm-classification
         assert result is not None
         assert "next_action" in result
 
-    def test_llm_pre_plan_continues_to_full_planning_for_coding(self, config):
-        """Test that llm-pre-plan continues to full planning for uncertain coding tasks."""
+    def test_llm_classification_continues_to_full_planning_for_coding(self, config):
+        """Test that llm-classification continues to full planning for uncertain coding tasks."""
         state = {
             "messages": [
                 HumanMessage(content="Fix the title_case function to handle hyphenated words")
@@ -83,8 +83,8 @@ class TestPlanningNodeWithCodingAgent:
             "reasoning": "Needs full planning",
         })
 
-        with patch("codur.graph.planning.phases.pre_plan_phase.create_and_invoke", return_value=response):
-            result = llm_pre_plan(state, config)
+        with patch("codur.graph.planning.phases.llm_classification_phase.create_and_invoke", return_value=response):
+            result = llm_classification(state, config)
 
         assert result is not None
         assert result["next_action"] == "continue_to_llm_plan"
@@ -353,22 +353,22 @@ class TestPlanningNodeFileDiscovery:
         config.runtime.max_iterations = 10
         return config
 
-    def test_llm_pre_plan_lists_files_without_hint(self, config):
-        """Test that pattern_plan (via llm_pre_plan wrapper) triggers file discovery."""
+    def test_llm_classification_lists_files_without_hint(self, config):
+        """Test that pattern_plan (via llm_classification wrapper) triggers file discovery."""
         state = {
             "messages": [HumanMessage(content="Fix the failing tests")],
             "iterations": 0,
             "verbose": False,
         }
 
-        # File discovery logic is now in pattern_plan (Phase 0), not llm_pre_plan
+        # File discovery logic is now in pattern_plan (Phase 0), not llm_classification
         result = pattern_plan(state, config)
         assert result is not None
         assert result["next_action"] == "tool"
         assert result["tool_calls"][0]["tool"] == "list_files"
 
-    def test_llm_pre_plan_selects_app_py_from_list(self, config):
-        """Test that pattern_plan (via llm_pre_plan wrapper) selects app.py from list."""
+    def test_llm_classification_selects_app_py_from_list(self, config):
+        """Test that pattern_plan (via llm_classification wrapper) selects app.py from list."""
         state = {
             "messages": [
                 HumanMessage(content="Fix the bug in the challenge"),
@@ -378,7 +378,7 @@ class TestPlanningNodeFileDiscovery:
             "verbose": False,
         }
 
-        # File discovery logic is now in pattern_plan (Phase 0), not llm_pre_plan
+        # File discovery logic is now in pattern_plan (Phase 0), not llm_classification
         result = pattern_plan(state, config)
         assert result is not None
         assert result["next_action"] == "tool"

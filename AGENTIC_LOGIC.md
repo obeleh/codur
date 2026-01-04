@@ -6,7 +6,7 @@ This document describes the planning and execution flow in Codur and how tools, 
 
 The main graph is defined in `codur/graph/main_graph.py`:
 
-- pattern_plan -> llm_pre_plan -> llm_plan -> (tool | delegate | coding | explaining) -> execute -> review -> loop
+- pattern_plan -> llm_classification -> llm_plan -> (tool | delegate | coding | explaining) -> execute -> review -> loop
 
 ## Planning phases
 
@@ -16,7 +16,7 @@ Phase 0: Pattern plan (textual, no LLM)
 - Can short-circuit with a direct response or tool calls.
 - Tool detection from text is gated by `runtime.detect_tool_calls_from_text`.
 
-Phase 1: LLM pre-plan (textual classification)
+Phase 1: LLM classification (textual classification)
 - Optional, enabled by `planning.use_llm_pre_plan`.
 - Uses a small JSON classification prompt to identify task type.
 - Only high-confidence trivial tasks are resolved here; most tasks continue to Phase 2.

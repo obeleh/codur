@@ -11,14 +11,15 @@ from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.constants import TaskType
-from codur.graph.node_types import PlanNodeResult
+from codur.graph.node_types import PlanNodeResult, PlanningDecision
 from codur.graph.state import AgentState
 from codur.graph.state_operations import (
     get_iterations,
     get_llm_calls,
     get_messages,
     is_verbose,
-    get_first_human_message_content_from_messages
+    get_first_human_message_content_from_messages,
+    get_last_human_message
 )
 from codur.graph.utils import (
     extract_list_files_output,
@@ -28,7 +29,6 @@ from codur.llm import create_llm_profile
 from codur.utils.retry import LLMRetryStrategy
 from codur.utils.llm_calls import invoke_llm, LLMCallLimitExceeded
 from codur.utils.validation import require_config
-from codur.graph.planning.classifier import quick_classify
 from codur.graph.planning.types import ClassificationResult
 from codur.graph.planning.strategies import get_strategy_for_task
 from codur.graph.planning.tool_analysis import (
@@ -41,11 +41,12 @@ from codur.graph.planning.validators import (
     mentions_file_path,
 )
 from codur.graph.planning.injectors import inject_followup_tools
+from codur.utils.json_parser import JSONResponseParser
+
 
 if TYPE_CHECKING:
     from codur.graph.planning.prompt_builder import PlanningPromptBuilder
     from codur.graph.planning.decision_handler import PlanningDecisionHandler
-    from codur.utils.json_parser import JSONResponseParser
 
 console = Console()
 
@@ -93,16 +94,9 @@ def llm_plan(
         for msg in messages
     )
 
-    # Get classification from Phase 1 if available, otherwise do it again
     classification = state.get("classification")
     if not classification:
-        classification = quick_classify(messages, config)
-        if is_verbose(state):
-            console.print(f"[dim]Classification (re-evaluated): {classification.task_type.value} "
-                         f"(confidence: {classification.confidence:.0%})[/dim]")
-            if classification.candidates:
-                console.print(f"[dim]Candidates: {_format_candidates(classification.candidates)}[/dim]")
-
+        raise ValueError("llm_plan requires 'classification' in AgentState")
     prompt_messages = _build_phase2_messages(
         messages, tool_results_present, classification, config
     )
@@ -120,11 +114,6 @@ def llm_plan(
                 "next_action": "tool",
                 "tool_calls": [{"tool": "read_file", "args": {"path": candidate}}],
                 "iterations": iterations + 1,
-                "llm_debug": {
-                    "phase2_resolved": True,
-                    "task_type": classification.task_type.value,
-                    "file_discovery": candidate,
-                },
             }
             if classification.task_type in coding_tasks:
                 result["selected_agent"] = "agent:codur-coding"
@@ -143,11 +132,6 @@ def llm_plan(
             "tool_calls": [{"tool": "list_files", "args": {}}],
             "selected_agent": "agent:codur-coding",
             "iterations": iterations + 1,
-            "llm_debug": {
-                "phase2_resolved": True,
-                "task_type": classification.task_type.value,
-                "file_discovery": "list_files",
-            },
         })
 
     retry_strategy = LLMRetryStrategy(
@@ -193,225 +177,18 @@ def llm_plan(
             "next_action": "delegate",
             "selected_agent": default_agent,
             "iterations": iterations + 1,
-            "llm_debug": {"error": str(exc), "llm_profile": config.llm.default_profile},
         })
 
-    user_message = messages[-1].content if messages else ""
-    planning_prompt = prompt_builder.build_system_prompt()
-    llm_debug = decision_handler.create_llm_debug(
-        planning_prompt,
-        user_message,
-        content,
-        llm=active_llm,
-    )
-    llm_debug["llm_profile"] = profile_name
 
     try:
-        decision = decision_handler.parse_planning_response(
-            active_llm,
-            content,
-            messages,
-            tool_results_present,
-            llm_debug,
-            state=state,
-        )
+        parser = JSONResponseParser()
+        decision = parser.parse(content)
+        decision = PlanningDecision(**decision)
 
         if decision is None:
-            if tool_results_present:
-                last_human_msg = get_last_human_message(messages)
-                if last_human_msg and looks_like_change_request(last_human_msg) and mentions_file_path(last_human_msg):
-                    retry_prompt = SystemMessage(
-                        content=(
-                            "You must return ONLY a valid JSON object with action 'tool' and tool_calls "
-                            "that modify the referenced file."
-                        )
-                    )
-                    retry_response = invoke_llm(
-                        active_llm,
-                        [retry_prompt] + list(messages),
-                        invoked_by="planning.retry_force_tool",
-                        state=state,
-                        config=config,
-                    )
-                    retry_content = retry_response.content
-                    debug_long = config.planning.debug_truncate_long
-                    llm_debug["llm_response_retry_forced"] = (
-                        retry_content[:debug_long] + "..."
-                        if len(retry_content) > debug_long
-                        else retry_content
-                    )
-                    forced_decision = json_parser.parse(retry_content)
-                    if forced_decision:
-                        decision = forced_decision
-                    else:
-                        return _with_llm_calls({
-                            "next_action": "end",
-                            "final_response": content,
-                            "iterations": iterations + 1,
-                            "llm_debug": llm_debug,
-                        })
-                else:
-                    return _with_llm_calls({
-                        "next_action": "end",
-                        "final_response": content,
-                        "iterations": iterations + 1,
-                        "llm_debug": llm_debug,
-                    })
-            default_agent = config.agents.preferences.default_agent
-            require_config(
-                default_agent,
-                "agents.preferences.default_agent",
-                "agents.preferences.default_agent must be configured",
-            )
-            decision = {
-                "action": "delegate",
-                "agent": default_agent,
-                "reasoning": "No clear decision",
-                "response": None,
-            }
+            raise ValueError("Parsed decision is None")
 
-        if decision is not None and tool_results_present:
-            last_human_msg = get_last_human_message(messages)
-            if last_human_msg and looks_like_change_request(last_human_msg) and mentions_file_path(last_human_msg):
-                allow_delegate = (
-                    decision.get("action") == "delegate"
-                    and decision.get("agent") == "agent:codur-coding"
-                    and tool_results_include_read_file(messages)
-                )
-                if decision.get("action") != "tool" and not allow_delegate:
-                    retry_prompt = SystemMessage(
-                        content=(
-                            "You must return action 'tool' with tool_calls to edit the referenced file in JSON format. "
-                            "Do not respond with instructions or summaries. Return valid JSON only."
-                        )
-                    )
-                    retry_response = invoke_llm(
-                        active_llm,
-                        [retry_prompt] + list(messages),
-                        invoked_by="planning.retry_force_tool",
-                        state=state,
-                        config=config,
-                    )
-                    retry_content = retry_response.content
-                    debug_long = config.planning.debug_truncate_long
-                    llm_debug["llm_response_retry_forced"] = (
-                        retry_content[:debug_long] + "..."
-                        if len(retry_content) > debug_long
-                        else retry_content
-                    )
-                    forced_decision = json_parser.parse(retry_content)
-                    if forced_decision:
-                        decision = forced_decision
-                elif not has_mutation_tool(decision.get("tool_calls", [])):
-                    retry_prompt = SystemMessage(
-                        content=(
-                            "You must include at least one file-modification tool call in JSON format "
-                            "(e.g., replace_in_file, write_file, append_file, set_*_value). "
-                            "Return a valid JSON object."
-                        )
-                    )
-                    retry_response = invoke_llm(
-                        active_llm,
-                        [retry_prompt] + list(messages),
-                        invoked_by="planning.retry_force_mutation",
-                        state=state,
-                        config=config,
-                    )
-                    retry_content = retry_response.content
-                    debug_long = config.planning.debug_truncate_long
-                    llm_debug["llm_response_retry_mutation"] = (
-                        retry_content[:debug_long] + "..."
-                        if len(retry_content) > debug_long
-                        else retry_content
-                    )
-                    forced_decision = json_parser.parse(retry_content)
-                    if forced_decision:
-                        decision = forced_decision
-
-        # NEW VALIDATION: Ensure file context exists before delegating to codur-coding
-        if (decision
-            and decision.get("action") == "delegate"
-            and decision.get("agent") == "agent:codur-coding"):
-
-            # Check if file contents are available in messages
-            has_file_contents = tool_results_include_read_file(messages)
-
-            # For multi-file scenarios, check if we've read all discovered files
-            discovered_files = extract_list_files_output(messages)
-            unread_files = []
-            if discovered_files:
-                # Check which files have NOT been read yet
-                read_paths = extract_read_file_paths(messages)
-                unread_files = [f for f in discovered_files if f not in read_paths]
-
-            if not has_file_contents:
-                # No file context yet - need to read files first
-
-                if discovered_files:
-                    # We have a list of files - read them
-                    if unread_files:
-                        files_to_read = unread_files
-
-                        tool_calls = [
-                            {"tool": "read_file", "args": {"path": f}}
-                            for f in files_to_read
-                        ]
-
-                        # Inject language-specific tools via injector system
-                        tool_calls = inject_followup_tools(tool_calls)
-
-                        if is_verbose(state):
-                            console.print(
-                                f"[yellow]Intercepted delegate to codur-coding without file context. "
-                                f"Reading {files_to_read} first...[/yellow]"
-                            )
-
-                        # Convert decision to tool action
-                        decision = {
-                            "action": "tool",
-                            "agent": "agent:codur-coding",  # Keep agent hint for routing after read
-                            "reasoning": "Reading file context before coding",
-                            "tool_calls": tool_calls,
-                        }
-                else:
-                    # No files discovered yet - list files first
-                    if is_verbose(state):
-                        console.print(
-                            "[yellow]Intercepted delegate to codur-coding without file discovery. "
-                            "Listing files first...[/yellow]"
-                        )
-
-                    decision = {
-                        "action": "tool",
-                        "agent": "agent:codur-coding",  # Keep agent hint
-                        "reasoning": "Discovering files before reading for coding context",
-                        "tool_calls": [{"tool": "list_files", "args": {}}],
-                    }
-            elif unread_files:
-                # Some files have been read but others haven't - read the remaining ones
-                if is_verbose(state):
-                    console.print(
-                        f"[yellow]Intercepted delegate to codur-coding with partial file context. "
-                        f"Reading remaining files: {unread_files}...[/yellow]"
-                    )
-
-                tool_calls = [
-                    {"tool": "read_file", "args": {"path": f}}
-                    for f in unread_files
-                ]
-
-                # Inject language-specific tools via injector system
-                tool_calls = inject_followup_tools(tool_calls)
-
-                # Convert decision to tool action
-                decision = {
-                    "action": "tool",
-                    "agent": "agent:codur-coding",  # Keep agent hint
-                    "reasoning": "Reading remaining file context before coding",
-                    "tool_calls": tool_calls,
-                }
-
-        return _with_llm_calls(decision_handler.handle_decision(decision, iterations, llm_debug))
+        return _with_llm_calls(decision_handler.handle_decision(decision, iterations))
 
     except (json.JSONDecodeError, KeyError, ValueError) as exc:
         console.print("\n" + "=" * 80, style="red bold")
@@ -421,12 +198,6 @@ def llm_plan(
         console.print(f"  Error Message: {str(exc)}", style="red")
         console.print(f"  LLM Response: {content[:200]}...", style="yellow")
         console.print("=" * 80 + "\n", style="red bold")
-
-        llm_debug["error"] = {
-            "type": type(exc).__name__,
-            "message": str(exc),
-            "raw_response": content[:500],
-        }
 
         default_agent = config.agents.preferences.default_agent
         require_config(
@@ -440,7 +211,6 @@ def llm_plan(
             "next_action": "delegate",
             "selected_agent": default_agent,
             "iterations": iterations + 1,
-            "llm_debug": llm_debug,
         })
 
 
