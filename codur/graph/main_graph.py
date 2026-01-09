@@ -8,26 +8,38 @@ from codur.graph.state import AgentState
 from codur.graph.execution import (
     execute_node,
     delegate_node,
-    review_node,
 )
+from codur.graph.routing_node import routing_node
 from codur.graph.tools import tool_node
 from codur.graph.coding_agent import coding_node
 from codur.graph.explaining import explaining_node
-from codur.graph.routing import should_continue, should_delegate
+# Routing logic inlined below (routing.py removed)
 from codur.graph.planning.core import PlanningOrchestrator
 from codur.graph.planning.phases.pattern_phase import pattern_plan
 from codur.graph.planning.phases.llm_classification_phase import llm_classification
 from codur.config import CodurConfig
-from codur.constants import (
-    AGENT_CODING,
-    AGENT_EXPLAINING,
-    REF_AGENT_CODING,
-    REF_AGENT_EXPLAINING,
-    ACTION_DELEGATE,
-    ACTION_TOOL,
-)
+from codur.constants import ACTION_DELEGATE, ACTION_TOOL
+from codur.graph.verification_agent import verification_agent_node
 from codur.llm import create_llm, create_llm_profile
 from codur.graph.state_operations import get_next_action, get_selected_agent
+
+# Route names for specialized agents
+ROUTE_CODING = "coding"
+ROUTE_EXPLAINING = "explaining"
+
+# Agent name sets for routing
+from codur.constants import REF_AGENT_CODING, AGENT_CODING, REF_AGENT_EXPLAINING, AGENT_EXPLAINING
+_CODING_AGENTS = frozenset({REF_AGENT_CODING, AGENT_CODING})
+_EXPLAINING_AGENTS = frozenset({REF_AGENT_EXPLAINING, AGENT_EXPLAINING})
+
+
+def get_agent_route(selected_agent: str | None) -> str | None:
+    """Map agent name to route name."""
+    if selected_agent in _CODING_AGENTS:
+        return ROUTE_CODING
+    if selected_agent in _EXPLAINING_AGENTS:
+        return ROUTE_EXPLAINING
+    return None
 
 
 def should_continue_to_llm_classification(state: AgentState) -> str:
@@ -36,7 +48,11 @@ def should_continue_to_llm_classification(state: AgentState) -> str:
     if next_action == "continue_to_llm_classification":
         return "llm_classification"
     # If resolved in pattern_plan, route based on the decision
-    return _route_based_on_decision(state)
+    if next_action == ACTION_DELEGATE:
+        return get_agent_route(get_selected_agent(state)) or "delegate"
+    if next_action == ACTION_TOOL:
+        return "tool"
+    return "end"
 
 
 def should_continue_to_llm_plan(state: AgentState) -> str:
@@ -45,23 +61,26 @@ def should_continue_to_llm_plan(state: AgentState) -> str:
     if next_action == "continue_to_llm_plan":
         return "llm_plan"
     # If resolved in llm-classification, route based on the decision
-    return _route_based_on_decision(state)
+    if next_action == ACTION_DELEGATE:
+        return get_agent_route(get_selected_agent(state)) or "delegate"
+    if next_action == ACTION_TOOL:
+        return "tool"
+    return "end"
 
 
-def _route_based_on_decision(state: AgentState) -> str:
-    """Route based on the planning decision (delegate, tool, or end)."""
+def should_delegate(state: AgentState) -> str:
+    """Route from llm_plan to appropriate execution node."""
     next_action = get_next_action(state)
     if next_action == ACTION_DELEGATE:
-        selected_agent = get_selected_agent(state)
-        if selected_agent in (REF_AGENT_CODING, AGENT_CODING):
-            return "coding"
-        if selected_agent in (REF_AGENT_EXPLAINING, AGENT_EXPLAINING):
-            return "explaining"
-        return "delegate"
-    elif next_action == ACTION_TOOL:
+        return get_agent_route(get_selected_agent(state)) or "delegate"
+    if next_action == ACTION_TOOL:
         return "tool"
-    else:
-        return "end"
+    return "end"
+
+
+def should_continue(state: AgentState) -> str:
+    """Route from review node - review now returns direct node names."""
+    return get_next_action(state) or "end"
 
 
 def create_agent_graph(config: CodurConfig):
@@ -98,7 +117,8 @@ def create_agent_graph(config: CodurConfig):
     workflow.add_node("coding", lambda state: coding_node(state, config))
     workflow.add_node("explaining", lambda state: explaining_node(state, config))
     workflow.add_node("execute", lambda state: execute_node(state, config))
-    workflow.add_node("review", lambda state: review_node(state, llm, config))
+    workflow.add_node("routing", lambda state: routing_node(state, llm, config))
+    workflow.add_node("verification", lambda state: verification_agent_node(state, config)) # LLM based check if the result is correct
 
     # Set entry point to first planning phase
     workflow.set_entry_point("pattern_plan")
@@ -145,18 +165,21 @@ def create_agent_graph(config: CodurConfig):
 
     # Execution flow
     workflow.add_edge("delegate", "execute")
-    workflow.add_edge("execute", "review")
-    workflow.add_edge("tool", "review")
-    workflow.add_edge("coding", "review")
-    workflow.add_edge("explaining", "review")
+    workflow.add_edge("execute", "routing")
+    workflow.add_edge("tool", "routing")
+    workflow.add_edge("coding", "routing")
+    workflow.add_edge("explaining", "routing")
+    workflow.add_edge("verification", "routing")  # Verification results go to routing for decision
 
-    # Review loop - on retry, go directly to full planning (Phase 2) since we already classified
-    # This avoids re-running Phases 0 and 1 which are not necessary on retries
+    # Routing loop - routing node returns direct node names for next step
+    # "llm_plan" skips to Phase 2 for retries (we already have classification from first pass)
+    # "coding" / "explaining" allows continuing to selected agent after preparatory tools
     workflow.add_conditional_edges(
-        "review",
+        "routing",
         should_continue,
         {
-            "continue": "llm_plan",  # Skip to Phase 2 for retries (we already have classification)
+            "llm_plan": "llm_plan",
+            "verification": "verification",
             "coding": "coding",
             "explaining": "explaining",
             "end": END,
@@ -165,10 +188,10 @@ def create_agent_graph(config: CodurConfig):
 
     # Compile the graph with increased recursion limit for trial-error loops
     # Initial path (LLM classification disabled):
-    #   pattern_plan → llm_plan → delegate → execute → review (5 nodes)
+    #   pattern_plan → llm_plan → delegate → execute → routing (5 nodes)
     # Initial path (LLM classification enabled):
-    #   pattern_plan → llm_classification → llm_plan → delegate → execute → review (6 nodes)
-    # Retries: llm_plan → delegate → execute → review → continue (4 nodes per retry)
+    #   pattern_plan → llm_classification → llm_plan → delegate → execute → routing (6 nodes)
+    # Retries: llm_plan → delegate → execute → routing → continue (4 nodes per retry)
     # With max_iterations=10 and max_tool_iterations=5 per agent:
     # Estimate: 6 (initial) + 10 * 4 (retries) + (5 tool iterations * 2) = 66 nodes
     # Using 350 for comprehensive trial-error loops with optimized retry path

@@ -19,28 +19,18 @@ from codur.graph.state_operations import (
     get_messages,
     is_verbose,
     get_first_human_message_content_from_messages,
-    get_last_human_message
-)
-from codur.graph.utils import (
-    extract_list_files_output,
-    extract_read_file_paths,
 )
 from codur.llm import create_llm_profile
 from codur.utils.retry import LLMRetryStrategy
-from codur.utils.llm_calls import invoke_llm, LLMCallLimitExceeded
-from codur.utils.validation import require_config
+from codur.utils.llm_calls import LLMCallLimitExceeded
+from codur.utils.config_helpers import require_default_agent
 from codur.graph.planning.types import ClassificationResult
 from codur.graph.planning.strategies import get_strategy_for_task
 from codur.graph.planning.tool_analysis import (
     tool_results_include_read_file,
     select_file_from_tool_results,
 )
-from codur.graph.planning.validators import (
-    has_mutation_tool,
-    looks_like_change_request,
-    mentions_file_path,
-)
-from codur.graph.planning.injectors import inject_followup_tools
+from codur.graph.planning.validators import looks_like_change_request
 from codur.utils.json_parser import JSONResponseParser
 
 
@@ -164,12 +154,7 @@ def llm_plan(
         if "Failed to validate JSON" in str(exc):
             console.print("  PLANNING ERROR - LLM returned invalid JSON", style="red bold on yellow")
 
-        default_agent = config.agents.preferences.default_agent
-        require_config(
-            default_agent,
-            "agents.preferences.default_agent",
-            "agents.preferences.default_agent must be configured",
-        )
+        default_agent = require_default_agent(config)
         if is_verbose(state):
             console.print(f"[red]Planning failed: {str(exc)}[/red]")
             console.print(f"[yellow]Falling back to default agent: {default_agent}[/yellow]")
@@ -199,12 +184,7 @@ def llm_plan(
         console.print(f"  LLM Response: {content[:200]}...", style="yellow")
         console.print("=" * 80 + "\n", style="red bold")
 
-        default_agent = config.agents.preferences.default_agent
-        require_config(
-            default_agent,
-            "agents.preferences.default_agent",
-            "agents.preferences.default_agent must be configured",
-        )
+        default_agent = require_default_agent(config)
         console.print(f"  Falling back to default agent: {default_agent}", style="yellow")
 
         return _with_llm_calls({

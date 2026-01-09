@@ -190,7 +190,7 @@ def should_continue_iterating(state: "AgentState", max_iterations: int) -> bool:
 
 def get_next_step_suggestion(state: "AgentState") -> Optional[str]:
     """Get the next step suggestion from state, if any."""
-    return state.get("next_step_suggestion")
+    return get_latest_agent_outcome(state).get("next_step_suggestion")
 
 # ============================================================================
 # LLM Call Tracking
@@ -226,34 +226,36 @@ def check_llm_call_limit(state: "AgentState") -> bool:
 
 def get_outcome(execute_result: "ExecuteNodeResult") -> str:
     """Extract result from an execution outcome, raising on error."""
-    outcome = execute_result.get("agent_outcome", {})
+    outcomes = execute_result.get("agent_outcomes", [])
+    outcome = outcomes[-1] if outcomes else {}
     if outcome.get("status") == "error":
         raise Exception(f"Agent execution failed: {outcome.get('result')}")
     return outcome.get("result", "")
 
-def get_agent_outcome(state: "AgentState") -> dict:
-    """Get the agent outcome from state."""
-    return state.get("agent_outcome", {})
+def get_agent_outcomes(state: "AgentState") -> list[dict]:
+    """Get all agent outcomes from state."""
+    return state.get("agent_outcomes", [])
 
-def set_agent_outcome(state: "AgentState", outcome: dict) -> None:
-    """Set the agent outcome in state."""
-    state["agent_outcome"] = outcome
+def get_latest_agent_outcome(state: "AgentState") -> dict:
+    """Get the most recent agent outcome from state."""
+    outcomes = get_agent_outcomes(state)
+    return outcomes[-1] if outcomes else {}
 
 def get_outcome_status(state: "AgentState") -> str:
-    """Get the status from the agent outcome."""
-    return get_agent_outcome(state).get("status", "unknown")
+    """Get the status from the latest agent outcome."""
+    return get_latest_agent_outcome(state).get("status", "unknown")
 
 def is_outcome_error(state: "AgentState") -> bool:
-    """Check if the agent outcome is an error."""
+    """Check if the latest agent outcome is an error."""
     return get_outcome_status(state) == "error"
 
 def get_outcome_result(state: "AgentState") -> str:
-    """Get the result from the agent outcome."""
-    return get_agent_outcome(state).get("result", "")
+    """Get the result from the latest agent outcome."""
+    return get_latest_agent_outcome(state).get("result", "")
 
 def get_outcome_agent(state: "AgentState") -> str:
-    """Get the agent name from the agent outcome."""
-    return get_agent_outcome(state).get("agent", "")
+    """Get the agent name from the latest agent outcome."""
+    return get_latest_agent_outcome(state).get("agent", "")
 
 # ============================================================================
 # Error & Repair Tracking

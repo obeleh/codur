@@ -44,6 +44,7 @@ from codur.tui_style import TUI_CSS
 
 from codur.config import load_config, CodurConfig
 from codur.graph.main_graph import create_agent_graph
+from codur.graph.state_operations import get_latest_agent_outcome
 from langchain_core.messages import HumanMessage
 
 
@@ -602,31 +603,7 @@ class CodurTUI(App):
             self.update_agent_status("Agent", node_name.title(), step_num)
 
     def _log_node_output(self, node_name: str, node_output: dict, step_num: int) -> None:
-        if "llm_debug" in node_output:
-            llm_debug = node_output["llm_debug"]
-            self.log_debug(f"\n  [bold magenta]🤖 LLM Communication:[/bold magenta]", "")
-
-            # Display LLM model and profile info
-            llm_model = llm_debug.get('llm_model', 'N/A')
-            llm_profile = llm_debug.get('llm_profile', 'N/A')
-            self.log_debug(f"  [bold]Model:[/bold] {llm_model} [dim](profile: {llm_profile})[/dim]", "blue")
-
-            # Display errors prominently if present
-            if "error" in llm_debug:
-                error = llm_debug["error"]
-                self.log_debug(f"\n  [bold red on yellow]⚠️  PARSING ERROR ⚠️[/bold red on yellow]", "")
-                self.log_debug(f"  [bold red]Type:[/bold red] {error.get('type', 'Unknown')}", "")
-                self.log_debug(f"  [bold red]Message:[/bold red] {error.get('message', 'N/A')}", "")
-                self.log_debug(f"  [bold red]Raw Response:[/bold red]", "")
-                self.log_debug(f"    {error.get('raw_response', 'N/A')}\n", "yellow")
-
-            self.log_debug(f"  [bold]System Prompt:[/bold]", "cyan")
-            self.log_debug(f"    {llm_debug.get('system_prompt', 'N/A')}\n", "dim")
-            self.log_debug(f"  [bold]User Message:[/bold]", "cyan")
-            self.log_debug(f"    {llm_debug.get('user_message', 'N/A')}\n", "green")
-            self.log_debug(f"  [bold]LLM Response:[/bold]", "cyan")
-            self.log_debug(f"    {llm_debug.get('llm_response', 'N/A')}\n", "yellow")
-
+        
         if "next_action" in node_output:
             action = node_output["next_action"]
             self.log_message(f"[blue]Next action:[/blue] {action}")
@@ -650,15 +627,16 @@ class CodurTUI(App):
             self.log_message(f"\n[bold green]Response:[/bold green]\n{response}\n")
             self.log_debug(f"    final_response: {response}", "green")
 
-        if "agent_outcome" in node_output:
-            outcome = node_output["agent_outcome"]
-            if "result" in outcome:
+        if "agent_outcomes" in node_output:
+            # Get latest outcome from the list
+            outcome = get_latest_agent_outcome(node_output)
+            if outcome and "result" in outcome:
                 result = outcome["result"]
                 if len(result) > 500:
                     self.log_message(f"\n[green]Result:[/green]\n{result[:500]}...\n")
                 else:
                     self.log_message(f"\n[green]Result:[/green]\n{result}\n")
-                self.log_debug(f"    agent_outcome: {outcome}", "magenta")
+                self.log_debug(f"agent_outcome(latest): {outcome}", "magenta")
             agent_name = outcome.get("agent")
             if agent_name:
                 self.log_debug(f"    sent_to: {agent_name}", "yellow")

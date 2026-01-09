@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-from langchain_core.messages import BaseMessage, SystemMessage
-
 from codur.config import CodurConfig
 from codur.tools.registry import list_tool_directory
-from codur.utils.validation import require_config
-
-
-# System prompt for planning (DEPRECATED - use PlanningPromptBuilder.build_system_prompt instead)
+from codur.utils.config_helpers import require_default_agent
 
 
 class PlanningPromptBuilder:
@@ -17,12 +12,7 @@ class PlanningPromptBuilder:
         self.config = config
 
     def build_system_prompt(self) -> str:
-        default_agent = self.config.agents.preferences.default_agent
-        require_config(
-            default_agent,
-            "agents.preferences.default_agent",
-            "agents.preferences.default_agent must be configured",
-        )
+        default_agent = require_default_agent(self.config)
 
         tools = list_tool_directory()
         tool_names = [t["name"] for t in tools if isinstance(t, dict) and "name" in t]
@@ -97,14 +87,4 @@ Respond with ONLY a valid JSON object:
     "response": "only for greetings, otherwise null",
     "tool_calls": [{{"tool": "tool_name", "args": {{"param": "value"}}}}]
 }}
-
-Examples:
-- "Hello" -> {{"action": "respond", "agent": null, "reasoning": "greeting", "response": "Hello! How can I help?", "tool_calls": []}}
-- "copy file.py to backup.py" -> {{"action": "tool", "agent": null, "reasoning": "copy file", "response": null, "tool_calls": [{{"tool": "copy_file", "args": {{"source": "file.py", "destination": "backup.py"}}}}]}}
-- "delete old.txt" -> {{"action": "tool", "agent": null, "reasoning": "delete file", "response": null, "tool_calls": [{{"tool": "delete_file", "args": {{"path": "old.txt"}}}}]}}
-- "What does app.py do?" -> {{"action": "tool", "agent": null, "reasoning": "read file", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "app.py"}}}}]}}
-- "Implement the title case function in @main.py based on the docstring" -> {{"action": "tool", "agent": "agent:codur-coding", "reasoning": "read file to get docstring and current implementation for coding context", "response": null, "tool_calls": [{{"tool": "read_file", "args": {{"path": "@main.py"}}}}]}}
-- "Fix the bug in @main.py" -> {{"action": "delegate", "agent": "{default_agent}", "reasoning": "bug fix requires analysis and iteration", "response": null, "tool_calls": []}}
-- "Solve this coding challenge: [problem] with context [additional info]" -> {{"action": "delegate", "agent": "agent:codur-coding", "reasoning": "structured coding challenge with optional context", "response": null, "tool_calls": []}}
-- "Write a sorting function" -> {{"action": "delegate", "agent": "{default_agent}", "reasoning": "code generation", "response": null, "tool_calls": []}}
 """

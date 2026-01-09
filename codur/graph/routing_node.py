@@ -3,24 +3,23 @@ import json
 from traceback import format_exc
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, ToolMessage
+from langchain_core.messages import BaseMessage
 from rich.console import Console
 
 from codur.graph.state import AgentState
 from codur.config import CodurConfig
 from codur.graph.node_types import ReviewNodeResult
-from codur.constants import (
-    ACTION_CONTINUE,
-    ACTION_END,
-)
+# Node names for routing
+NODE_END = "end"
+NODE_VERIFICATION = "verification"
+NODE_LLM_PLAN = "llm_plan"
 from codur.graph.state_operations import (
     is_verbose,
     get_iterations,
-    get_agent_outcome,
     get_outcome_result,
-    get_error_hashes,
-    get_first_human_message_content, get_last_tool_output, ToolOutput, get_messages, get_last_tool_output_from_messages,
-    is_coding_agent_session,
+    ToolOutput, get_messages, get_last_tool_output_from_messages,
+    is_coding_agent_session, get_latest_agent_outcome, get_last_tool_output,
+    get_selected_agent,
 )
 from codur.graph.verification_agent import verification_agent_node
 
@@ -31,23 +30,21 @@ def handle_verification_tool_output(messages: list[BaseMessage]) -> ReviewNodeRe
     if last_tool_output:
         assert isinstance(last_tool_output, ToolOutput)
         if last_tool_output.tool == "build_verification_response":
-
             if last_tool_output.args["passed"]:
-                return {
-                    "final_response": last_tool_output.args["reasoning"],
-                    "next_action": ACTION_END,
-                    "next_step_suggestion": None,
-                }
+                return ReviewNodeResult(
+                    final_response=last_tool_output.args["reasoning"],
+                    next_action=NODE_END,
+                )
             else:
-                return {
-                    "final_response": last_tool_output.args["reasoning"],
-                    "next_action": ACTION_CONTINUE,
-                    "next_step_suggestion": None,
-                }
+                return ReviewNodeResult(
+                    final_response=last_tool_output.args["reasoning"],
+                    next_action=NODE_LLM_PLAN,
+                    next_step_suggestion=None,
+                )
 
 
-def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> ReviewNodeResult:
-    """Review node: Check if the result is satisfactory.
+def routing_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> ReviewNodeResult:
+    """Routing node: Review execution results and route to next node.
 
     Implements trial-error loop for bug fixes:
     1. Detects if this was a fix/debug task
@@ -68,7 +65,7 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
     if verbose:
         console.print("[bold magenta]Reviewing result...[/bold magenta]")
 
-    outcome = get_agent_outcome(state)
+    outcome = get_latest_agent_outcome(state)
     result = get_outcome_result(state)
     iterations = get_iterations(state)
     max_iterations = config.runtime.max_iterations
@@ -78,13 +75,64 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         console.print(f"[dim]Result length: {len(result)} chars[/dim]")
         console.print(f"[dim]Iteration: {iterations}/{max_iterations}[/dim]")
 
-    # If only tools ran (no agent did actual work), continue to let an agent work
-    if outcome.get("agent") == "tools":
+    if iterations > max_iterations:
+        console.print(f"[yellow]⚠ Exceeded max iterations ({max_iterations}) - accepting result[/yellow]")
         return {
             "final_response": result,
-            "next_action": ACTION_CONTINUE,
-            "next_step_suggestion": None,
+            "next_action": NODE_END,
         }
+
+    last_tool_call = get_last_tool_output(state)
+    if last_tool_call.tool == "done":
+        if verbose:
+            console.print(f"[green]✓ 'done' tool detected - accepting result[/green]")
+        return ReviewNodeResult(
+            final_response=result,
+            next_action=NODE_END,
+        )
+    elif last_tool_call.tool == "build_verification_response":
+        if last_tool_call.args["passed"]:
+            if verbose:
+                console.print(f"[green]✓ Verification passed - accepting result[/green]")
+            return ReviewNodeResult(
+                final_response=last_tool_call.args["reasoning"],
+                next_action=NODE_END,
+            )
+        else:
+            if verbose:
+                console.print(f"[yellow]⚠ Verification failed - continuing to fix[/yellow]")
+            return ReviewNodeResult(
+                next_action=NODE_VERIFICATION,
+            )
+
+
+    # If only tools ran (no agent did actual work), route to selected agent or back to planning
+    last_agent = outcome.get("agent")
+    if last_agent == "tools":
+        # Check if planning already selected an agent (e.g., action="tool" with agent="codur-coding")
+        selected_agent = get_selected_agent(state)
+        if selected_agent:
+            # Import here to avoid circular dependency
+            from codur.graph.main_graph import get_agent_route
+            agent_route = get_agent_route(selected_agent)
+            if agent_route:
+                # Route to the selected agent (e.g., "coding" or "explaining")
+                if verbose:
+                    console.print(f"[cyan]→ Routing to {agent_route} agent after tools[/cyan]")
+                return ReviewNodeResult(
+                    next_action=agent_route,
+                )
+        # No agent selected or not a specialized agent, continue to planning
+        return ReviewNodeResult(
+            next_action=NODE_LLM_PLAN,
+        )
+    elif last_agent == "coding":
+        return ReviewNodeResult(
+            next_action=NODE_VERIFICATION,
+        )
+    elif last_agent == "review":
+        raise ValueError("Didn't expect to land here, this should already be handled above")
+
 
     messages = get_messages(state)
     result = handle_verification_tool_output(messages)
@@ -108,11 +156,9 @@ def review_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> R
         else:
             console.print(f"[green]✓ Review complete - accepting result[/green]")
 
-    return {
-        "final_response": result,
-        "next_action": ACTION_END,
-        "next_step_suggestion": None,
-    }
+    return ReviewNodeResult(
+        next_action=NODE_END,
+    )
 
 
 def _format_verification_response(last_message: BaseMessage) -> str:

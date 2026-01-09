@@ -5,7 +5,7 @@ from rich.console import Console
 from codur.config import CodurConfig
 from codur.graph.message_summary import prepend_summary
 from codur.graph.state import AgentState
-from codur.graph.node_types import ExecuteNodeResult
+from codur.graph.node_types import ExecuteNodeResult, AgentOutcome
 from codur.graph.state_operations import (
     get_iterations,
     get_llm_calls,
@@ -13,7 +13,8 @@ from codur.graph.state_operations import (
     increment_iterations,
     add_messages,
     get_next_step_suggestion,
-    get_last_tool_output_from_messages
+    get_last_tool_output_from_messages,
+    set_next_action,
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.tools.registry import list_tools_for_tasks
@@ -132,7 +133,7 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
     Returns:
         ExecuteNodeResult with agent_outcome
     """
-    agent_name = "agent:codur-coding"
+    agent_name = "coding"
     iterations = get_iterations(state)
     increment_iterations(state)
     verbose = is_verbose(state)
@@ -188,43 +189,43 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
 
     if not execution_result.results:
         # No tools called - return response as-is
-        return {
-            "agent_outcome": {
-                "agent": agent_name,
-                "status": "success",
-            },
-            "messages": new_messages,
-            "llm_calls": get_llm_calls(state),
-            "next_step_suggestion": None,
-        }
+        return ExecuteNodeResult(
+            agent_outcomes=[AgentOutcome(
+                agent=agent_name,
+                status="success",
+                messages=new_messages,
+            )],
+            messages=new_messages,
+            llm_calls=get_llm_calls(state),
+        )
 
     # Meta tool handling
     # Get Last tool to detect "done"
     last_tool_call = get_last_tool_output_from_messages(new_messages)
     if last_tool_call.tool == "done":
-        return {
-            "agent_outcome": {
-                "agent": agent_name,
-                "result": last_tool_call.args["reasoning"],
-                "status": "success",
-            },
-            "llm_calls": get_llm_calls(state),
-            "messages": new_messages,
-            "next_step_suggestion": None,
-            "selected_agent": "codur-verification"
-        }
+        return ExecuteNodeResult(
+            agent_outcomes=[AgentOutcome(
+                agent=agent_name,
+                result=last_tool_call.args["reasoning"],
+                status="success",
+                messages=new_messages,
+            )],
+            llm_calls=get_llm_calls(state),
+            messages=new_messages,
+            selected_agent="codur-verification",
+        )
     elif last_tool_call.tool == "build_verification_response":
         console.log("[green]Building verification response as requested by agent...[/green]")
-        return {
-            "agent_outcome": {
-                "agent": agent_name,
-                "result": "verification response built",
-                "status": "success",
-            },
-            "llm_calls": get_llm_calls(state),
-            "messages": new_messages,
-            "next_action": ACTION_END
-        }
+        return ExecuteNodeResult(
+            agent_outcomes=[AgentOutcome(
+                agent=agent_name,
+                result="verification response built",
+                status="success",
+                messages=new_messages,
+            )],
+            llm_calls=get_llm_calls(state),
+            messages=new_messages,
+        )
 
 
     if recursion_depth <= 3:
@@ -240,13 +241,13 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
         nested_outcome["messages"] = new_messages + nested_outcome["messages"]
         return nested_outcome
 
-    return {
-        "agent_outcome": {
-            "agent": agent_name,
-            "result": "tool calls executed",
-            "status": "success",
-        },
-        "llm_calls": get_llm_calls(state),
-        "messages": new_messages,
-        "next_step_suggestion": None,
-    }
+    return ExecuteNodeResult(
+        agent_outcomes=[AgentOutcome(
+            agent=agent_name,
+            result="tool calls executed",
+            status="success",
+            messages=new_messages,
+        )],
+        llm_calls=get_llm_calls(state),
+        messages=new_messages,
+    )

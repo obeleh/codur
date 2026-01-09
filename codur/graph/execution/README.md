@@ -1,6 +1,6 @@
 # Execution Module
 
-This module implements the execution, delegation, and review logic for the Codur agent graph. It handles routing tasks to appropriate agents, executing them, and verifying results.
+This module implements the execution, delegation, and routing logic for the Codur agent graph. It handles routing tasks to appropriate agents, executing them, and deciding next steps based on results.
 
 ## Architecture
 
@@ -10,8 +10,9 @@ The execution module is organized into focused, single-responsibility modules:
 
 - **`delegate.py`** - Routes tasks to the appropriate agent based on planning decisions
 - **`execute.py`** - Wrapper node that instantiates and runs the AgentExecutor
-- **`review.py`** - Verifies fix results, routes retries, and decides on next actions
 - **`agent_executor.py`** - Core execution engine with tool-loop support
+
+Note: `routing_node.py` has been moved to `codur/graph/` as it handles graph-level routing decisions.
 
 ### Agent Nodes
 
@@ -25,13 +26,13 @@ The execution module is organized into focused, single-responsibility modules:
 ## Execution Flow
 
 ```
-delegate_node → execute_node → [agent execution] → review_node
+delegate_node → execute_node → [agent execution] → routing_node
                     ↓
             AgentExecutor (with tool loop)
                     ↓
          [Tool detection & execution]
                     ↓
-              review_node decides:
+              routing_node decides:
          ├─ Verification passed? → END
          ├─ Verification failed? → retry or replan
          ├─ Stuck in loop? → END
@@ -63,20 +64,22 @@ delegate_node → execute_node → [agent execution] → review_node
   3. Tools are executed and results fed back
   4. Loop continues until no more tool calls or max iterations
 
-### `review_node`
-- Checks if results are acceptable
-- Detects fix/debug tasks by keywords in original message
-- Verification logic:
-  1. If fix task: runs verification (python main.py or app.py)
-  2. If output mismatch: compares with expected.txt
-  3. If same error repeats: agent is stuck, exit
-  4. If different error: retry with agent or attempt repair
-  5. If success: accept result
+### `routing_node` (in `codur/graph/routing_node.py`)
+- Reviews execution results and routes to next node
+- Returns direct node names: "end", "verification", or "llm_plan"
+- Routing logic:
+  1. Checks last tool call (done, build_verification_response)
+  2. Checks last agent that ran (coding, tools, etc.)
+  3. Enforces iteration limits
+  4. Routes to verification node after coding agent
+  5. Routes back to planning on retry
 - Routing decisions:
-  - Tool result only → continue to planning
+  - Last tool = "done" → END
   - Verification passed → END
-  - Repeated error → END
-  - Verification failed → retry or route back to planning
+  - Verification failed → verification node (for retry)
+  - Last agent = "coding" → verification node
+  - Last agent = "tools" → llm_plan (retry)
+  - Max iterations reached → END
 
 ### `verification_agent_node` (in verification_agent.py)
 - LLM-based intelligent verification agent

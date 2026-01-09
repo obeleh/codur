@@ -2,17 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Dict, Any, Optional
-
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, SystemMessage
-
 from codur.config import CodurConfig
 from codur.graph.node_types import PlanNodeResult, PlanningDecision
-from codur.graph.state import AgentState
-from codur.utils.llm_calls import invoke_llm
-from codur.utils.validation import require_config
-from codur.utils.json_parser import JSONResponseParser
+from codur.utils.config_helpers import require_default_agent
 
 
 class PlanningDecisionHandler:
@@ -41,12 +33,7 @@ class PlanningDecisionHandler:
                 "iterations": iterations + 1,
             }
         if action == "delegate":
-            default_agent = self.config.agents.preferences.default_agent
-            require_config(
-                default_agent,
-                "agents.preferences.default_agent",
-                "agents.preferences.default_agent must be configured",
-            )
+            default_agent = require_default_agent(self.config)
             return {
                 "next_action": "delegate",
                 "selected_agent": decision.get("agent", default_agent),

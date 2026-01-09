@@ -5,7 +5,7 @@ from rich.console import Console
 
 from codur.config import CodurConfig
 from codur.graph.state import AgentState
-from codur.graph.node_types import ExecuteNodeResult
+from codur.graph.node_types import ExecuteNodeResult, AgentOutcome
 from codur.graph.state_operations import get_iterations, get_llm_calls, get_messages, is_verbose, parse_tool_message, normalize_messages
 from codur.utils.llm_helpers import create_and_invoke
 
@@ -104,15 +104,19 @@ def explaining_node(state: AgentState, config: CodurConfig) -> ExecuteNodeResult
         else:
             console.print(f"[dim]Response preview:\n{result[:400]}...[/dim]")
 
-    return {
-        "agent_outcome": {
-            "agent": agent_name,
-            "result": result,
-            "status": "success",
-        },
-        "llm_calls": get_llm_calls(state),
-        "next_step_suggestion": None,
-    }
+    # Create response messages (input messages + AI response)
+    response_messages = messages + [response]
+
+    return ExecuteNodeResult(
+        agent_outcomes=[AgentOutcome(
+            agent=agent_name,
+            status="success",
+            messages=response_messages,
+            result=result,
+        )],
+        messages=response_messages,
+        llm_calls=get_llm_calls(state),
+    )
 
 
 def _build_explaining_prompt(raw_messages) -> str:

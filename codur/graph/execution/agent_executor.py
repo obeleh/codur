@@ -3,7 +3,7 @@
 import traceback
 from typing import Optional
 
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage, ToolMessage
 from rich.console import Console
 
 from codur.graph.state import AgentState
@@ -12,12 +12,12 @@ from codur.utils.llm_helpers import create_and_invoke
 from codur.agents import AgentRegistry
 from codur.graph.node_types import ExecuteNodeResult
 from codur.graph.utils import resolve_agent_profile, resolve_agent_reference
-from codur.utils.config_helpers import get_default_agent
-from codur.utils.validation import require_config
+from codur.utils.config_helpers import require_default_agent
 from codur.graph.state_operations import (
     is_verbose,
     get_messages,
     get_llm_calls,
+    get_latest_agent_outcome,
 )
 from codur.graph.tool_executor import execute_tool_calls
 from codur.utils.llm_calls import LLMCallLimitExceeded
@@ -34,16 +34,12 @@ class AgentExecutor:
     def __init__(self, state: AgentState, config: CodurConfig, agent_name: Optional[str]=None) -> None:
         self.state = state
         self.config = config
-        self.default_agent = get_default_agent(config)
-        require_config(
-            self.default_agent,
-            "agents.preferences.default_agent",
-            "agents.preferences.default_agent must be configured",
-        )
+        self.default_agent = require_default_agent(config)
         if agent_name:
             self.agent_name = agent_name
         else:
-            self.agent_name = state["agent_outcome"].get("agent", self.default_agent)
+            last_outcome = get_latest_agent_outcome(state)
+            self.agent_name = last_outcome.get("agent", self.default_agent)
             self.agent_name, self.profile_override = resolve_agent_profile(config, self.agent_name)
         self.resolved_agent = resolve_agent_reference(self.agent_name)
 
@@ -56,7 +52,7 @@ class AgentExecutor:
         last_message = messages[-1] if messages else None
 
         if not last_message:
-            return {"agent_outcome": {"agent": self.agent_name, "result": "No task provided", "status": "error"}, "next_step_suggestion": None}
+            return {"agent_outcomes": [{"agent": self.agent_name, "result": "No task provided", "status": "error"}], "next_step_suggestion": None}
 
         if is_verbose(self.state):
             task_preview = str(last_message.content if hasattr(last_message, "content") else last_message)[:200]
@@ -75,11 +71,11 @@ class AgentExecutor:
                 console.print("[green]✓ Execution completed successfully[/green]")
 
             dct = {
-                "agent_outcome": {
+                "agent_outcomes": [{
                     "agent": self.agent_name,
                     "result": result,
                     "status": "success",
-                },
+                }],
                 "llm_calls": get_llm_calls(self.state),
                 "messages": messages_out,
                 "next_step_suggestion": None,
@@ -92,11 +88,11 @@ class AgentExecutor:
             if is_verbose(self.state):
                 console.print(f"[red]{traceback.format_exc()}[/red]")
             return {
-                "agent_outcome": {
+                "agent_outcomes": [{
                     "agent": self.agent_name,
                     "result": str(exc),
                     "status": "error",
-                },
+                }],
                 "llm_calls": get_llm_calls(self.state),
                 "next_step_suggestion": None,
             }
@@ -123,7 +119,8 @@ class AgentExecutor:
         agent_config = self.config.agents.configs.get(self.resolved_agent)
         if agent_config and getattr(agent_config, "type", None) == "llm":
             # TODO: extract messages_out from LLM agent execution
-            return [], self._execute_llm_agent(agent_config, task)
+            result = self._execute_llm_agent(agent_config, task)
+            return [AIMessage(content=result)], result
         return self._execute_registered_agent(task)
 
     def _execute_llm_agent(self, agent_config, task: str) -> str:

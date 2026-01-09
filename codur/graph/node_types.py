@@ -13,8 +13,10 @@ class ToolCall(TypedDict):
 
 class AgentOutcome(TypedDict):
     agent: str
-    result: NotRequired[str]
     status: str
+    messages: list[BaseMessage]
+    result: NotRequired[str]
+    next_step_suggestion: NotRequired[str]
 
 
 class PlanNodeResult(TypedDict):
@@ -26,31 +28,29 @@ class PlanNodeResult(TypedDict):
     llm_debug: NotRequired[Dict[str, Any]]
     llm_calls: NotRequired[int]
     messages: NotRequired[list[BaseMessage]]
-    next_step_suggestion: NotRequired[str]
     classification: NotRequired[ClassificationResult]
 
 
 class DelegateNodeResult(TypedDict):
-    agent_outcome: AgentOutcome
+    agent_outcomes: list[AgentOutcome]
 
 
 class ToolNodeResult(TypedDict):
-    agent_outcome: AgentOutcome
+    agent_outcomes: list[AgentOutcome]
     messages: list[BaseMessage]
     llm_calls: NotRequired[int]
 
 
 class ExecuteNodeResult(TypedDict):
-    agent_outcome: AgentOutcome
+    agent_outcomes: list[AgentOutcome]
     messages: list[BaseMessage]
     llm_calls: NotRequired[int]
-    next_step_suggestion: NotRequired[str]
     selected_agent: NotRequired[str]
 
 
 class ReviewNodeResult(TypedDict):
-    final_response: str
-    next_action: Literal["end"]
+    final_response: NotRequired[str]
+    next_action: Literal["end", "llm_plan", "verification", "coding", "explaining"]
     messages: NotRequired[list[BaseMessage]]
 
 

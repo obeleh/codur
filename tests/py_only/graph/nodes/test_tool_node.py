@@ -26,7 +26,7 @@ def test_tool_node_adds_python_ast_dependencies(tmp_path, monkeypatch):
     }
 
     result = tool_node(state, _Config())
-    summary = result["agent_outcome"]["result"]
+    summary = result["agent_outcomes"][0]["result"]
     assert "read_file:" in summary
     assert "python_ast_dependencies:" in summary
 
@@ -44,6 +44,6 @@ def test_tool_node_adds_multifile_ast_dependencies(tmp_path, monkeypatch):
     }
 
     result = tool_node(state, _Config())
-    summary = result["agent_outcome"]["result"]
+    summary = result["agent_outcomes"][0]["result"]
     assert "list_files:" in summary
     assert "python_ast_dependencies_multifile:" in summary

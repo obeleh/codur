@@ -9,6 +9,7 @@ from langchain_core.messages import BaseMessage
 import operator
 
 from codur.config import CodurConfig
+from codur.graph.node_types import AgentOutcome
 from codur.graph.planning.types import ClassificationResult
 
 
@@ -19,7 +20,7 @@ class AgentState(TypedDict):
     Attributes:
         messages: The conversation history
         next_action: The next action to take
-        agent_outcome: Result from the last agent action
+        agent_outcomes: Results from all agent actions (appended as list)
         iterations: Number of iterations so far
         final_response: The final response to return
         selected_agent: The agent selected for delegation
@@ -29,12 +30,11 @@ class AgentState(TypedDict):
         max_llm_calls: Maximum allowed LLM invocations
         error_hashes: Hashes of errors seen for deduplication
         local_repair_attempted: Whether a local repair was attempted
-        next_step_suggestion: Suggestion for the next step
         agent_summaries: Summaries of agent actions
     """
     messages: Annotated[Sequence[BaseMessage], operator.add]
     next_action: str
-    agent_outcome: dict
+    agent_outcomes: Annotated[list[AgentOutcome], operator.add]
     iterations: int
     final_response: str
     selected_agent: str
@@ -45,7 +45,6 @@ class AgentState(TypedDict):
     max_llm_calls: int | None
     error_hashes: list
     local_repair_attempted: bool
-    next_step_suggestion: str | None
     agent_summaries: list[str]
     classification: ClassificationResult | None
 

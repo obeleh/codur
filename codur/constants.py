@@ -39,6 +39,8 @@ ACTION_TOOL = "tool"
 ACTION_RESPOND = "respond"
 ACTION_END = "end"
 ACTION_CONTINUE = "continue"
+ACTION_VERIFICATION_AGENT = "verification"
+ACTION_CODING = "coding"
 
 # Agent references (with prefix)
 PREFIX_AGENT = "agent:"

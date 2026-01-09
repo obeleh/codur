@@ -100,9 +100,9 @@ class TestExplainingNode:
         result = explaining_node(state, config)
 
         # Verify
-        assert result["agent_outcome"]["agent"] == "agent:codur-explaining"
-        assert result["agent_outcome"]["result"] == "This is the explanation."
-        assert result["agent_outcome"]["status"] == "success"
+        assert result["agent_outcomes"][0]["agent"] == "agent:codur-explaining"
+        assert result["agent_outcomes"][0]["result"] == "This is the explanation."
+        assert result["agent_outcomes"][0]["status"] == "success"
 
         # Verify LLM call with correct temperature
         mock_create_and_invoke.assert_called_once()

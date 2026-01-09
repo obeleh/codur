@@ -7,7 +7,7 @@ from rich.console import Console
 from codur.config import CodurConfig
 from codur.graph.message_summary import prepend_summary
 from codur.graph.state import AgentState
-from codur.graph.node_types import ExecuteNodeResult
+from codur.graph.node_types import ExecuteNodeResult, AgentOutcome
 from codur.graph.state_operations import (
     get_llm_calls,
     get_messages,
@@ -274,15 +274,16 @@ def verification_agent_node(
             name="build_verification_response",
         )
 
-        return {
-            "agent_outcome": {
-                "agent": agent_name,
-                "result": f"Verification error: {str(exc)}",
-                "status": "error",
-            },
-            "messages": new_messages + [error_msg],
-            "llm_calls": get_llm_calls(state),
-        }
+        return ExecuteNodeResult(
+            agent_outcomes=[AgentOutcome(
+                agent=agent_name,
+                status="error",
+                messages=new_messages + [error_msg],
+                result=f"Verification error: {str(exc)}",
+            )],
+            messages=new_messages + [error_msg],
+            llm_calls=get_llm_calls(state),
+        )
 
     # Check if build_verification_response was called (final response)
     is_final_response = any(
@@ -307,19 +308,24 @@ def verification_agent_node(
 
     # Parse verification result from agent response
     verification_outcome = get_execution_result(execution_result)
-    dct: ExecuteNodeResult = {
-        "agent_outcome": {
-            "agent": agent_name,
-            "result": verification_outcome.get("reasoning", "No reasoning provided"),
-            "status": "success" if verification_outcome.get("passed") else "failed",
-        },
-        "messages": new_messages,
-        "llm_calls": get_llm_calls(state),
-    }
-    if "suggestions" in verification_outcome:
-        dct["next_step_suggestion"] = verification_outcome["suggestions"]
 
-    return dct
+    # Build agent outcome with verification result
+    agent_outcome = AgentOutcome(
+        agent=agent_name,
+        messages=new_messages,
+        status="success" if verification_outcome.get("passed") else "failed",
+        result=verification_outcome.get("reasoning", "No reasoning provided"),
+    )
+
+    # Add suggestions to agent outcome if present
+    if "suggestions" in verification_outcome:
+        agent_outcome["next_step_suggestion"] = verification_outcome["suggestions"]
+
+    return ExecuteNodeResult(
+        agent_outcomes=[agent_outcome],
+        messages=new_messages,
+        llm_calls=get_llm_calls(state),
+    )
 
 
 def get_execution_result(execution_result) -> VerificationResult:
