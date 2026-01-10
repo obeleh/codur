@@ -377,11 +377,7 @@ def list_files(
     state: AgentState | None = None,
 ) -> list[str]:
     """List files under a root, honoring ignore settings."""
-    if path and root:
-        raise ValueError("Specify either 'path' or 'root', not both.")
-    if path:
-        root = path
-    root_path = resolve_root(root)
+    root_path = resolve_path(path, root)
     config = get_config(state)
     results: list[str] = []
     for file_path in _iter_files(root_path, config):

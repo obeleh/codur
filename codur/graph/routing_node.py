@@ -83,14 +83,15 @@ def routing_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> 
         }
 
     last_tool_call = get_last_tool_output(state)
-    if last_tool_call.tool == "done":
+    last_tool_name = last_tool_call.tool if last_tool_call else None
+    if last_tool_name == "done":
         if verbose:
             console.print(f"[green]✓ 'done' tool detected - accepting result[/green]")
         return ReviewNodeResult(
             final_response=result,
             next_action=NODE_END,
         )
-    elif last_tool_call.tool == "build_verification_response":
+    elif last_tool_name == "build_verification_response":
         if last_tool_call.args["passed"]:
             if verbose:
                 console.print(f"[green]✓ Verification passed - accepting result[/green]")

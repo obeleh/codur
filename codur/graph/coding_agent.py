@@ -201,7 +201,8 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
     # Meta tool handling
     # Get Last tool to detect "done"
     last_tool_call = get_last_tool_output_from_messages(new_messages)
-    if last_tool_call.tool == "done":
+    last_tool_name = last_tool_call.tool if last_tool_call else None
+    if last_tool_name == "done":
         return ExecuteNodeResult(
             agent_outcomes=[AgentOutcome(
                 agent=agent_name,
@@ -213,7 +214,7 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
             messages=new_messages,
             selected_agent="codur-verification",
         )
-    elif last_tool_call.tool == "build_verification_response":
+    elif last_tool_name == "build_verification_response":
         console.log("[green]Building verification response as requested by agent...[/green]")
         return ExecuteNodeResult(
             agent_outcomes=[AgentOutcome(

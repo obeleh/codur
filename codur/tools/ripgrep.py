@@ -18,7 +18,7 @@ from codur.graph.state import AgentState
 from codur.graph.state_operations import get_config
 from codur.tools.tool_annotations import ToolContext, tool_contexts, tool_scenarios
 from codur.utils.ignore_utils import get_exclude_dirs, should_respect_gitignore
-from codur.utils.path_utils import resolve_root
+from codur.utils.path_utils import resolve_root, resolve_path
 
 _DEFAULT_MAX_DEPTH = 50
 _DEFAULT_MAX_COUNT = 10_000
@@ -234,6 +234,7 @@ def ripgrep_search(
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def grep_files(
     pattern: str,
+    path: str | Path | None = None,
     root: str | Path | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
     case_sensitive: bool = False,
@@ -242,7 +243,7 @@ def grep_files(
     """Search file contents for a pattern (ripgrep-backed)."""
     if max_results <= 0:
         return []
-    root_path = resolve_root(root)
+    root_path = resolve_path(path, root)
     exclude_dirs = _resolve_exclude_dirs(state)
     if not _rg_available():
         return _python_grep_files(
