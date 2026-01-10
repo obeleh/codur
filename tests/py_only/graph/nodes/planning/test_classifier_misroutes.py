@@ -117,6 +117,12 @@ from codur.graph.planning.types import TaskType
             id="find-usage-explanation",
         ),
         pytest.param(
+            "find tests files that are not testing anything",
+            TaskType.EXPLANATION,
+            None,
+            id="find-test-files-explanation",
+        ),
+        pytest.param(
             "Copy the behavior of foo into bar in app.py",
             TaskType.CODE_FIX,
             None,

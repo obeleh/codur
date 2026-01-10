@@ -18,17 +18,6 @@ from langchain_core.messages import (
 class TestCodingAgentRecursionMessages:
     """Tests for message history preservation in coding agent recursive calls."""
 
-    def test_coding_recursion_builds_fresh_messages_first_call(self):
-        """Verify first call (recursion_depth=0) starts with fresh messages.
-
-        In coding_agent.py:
-        - recursion_depth=0: messages = [ShortenableSystemMessage, HumanMessage]
-        - recursion_depth>0: Should use accumulated message history from state
-        """
-        # This is documented behavior - verify it's correct
-        # First call should have minimal messages to avoid token bloat
-        assert True
-
     def test_recursive_call_should_include_tool_results(self):
         """Verify recursive calls should include ToolMessage results from state.
 
@@ -62,41 +51,6 @@ class TestCodingAgentRecursionMessages:
         assert "Hello" in state_messages[-1].content
 
         # Agent knows file was already read, won't read it again
-
-    def test_coding_iteration_vs_verification_recursion(self):
-        """Document the difference between coding agent iterations and verification recursion.
-
-        Coding agent (iterations):
-        - Uses iteration counter instead of recursion_depth
-        - Multiple attempts to fix code based on verification feedback
-        - Prompt includes verification errors to guide retry
-        - May need similar message passing improvements
-
-        Verification agent (recursion):
-        - Uses recursion_depth counter
-        - Single tool execution loop → analysis → response tool
-        - Recently fixed to pass tool results in recursive calls
-        """
-        assert True  # Documentation test
-
-    def test_tool_results_in_prompt_vs_message_history(self):
-        """Document how tool results are passed to agent.
-
-        Two mechanisms:
-        1. **Prompt text**: _build_coding_prompt includes context from state messages
-           - Works if tool results are in SystemMessage/HumanMessage
-           - May miss ToolMessage results
-
-        2. **Message history**: Full message list includes all message types
-           - More complete but requires careful construction
-           - This is how verification_agent now works after the fix
-
-        Current approach in coding_agent:
-        - Builds prompt from state messages (mechanism 1)
-        - Creates fresh messages list [system, human_prompt]
-        - Could miss some tool results if only in ToolMessage format
-        """
-        pass
 
     def test_prevents_duplicate_read_calls(self):
         """Example: Agent shouldn't read the same file twice in recursion.

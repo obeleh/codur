@@ -7,9 +7,9 @@ from langchain_core.messages import ToolMessage
 from codur.graph.planning.tool_analysis import (
     tool_results_include_read_file,
     select_file_from_tool_results,
-    extract_list_files,
     pick_preferred_python_file,
 )
+from codur.graph.utils import extract_list_files_output
 
 
 def _tool_msg(tool: str, output, args: dict | None = None) -> ToolMessage:
@@ -28,13 +28,13 @@ class TestToolAnalysis:
         messages = [_tool_msg("list_files", ["a.py"])]
         assert tool_results_include_read_file(messages) is False
 
-    def test_extract_list_files(self):
+    def test_extract_list_files_output(self):
         messages = [_tool_msg("list_files", ["main.py", "test.py"])]
-        files = extract_list_files(messages)
+        files = extract_list_files_output(messages)
         assert files == ["main.py", "test.py"]
 
         messages = [_tool_msg("grep_files", "some other output")]
-        files = extract_list_files(messages)
+        files = extract_list_files_output(messages)
         assert files == []
 
     def test_pick_preferred_python_file(self):

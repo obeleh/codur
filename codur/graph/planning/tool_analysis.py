@@ -12,13 +12,8 @@ def tool_results_include_read_file(messages: list[BaseMessage]) -> bool:
 
 def select_file_from_tool_results(messages: list[BaseMessage]) -> str | None:
     """Select a preferred Python file from list_files tool results."""
-    files = extract_list_files(messages)
+    files = extract_list_files_output(messages)
     return pick_preferred_python_file(files)
-
-
-def extract_list_files(messages: list[BaseMessage]) -> list[str]:
-    """Extract list of files from list_files tool output in messages."""
-    return extract_list_files_output(messages)
 
 
 def pick_preferred_python_file(files: list[str]) -> str | None:
@@ -28,13 +23,27 @@ def pick_preferred_python_file(files: list[str]) -> str | None:
     py_files = [path for path in files if path.endswith(".py")]
     if not py_files:
         return None
-    for preferred in ("app.py", "main.py"):
-        if preferred in py_files:
-            return preferred
-    for preferred in ("app.py", "main.py"):
-        matches = [path for path in py_files if path.endswith(f"/{preferred}")]
-        if matches:
-            return min(matches, key=lambda p: (p.count("/"), len(p)))
+
+    # Find all main.py or app.py files (but ignore if 3+ levels deep)
+    preferred_files = [
+        path for path in py_files
+        if (path == "main.py" or path == "app.py" or
+            path.endswith("/main.py") or path.endswith("/app.py"))
+        and path.count("/") < 2
+    ]
+
+    if preferred_files:
+        # Sort by: depth (fewest slashes = closest to root),
+        # then prefer main.py over app.py, then shortest length
+        def sort_key(p):
+            is_app = p.endswith("app.py")
+            return p.count("/"), is_app, len(p)
+        return min(preferred_files, key=sort_key)
+
+    # Fallback: no main.py or app.py found
+    # Abort if too many candidates to choose from
+    if len(py_files) > 5:
+        return None
     if len(py_files) == 1:
         return py_files[0]
     return min(py_files, key=lambda p: (p.count("/"), len(p)))

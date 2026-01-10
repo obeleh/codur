@@ -29,7 +29,9 @@ _WEB_SEARCH_PATTERNS = PatternConfig(
     # Note: These are specific code artifacts, not verbs like "create" or "write"
     negative_keywords=frozenset({
         "code", "script", "function", "class", "module", "api", "cli", "library",
-        "program", "dashboard", "ui", "interface", "frontend", "backend"
+        "program", "dashboard", "ui", "interface", "frontend", "backend",
+        "test", "tests", "file", "files", "codebase", "usage", "directory",
+        "project", "implementation", "repository"
     }),
     file_extensions=frozenset(),  # Web search doesn't involve local files
     phrases=frozenset({

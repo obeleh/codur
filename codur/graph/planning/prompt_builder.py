@@ -38,27 +38,11 @@ class PlanningPromptBuilder:
 7. For simple file operations (move/copy/delete) → use tool, not delegate
 9. If the task is a code fix/generation and no file is mentioned, call list_files first to discover likely involved files, then read a likely .py file
 
-**WEB SEARCH & RESEARCH:**
-When user asks for information you don't have (real-time data, current weather, latest news):
-- Use `duckduckgo_search` with a specific query.
-- Use `fetch_webpage` if you have a specific URL.
-Example: "How is the weather in Amsterdam today?"
-{{"action": "tool", "agent": null, "reasoning": "need real-time weather info", "tool_calls": [{{"tool": "duckduckgo_search", "args": {{"query": "weather in Amsterdam today"}}}}]}}
-
 **FILE OPERATIONS - MANDATORY TOOL USAGE:**
 Any request containing words like "move", "copy", "delete", "read", "write" + file path MUST return:
 {{"action": "tool", "agent": null, "reasoning": "file operation", "response": null, "tool_calls": [{{"tool": "move_file", "args": {{...}}}}]}}
 
 DO NOT suggest commands. DO NOT respond with instructions. EXECUTE the tool directly.
-
-**TWO-STEP FLOW FOR FILE-BASED CODING CHALLENGES:**
-When user asks to "implement" or "fix" code in a file (@file) with requirements:
-- Step 1: Use action: "tool" with read_file to get the file contents (docstring, current code)
-- Step 2: Include `"agent": "agent:codur-coding"` in the same JSON so the framework routes directly after the tool
-
-Example flow: "Implement the title case function in @main.py based on the docstring"
-1. Planning: Read @main.py (tool action) with agent:codur-coding → system gets docstring + current implementation
-2. Review: After tool result, the graph routes directly to agent:codur-coding (no extra planning round)
 
 {tools_section}
 
@@ -77,6 +61,7 @@ Example flow: "Implement the title case function in @main.py based on the docstr
 - "agent:<name>" for built-in agents (example: agent:ollama, agent:codex, agent:claude_code, agent:codur-coding)
 - "llm:<profile>" for configured LLM profiles (example: llm:groq-70b)
 - "agent:codur-coding" for specialized coding challenges with optional context
+- "agent:codur-explanation" for code explanation tasks
 - Default agent: {default_agent}
 
 Respond with ONLY a valid JSON object:

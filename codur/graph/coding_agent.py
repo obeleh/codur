@@ -14,13 +14,12 @@ from codur.graph.state_operations import (
     add_messages,
     get_next_step_suggestion,
     get_last_tool_output_from_messages,
-    set_next_action,
 )
 from codur.tools.schema_generator import get_function_schemas
 from codur.tools.registry import list_tools_for_tasks
 from codur.utils.llm_calls import LLMCallLimitExceeded
 from codur.utils.llm_helpers import create_and_invoke_with_tool_support
-from codur.constants import TaskType, ACTION_END
+from codur.constants import TaskType
 
 """
 NOTE:

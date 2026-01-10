@@ -65,6 +65,7 @@ Screen {
 RichLog {
     border: none;
     background: $panel;
+    height: 1fr;
 }
 
 #log,
@@ -77,11 +78,18 @@ RichLog {
     background: $panel;
 }
 
-TextArea {
+#input {
     border: none;
     background: $panel;
-    height: 3;
+    height: 1fr;
     min-height: 3;
+}
+
+#log,
+#debug-log {
+    border: none;
+    background: $panel;
+    height: 1fr;
 }
 
 #log:focus,

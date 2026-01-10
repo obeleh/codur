@@ -24,7 +24,7 @@ warnings.filterwarnings(
 
 from textual.app import App, ComposeResult
 from textual.containers import Container
-from textual.widgets import Header, TextArea, RichLog, Static
+from textual.widgets import Header, TextArea, Static, RichLog
 from textual import events
 from textual.binding import Binding
 from textual.theme import Theme

@@ -213,16 +213,12 @@ def _build_phase2_messages(
     prompt_messages = [system_message] + list(messages)
 
     if has_tool_results:
-        # For retries or tool results, be explicit about next steps
-        followup_prompt = SystemMessage(
-            content=(
-                "Tool results or verification errors are available above. Review them and respond with valid JSON.\n"
-                "1. If tool results (like web search or file read) provide the answer → use action: 'respond' with the answer.\n"
-                "2. If verification failed → use action: 'delegate' to an agent to fix the issues.\n"
-                "3. If more tools are needed → use action: 'tool'.\n"
-                "Return ONLY valid JSON in the required format."
-            )
+        system_message.content += (
+            "Tool results or verification errors are available above. Review them and respond with valid JSON.\n"
+            "1. If tool results (like web search or file read) provide the answer → use action: 'respond' with the answer.\n"
+            "2. If verification failed → use action: 'delegate' to an agent to fix the issues.\n"
+            "3. If more tools are needed → use action: 'tool'.\n"
+            "Return ONLY valid JSON in the required format."
         )
-        prompt_messages.insert(1, followup_prompt)
 
     return prompt_messages

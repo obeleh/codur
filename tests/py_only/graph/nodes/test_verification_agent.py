@@ -225,15 +225,6 @@ class TestVerificationAgentRecursionMessages:
     preventing the agent from calling the same tool multiple times.
     """
 
-    def test_recursion_depth_zero_builds_fresh_messages(self):
-        """Verify first call (depth=0) starts with fresh messages."""
-        # This is a behavioral test showing the message building strategy
-        # In actual execution:
-        # - recursion_depth=0: messages = [ShortenableSystemMessage, HumanMessage]
-        # - recursion_depth>0: messages = get_messages(state) + [HumanMessage]
-
-        assert True  # Strategy is tested indirectly through integration
-
     def test_recursive_call_includes_tool_results(self):
         """Verify recursive calls include ToolMessage results from state."""
         # Simulate accumulated message history from first tool call
