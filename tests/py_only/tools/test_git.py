@@ -106,3 +106,43 @@ def test_git_stage_all_requires_write(git_repo):
     (git_repo / "new.txt").write_text("New file", encoding="utf-8")
     with pytest.raises(ValueError, match="Git write tools are disabled"):
         git_stage_all(root=git_repo, config=MockConfigNoWrite())
+
+
+def test_git_stage_files_rejects_outside_root(tmp_path, mock_config):
+    """Test that git_stage_files reports errors for paths outside the workspace root (when allow_outside_root=False)."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    repo = pygit2.init_repository(str(root))
+    repo.config["user.name"] = "Test User"
+    repo.config["user.email"] = "test@example.com"
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("content", encoding="utf-8")
+
+    # Note: git_stage_files collects errors instead of raising
+    result = git_stage_files([str(outside)], root=root, config=mock_config, allow_outside_root=False)
+    assert len(result["errors"]) > 0
+    assert any("Path escapes workspace root" in err or "Path is outside repository" in err for err in result["errors"])
+
+
+def test_git_stage_files_relative_path(git_repo, mock_config):
+    """Test that git_stage_files works with relative paths."""
+    (git_repo / "new.txt").write_text("New file", encoding="utf-8")
+
+    result = git_stage_files(["new.txt"], root=git_repo, config=mock_config)
+    assert "new.txt" in result["added"]
+
+
+def test_git_stage_files_dotdot_path(tmp_path, mock_config):
+    """Test that ../ in path is validated correctly."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "sub").mkdir()
+    repo = pygit2.init_repository(str(root))
+    repo.config["user.name"] = "Test User"
+    repo.config["user.email"] = "test@example.com"
+
+    # Note: git_stage_files collects errors instead of raising
+    result = git_stage_files(["../outside.txt"], root=root / "sub", config=mock_config, allow_outside_root=False)
+    assert len(result["errors"]) > 0
+    assert any("Path escapes workspace root" in err or "Path is outside repository" in err for err in result["errors"])

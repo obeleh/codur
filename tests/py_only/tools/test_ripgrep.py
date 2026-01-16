@@ -99,3 +99,77 @@ def test_ripgrep_search_errors_when_rg_missing(temp_fs, monkeypatch):
     monkeypatch.setattr("codur.tools.ripgrep._rg_available", lambda: False)
     with pytest.raises(ValueError, match="ripgrep not found"):
         ripgrep_search("hello", root=temp_fs)
+
+
+# Path resolution tests for grep_files
+def test_grep_files_with_path_parameter(temp_fs):
+    """Test that grep_files correctly uses the path parameter."""
+    results = grep_files("hello", path="sub", root=temp_fs)
+    files = {entry["file"] for entry in results}
+    # Should only find matches in the sub directory
+    assert "match.txt" in files
+    assert "lower.txt" not in files
+
+
+def test_grep_files_path_and_root_interaction(temp_fs):
+    """Test that path parameter is resolved relative to root."""
+    # Create nested structure
+    nested = temp_fs / "nested"
+    nested.mkdir()
+    (nested / "test.txt").write_text("hello nested", encoding="utf-8")
+
+    # Search with path relative to root
+    results = grep_files("hello", path="nested", root=temp_fs)
+    files = {entry["file"] for entry in results}
+    assert "test.txt" in files
+
+
+def test_grep_files_rejects_path_outside_root(temp_fs):
+    """Test that grep_files rejects paths that escape the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        grep_files("hello", path="../outside", root=temp_fs)
+
+
+def test_grep_files_absolute_path_inside_root(temp_fs):
+    """Test that grep_files accepts absolute paths within the root."""
+    subdir = temp_fs / "sub"
+    results = grep_files("hello", path=str(subdir), root=temp_fs)
+    files = {entry["file"] for entry in results}
+    assert "match.txt" in files
+
+
+def test_grep_files_absolute_path_outside_root(temp_fs):
+    """Test that grep_files rejects absolute paths outside the root."""
+    outside = temp_fs.parent / "outside"
+    outside.mkdir(exist_ok=True)
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        grep_files("hello", path=str(outside), root=temp_fs)
+
+
+def test_grep_files_path_without_root(temp_fs):
+    """Test that when path is provided without root, it searches that path."""
+    # When path is an absolute path within the workspace
+    subdir = temp_fs / "sub"
+    from codur.utils.path_utils import set_default_root
+
+    # Set the default root so the path validation works
+    old_root = None
+    set_default_root(temp_fs)
+    try:
+        results = grep_files("hello", path="sub")
+        files = {entry["file"] for entry in results}
+        assert "match.txt" in files
+    finally:
+        set_default_root(old_root)
+
+
+def test_grep_files_with_dotdot_path(temp_fs):
+    """Test that ../ in path is resolved correctly and validated."""
+    # Create structure
+    (temp_fs / "a").mkdir()
+    (temp_fs / "b").mkdir()
+    (temp_fs / "b" / "test.txt").write_text("hello", encoding="utf-8")
+
+    # Try to access sibling directory using ../
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        grep_files("hello", path="../b", root=temp_fs / "a")

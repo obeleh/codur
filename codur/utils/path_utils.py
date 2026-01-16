@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from codur.utils.validation import validate_within_workspace
+
 _DEFAULT_ROOT: Path | None = None
 
 
@@ -35,8 +37,6 @@ def resolve_path(
     raw_path = Path(path)
     target = raw_path if raw_path.is_absolute() else root_path / raw_path
     target = target.resolve()
-    if allow_outside_root:
-        return target
-    if target == root_path or root_path in target.parents:
-        return target
-    raise ValueError(f"Path escapes workspace root: {path}")
+    if not allow_outside_root:
+        validate_within_workspace(target, root_path)
+    return target

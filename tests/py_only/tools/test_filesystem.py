@@ -53,7 +53,7 @@ def test_move_file(temp_fs):
     assert (temp_fs / "moved.txt").read_text(encoding="utf-8") == "Hello World"
 
 def test_list_files(temp_fs):
-    files = list_files(path=temp_fs)
+    files = list_files(root=temp_fs)
     assert "file1.txt" in files
     assert "file2.txt" in files
     assert os.path.join("subdir", "file3.txt") in files
@@ -206,3 +206,91 @@ def test_copy_file_to_dir_create_dirs_false_raises(temp_fs):
     assert result["action"] == "copy_to_dir"
     assert "created" in result["destination_dir"]
     assert (temp_fs / "created" / "file1.txt").exists()
+
+
+# Path resolution tests
+def test_write_file_rejects_outside_root(temp_fs):
+    """Test that write_file rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        write_file("../outside.txt", "content", root=temp_fs)
+
+
+def test_copy_file_source_outside_root(temp_fs):
+    """Test that copy_file rejects source paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        copy_file("../outside.txt", "dest.txt", root=temp_fs)
+
+
+def test_copy_file_destination_outside_root(temp_fs):
+    """Test that copy_file rejects destination paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        copy_file("file1.txt", "../outside.txt", root=temp_fs)
+
+
+def test_move_file_source_outside_root(temp_fs):
+    """Test that move_file rejects source paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        move_file("../outside.txt", "dest.txt", root=temp_fs)
+
+
+def test_move_file_destination_outside_root(temp_fs):
+    """Test that move_file rejects destination paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        move_file("file1.txt", "../outside.txt", root=temp_fs)
+
+
+def test_delete_file_outside_root(temp_fs):
+    """Test that delete_file rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        delete_file("../outside.txt", root=temp_fs)
+
+
+def test_list_files_with_subdirectory_path(temp_fs):
+    """Test that list_files works with a subdirectory path."""
+    files = list_files(path="subdir", root=temp_fs)
+    assert "file3.txt" in files
+    assert "file1.txt" not in files
+
+
+def test_list_files_rejects_outside_root(temp_fs):
+    """Test that list_files rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        list_files(path="../outside", root=temp_fs)
+
+
+def test_read_file_absolute_path_inside_root(temp_fs):
+    """Test that read_file works with absolute paths inside the root."""
+    abs_path = temp_fs / "file1.txt"
+    content = read_file(str(abs_path), root=temp_fs)
+    assert content == "Hello World"
+
+
+def test_read_file_absolute_path_outside_root(temp_fs):
+    """Test that read_file rejects absolute paths outside the root."""
+    outside = temp_fs.parent / "outside.txt"
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        read_file(str(outside), root=temp_fs)
+
+
+def test_append_file_rejects_outside_root(temp_fs):
+    """Test that append_file rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        append_file("../outside.txt", "content", root=temp_fs)
+
+
+def test_replace_in_file_rejects_outside_root(temp_fs):
+    """Test that replace_in_file rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        replace_in_file("../outside.txt", "old", "new", root=temp_fs)
+
+
+def test_inject_lines_rejects_outside_root(temp_fs):
+    """Test that inject_lines rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        inject_lines("../outside.txt", line=1, content="test", root=temp_fs)
+
+
+def test_replace_lines_rejects_outside_root(temp_fs):
+    """Test that replace_lines rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        replace_lines("../outside.txt", start_line=1, end_line=1, content="test", root=temp_fs)

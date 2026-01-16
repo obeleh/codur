@@ -162,6 +162,7 @@ class ExplanationStrategy:
             f"- {suggested_tools}\n"
             "- Return ONLY a valid JSON object.\n"
             "Examples (context-aware):\n"
-            f"{format_examples(examples)}"
+            f"{format_examples(examples)}\n"
+            "if enough information is collected hand it off to the explaining agent. \"codur-explaining\"\n"
         )
         return format_focus_prompt(build_base_prompt(config), focus, classification.detected_files)

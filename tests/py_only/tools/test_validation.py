@@ -153,3 +153,46 @@ class TestRunPytest:
         assert result["success"] is True
         assert result["exit_code"] == 0
         assert result["stdout"] == "ok"
+
+    def test_run_pytest_rejects_paths_outside_root(self, tmp_path: Path):
+        """Test that run_pytest rejects paths outside the workspace root."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            run_pytest(root=root, paths=[str(outside)])
+
+    def test_run_pytest_relative_paths(self, tmp_path: Path):
+        """Test that run_pytest works with relative paths."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        (root / "test_file.py").write_text("def test_foo(): pass", encoding="utf-8")
+
+        process = mock.Mock()
+        process.communicate.return_value = ("ok\n", "")
+        process.returncode = 0
+
+        with mock.patch("subprocess.Popen", return_value=process):
+            result = run_pytest(root=root, paths=["test_file.py"])
+        assert result["success"] is True
+
+    def test_run_pytest_dotdot_paths(self, tmp_path: Path):
+        """Test that ../ in path is validated correctly."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        (root / "sub").mkdir()
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            run_pytest(root=root / "sub", paths=["../outside.py"])
+
+    def test_run_pytest_cwd_outside_root(self, tmp_path: Path):
+        """Test that run_pytest rejects cwd outside the workspace root."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            run_pytest(root=root, cwd=str(outside))

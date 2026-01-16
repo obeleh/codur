@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from langchain_core.messages import BaseMessage
+
 from codur.config import CodurConfig
 from codur.graph.node_types import PlanNodeResult, PlanningDecision
 from codur.utils.config_helpers import require_default_agent
@@ -15,6 +17,7 @@ class PlanningDecisionHandler:
         self,
         decision: PlanningDecision,
         iterations: int,
+        response: BaseMessage,
     ) -> PlanNodeResult:
         action = decision.get("action", "delegate")
 
@@ -31,6 +34,7 @@ class PlanningDecisionHandler:
                 "tool_calls": decision.get("tool_calls", []),
                 "selected_agent": decision.get("agent"),
                 "iterations": iterations + 1,
+                "messages": [response],
             }
         if action == "delegate":
             default_agent = require_default_agent(self.config)

@@ -333,3 +333,66 @@ Some text.
         assert len(tables) == 1
         assert tables[0]["headers"] == ["Col1", "Col2"]
         assert len(tables[0]["rows"]) == 2
+
+
+class TestMarkdownPathResolution:
+    """Test path resolution and validation in markdown tools."""
+
+    def test_markdown_outline_rejects_outside_root(self, tmp_path):
+        """Test that markdown_outline rejects paths outside the workspace root."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        outside = tmp_path / "outside.md"
+        outside.write_text("# Title", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            markdown_outline(str(outside), root=root)
+
+    def test_markdown_outline_accepts_inside_root(self, tmp_path):
+        """Test that markdown_outline accepts paths inside the workspace root."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        inside = root / "test.md"
+        inside.write_text("# Title", encoding="utf-8")
+
+        outline = markdown_outline(str(inside), root=root)
+        assert "Title" in outline
+
+    def test_markdown_outline_relative_path(self, tmp_path):
+        """Test that markdown_outline works with relative paths."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        inside = root / "test.md"
+        inside.write_text("# Title", encoding="utf-8")
+
+        outline = markdown_outline("test.md", root=root)
+        assert "Title" in outline
+
+    def test_markdown_extract_sections_rejects_outside_root(self, tmp_path):
+        """Test that markdown_extract_sections rejects paths outside the workspace root."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        outside = tmp_path / "outside.md"
+        outside.write_text("# Title\n## Section", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            markdown_extract_sections(str(outside), ["Section"], root=root)
+
+    def test_markdown_extract_tables_rejects_outside_root(self, tmp_path):
+        """Test that markdown_extract_tables rejects paths outside the workspace root."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        outside = tmp_path / "outside.md"
+        outside.write_text("| A | B |\n|---|---|\n| 1 | 2 |", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            markdown_extract_tables(str(outside), root=root)
+
+    def test_markdown_outline_dotdot_path(self, tmp_path):
+        """Test that ../ in path is validated correctly."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        (root / "sub").mkdir()
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            markdown_outline("../outside.md", root=root / "sub")

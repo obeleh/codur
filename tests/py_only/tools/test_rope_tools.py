@@ -110,3 +110,95 @@ def test_rope_extract_method_creates_new_method():
         assert "x = 1" in updated
         assert "return x, y" in updated
         assert "changed_files" in result
+
+
+def test_rope_find_usages_rejects_outside_root():
+    """Test that rope_find_usages rejects paths outside the workspace root."""
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir) / "workspace"
+        root.mkdir()
+        (root / "a.py").write_text("def foo():\n    return 1\n")
+
+        outside = Path(tmpdir) / "outside.py"
+        outside.write_text("def bar():\n    return 2\n")
+
+        import pytest
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            rope_find_usages(path=str(outside), line=1, column=4, root=root)
+
+
+def test_rope_find_definition_rejects_outside_root():
+    """Test that rope_find_definition rejects paths outside the workspace root."""
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir) / "workspace"
+        root.mkdir()
+        (root / "a.py").write_text("def foo():\n    return 1\n")
+
+        outside = Path(tmpdir) / "outside.py"
+        outside.write_text("def bar():\n    return 2\n")
+
+        import pytest
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            rope_find_definition(path=str(outside), line=1, column=4, root=root)
+
+
+def test_rope_rename_symbol_rejects_outside_root():
+    """Test that rope_rename_symbol rejects paths outside the workspace root."""
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir) / "workspace"
+        root.mkdir()
+        (root / "a.py").write_text("def foo():\n    return 1\n")
+
+        outside = Path(tmpdir) / "outside.py"
+        outside.write_text("def bar():\n    return 2\n")
+
+        import pytest
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            rope_rename_symbol(path=str(outside), line=1, column=4, new_name="baz", root=root)
+
+
+def test_rope_move_module_rejects_outside_root():
+    """Test that rope_move_module rejects paths outside the workspace root."""
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir) / "workspace"
+        root.mkdir()
+        (root / "a.py").write_text("def foo():\n    return 1\n")
+        (root / "pkg").mkdir()
+
+        outside = Path(tmpdir) / "outside.py"
+        outside.write_text("def bar():\n    return 2\n")
+
+        import pytest
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            rope_move_module(path=str(outside), destination_dir="pkg", root=root)
+
+
+def test_rope_extract_method_rejects_outside_root():
+    """Test that rope_extract_method rejects paths outside the workspace root."""
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir) / "workspace"
+        root.mkdir()
+
+        outside = Path(tmpdir) / "outside.py"
+        content = "def foo():\n    x = 1\n    y = 2\n    return x + y\n"
+        outside.write_text(content)
+
+        import pytest
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            rope_extract_method(
+                path=str(outside),
+                extracted_name="calc",
+                start_offset=0,
+                end_offset=10,
+                root=root,
+            )
+
+
+def test_rope_find_usages_relative_path():
+    """Test that rope_find_usages works with relative paths."""
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        (root / "a.py").write_text("def foo():\n    return 1\n\nfoo()\n")
+
+        result = rope_find_usages(path="a.py", line=1, column=4, root=root)
+        assert result["count"] > 0

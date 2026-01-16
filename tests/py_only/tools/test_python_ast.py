@@ -213,3 +213,66 @@ class Bar:
             )
             assert truncated["truncated"] is True
             assert truncated["count"] == 1
+
+
+class TestPythonAstPathResolution:
+    """Test path resolution and validation in Python AST tools."""
+
+    def test_python_ast_dependencies_rejects_outside_root(self, tmp_path):
+        """Test that python_ast_dependencies rejects paths outside the workspace root."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        outside = tmp_path / "outside.py"
+        outside.write_text("def foo(): pass")
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            python_ast_dependencies(str(outside), root=root)
+
+    def test_python_ast_dependencies_accepts_inside_root(self, tmp_path):
+        """Test that python_ast_dependencies accepts paths inside the workspace root."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        inside = root / "test.py"
+        inside.write_text("def foo(): pass")
+
+        deps = python_ast_dependencies(str(inside), root=root)
+        assert isinstance(deps, list)
+
+    def test_python_ast_dependencies_relative_path(self, tmp_path):
+        """Test that python_ast_dependencies works with relative paths."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        inside = root / "test.py"
+        inside.write_text("def foo(): pass")
+
+        deps = python_ast_dependencies("test.py", root=root)
+        assert isinstance(deps, list)
+
+    def test_python_ast_graph_rejects_outside_root(self, tmp_path):
+        """Test that python_ast_graph rejects paths outside the workspace root."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        outside = tmp_path / "outside.py"
+        outside.write_text("def foo(): pass")
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            python_ast_graph(str(outside), root=root)
+
+    def test_python_ast_outline_rejects_outside_root(self, tmp_path):
+        """Test that python_ast_outline rejects paths outside the workspace root."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        outside = tmp_path / "outside.py"
+        outside.write_text("def foo(): pass")
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            python_ast_outline(str(outside), root=root)
+
+    def test_python_ast_dependencies_dotdot_path(self, tmp_path):
+        """Test that ../ in path is validated correctly."""
+        root = tmp_path / "workspace"
+        root.mkdir()
+        (root / "sub").mkdir()
+
+        with pytest.raises(ValueError, match="Path escapes workspace root"):
+            python_ast_dependencies("../outside.py", root=root / "sub")

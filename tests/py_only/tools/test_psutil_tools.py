@@ -74,3 +74,45 @@ def test_system_processes_list_detailed():
         assert "create_time" in entry
         assert "username" in entry
         assert "cmdline" in entry
+
+
+def test_system_disk_usage_rejects_outside_root(tmp_path):
+    """Test that system_disk_usage rejects paths outside the workspace root."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        system_disk_usage(path=str(outside), root=root)
+
+
+def test_system_disk_usage_relative_path(tmp_path):
+    """Test that system_disk_usage works with relative paths."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "subdir").mkdir()
+
+    result = system_disk_usage(path="subdir", root=root)
+    assert result["total"] > 0
+
+
+def test_system_disk_usage_dotdot_path(tmp_path):
+    """Test that ../ in path is validated correctly."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "sub").mkdir()
+
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        system_disk_usage(path="../outside", root=root / "sub")
+
+
+def test_system_disk_usage_absolute_path_inside_root(tmp_path):
+    """Test that system_disk_usage accepts absolute paths inside root."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    subdir = root / "subdir"
+    subdir.mkdir()
+
+    result = system_disk_usage(path=str(subdir), root=root)
+    assert result["total"] > 0

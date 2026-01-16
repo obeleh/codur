@@ -173,7 +173,7 @@ def llm_plan(
         if decision is None:
             raise ValueError("Parsed decision is None")
 
-        return _with_llm_calls(decision_handler.handle_decision(decision, iterations))
+        return _with_llm_calls(decision_handler.handle_decision(decision, iterations, response))
 
     except (json.JSONDecodeError, KeyError, ValueError) as exc:
         console.print("\n" + "=" * 80, style="red bold")

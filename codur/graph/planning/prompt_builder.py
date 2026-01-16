@@ -42,7 +42,7 @@ class PlanningPromptBuilder:
 Any request containing words like "move", "copy", "delete", "read", "write" + file path MUST return:
 {{"action": "tool", "agent": null, "reasoning": "file operation", "response": null, "tool_calls": [{{"tool": "move_file", "args": {{...}}}}]}}
 
-DO NOT suggest commands. DO NOT respond with instructions. EXECUTE the tool directly.
+DO NOT suggest commands. DO NOT respond with instructions. EXECUTE the tool directly. AVOID duplicate tool calls.
 
 {tools_section}
 

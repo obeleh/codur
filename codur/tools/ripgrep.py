@@ -243,7 +243,10 @@ def grep_files(
     """Search file contents for a pattern (ripgrep-backed)."""
     if max_results <= 0:
         return []
-    root_path = resolve_path(path, root)
+    if path is None:
+        root_path = resolve_root(root)
+    else:
+        root_path = resolve_path(path, root)
     exclude_dirs = _resolve_exclude_dirs(state)
     if not _rg_available():
         return _python_grep_files(

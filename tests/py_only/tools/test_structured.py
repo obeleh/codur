@@ -67,3 +67,58 @@ def test_set_ini_value_creates_section(temp_fs):
 
     loaded = read_ini("new.ini", root=temp_fs)
     assert loaded["NewSection"]["flag"] == "true"
+
+
+# Path resolution tests for structured tools
+def test_read_json_rejects_outside_root(temp_fs):
+    """Test that read_json rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        read_json("../outside.json", root=temp_fs)
+
+
+def test_write_json_rejects_outside_root(temp_fs):
+    """Test that write_json rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        write_json("../outside.json", {"key": "value"}, root=temp_fs)
+
+
+def test_set_json_value_rejects_outside_root(temp_fs):
+    """Test that set_json_value rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        set_json_value("../outside.json", "key", "value", root=temp_fs)
+
+
+def test_read_yaml_rejects_outside_root(temp_fs):
+    """Test that read_yaml rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        read_yaml("../outside.yaml", root=temp_fs)
+
+
+def test_write_yaml_rejects_outside_root(temp_fs):
+    """Test that write_yaml rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        write_yaml("../outside.yaml", {"key": "value"}, root=temp_fs)
+
+
+def test_set_yaml_value_rejects_outside_root(temp_fs):
+    """Test that set_yaml_value rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        set_yaml_value("../outside.yaml", "key", "value", root=temp_fs)
+
+
+def test_read_ini_rejects_outside_root(temp_fs):
+    """Test that read_ini rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        read_ini("../outside.ini", root=temp_fs)
+
+
+def test_write_ini_rejects_outside_root(temp_fs):
+    """Test that write_ini rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        write_ini("../outside.ini", {}, root=temp_fs)
+
+
+def test_set_ini_value_rejects_outside_root(temp_fs):
+    """Test that set_ini_value rejects paths outside the workspace root."""
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        set_ini_value("../outside.ini", "Section", "key", "value", root=temp_fs)

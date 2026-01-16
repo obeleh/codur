@@ -105,3 +105,53 @@ def test_code_quality_multiple_directories(tmp_path):
 
     assert result["files"] == 2
     assert len(result["runs"]) == 2
+
+
+def test_python_dependency_graph_rejects_paths_outside_root(tmp_path):
+    """Test that python_dependency_graph rejects paths outside the workspace root."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _write(outside / "test.py", "import os\n")
+
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        python_dependency_graph(root=root, paths=[str(outside)])
+
+
+def test_python_dependency_graph_relative_paths(tmp_path):
+    """Test that python_dependency_graph works with relative paths."""
+    root = tmp_path / "workspace"
+    root.mkdir()
+    _write(root / "test.py", "import os\n")
+
+    graph = python_dependency_graph(root=root, paths=["test.py"])
+    assert "test" in graph["nodes"]
+
+
+def test_code_quality_rejects_paths_outside_root(tmp_path):
+    """Test that code_quality rejects paths outside the workspace root."""
+    pytest.importorskip("prospector")
+    pytest.importorskip("pyflakes")
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _write(outside / "test.py", "import os\n")
+
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        code_quality(root=root, paths=[str(outside)], tools=["pyflakes"])
+
+
+def test_code_quality_dotdot_paths(tmp_path):
+    """Test that ../ in path is validated correctly."""
+    pytest.importorskip("prospector")
+    pytest.importorskip("pyflakes")
+
+    root = tmp_path / "workspace"
+    root.mkdir()
+    (root / "sub").mkdir()
+
+    with pytest.raises(ValueError, match="Path escapes workspace root"):
+        code_quality(root=root / "sub", paths=["../outside.py"], tools=["pyflakes"])
