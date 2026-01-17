@@ -91,7 +91,7 @@ def create_and_invoke_with_tool_support(
     temperature: float | None = None,
     invoked_by: str = "unknown",
     state: "AgentState | None" = None,
-) -> tuple[list[BaseMessage], ToolExecutionResult]:
+) -> tuple[list[BaseMessage], list[dict], ToolExecutionResult]:
     """
     Invoke LLM with tools if supported, else JSON fallback.
 
@@ -107,6 +107,9 @@ def create_and_invoke_with_tool_support(
         temperature: Override temperature
         invoked_by: Caller identifier for logging
         state: Agent state
+
+    Returns:
+        Tuple of (updated_messages, tool_calls, execution_result)
     """
     from codur.providers.base import ProviderRegistry
     from codur.llm import create_llm_with_tools
@@ -199,7 +202,7 @@ def create_and_invoke_with_tool_support(
 
     execution_result = execute_tool_calls(tool_calls, state, config, augment=False, summary_mode="brief")
     new_messages.extend(execution_result.messages)
-    return new_messages, execution_result
+    return new_messages, tool_calls, execution_result
 
 
 def _build_tool_descriptions_for_prompt(tool_schemas: list[dict]) -> str:

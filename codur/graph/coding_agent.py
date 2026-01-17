@@ -155,7 +155,7 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
         new_messages = []
 
     try:
-        new_messages, execution_result = create_and_invoke_with_tool_support(
+        new_messages, _, execution_result = create_and_invoke_with_tool_support(
             config,
             new_messages,
             tool_schemas,
@@ -174,7 +174,7 @@ def coding_node(state: AgentState, config: CodurConfig, summary: str, recursion_
         # Try fallback model
         fallback_profile = config.agents.preferences.fallback_model
         if fallback_profile:
-            new_messages, execution_result = create_and_invoke_with_tool_support(
+            new_messages, _, execution_result = create_and_invoke_with_tool_support(
                 config,
                 new_messages,
                 tool_schemas,

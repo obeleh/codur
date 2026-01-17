@@ -136,8 +136,6 @@ class ExplanationStrategy:
                 {
                     "action": "tool",
                     "agent": None,
-                    "reasoning": "read file for explanation",
-                    "response": None,
                     "tool_calls": example_tool_calls,
                 },
             ),
@@ -146,23 +144,19 @@ class ExplanationStrategy:
                 {
                     "action": "delegate",
                     "agent": "agent:codur-explaining",
-                    "reasoning": "Delegate to specialized explaining agent for detailed documentation",
-                    "response": None,
-                    "tool_calls": [],
                 },
             ),
         ]
         focus = (
             "**Task Focus: Explanation**\n"
-            "- If a file path is known, call read_file first (language-specific tools auto-injected via Tool Injectors).\n"
-            "- If no file path is known, call list_files to discover candidates.\n"
-            "- After tool results, you have two options:\n"
-            "  1. Respond directly (action: 'respond') for simple questions.\n"
-            "  2. Delegate to 'agent:codur-explaining' (action: 'delegate') for detailed code explanation and documentation.\n"
+            "- If a file path is known, call read_file first to understand the context\n"
+            "- If no file path is known, call list_files to discover candidates\n"
+            "- After investigation, you have two options:\n"
+            "  1. Use task_complete(\"<explanation>\") for simple questions you can answer directly\n"
+            "  2. Use delegate_task(\"agent:codur-explaining\", \"<context>\") for detailed code explanation\n"
             f"- {suggested_tools}\n"
-            "- Return ONLY a valid JSON object.\n"
-            "Examples (context-aware):\n"
-            f"{format_examples(examples)}\n"
-            "if enough information is collected hand it off to the explaining agent. \"codur-explaining\"\n"
+            "\n"
+            "Examples:\n"
+            f"{format_examples(examples)}"
         )
         return format_focus_prompt(build_base_prompt(config), focus, classification.detected_files)

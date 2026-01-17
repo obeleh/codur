@@ -130,8 +130,6 @@ class WebSearchStrategy:
                 {
                     "action": "tool",
                     "agent": None,
-                    "reasoning": "need real-time price info",
-                    "response": None,
                     "tool_calls": [{"tool": "duckduckgo_search", "args": {"query": "current price of Bitcoin"}}],
                 },
             ),
@@ -140,8 +138,6 @@ class WebSearchStrategy:
                 {
                     "action": "tool",
                     "agent": None,
-                    "reasoning": "need to fetch a specific URL",
-                    "response": None,
                     "tool_calls": [
                         {
                             "tool": "fetch_webpage",
@@ -153,11 +149,11 @@ class WebSearchStrategy:
         ]
         focus = (
             "**Task Focus: Web Search**\n"
-            "- Use duckduckgo_search (or fetch_webpage if a URL is provided).\n"
-            "- Do not respond without running the tool first.\n"
+            "- Use duckduckgo_search (or fetch_webpage if a URL is provided) to gather information\n"
+            "- After getting results, use task_complete(\"<answer based on search results>\") to respond\n"
             f"- {suggested_tools}\n"
-            "- Return ONLY a valid JSON object.\n"
-            "Examples (context-aware):\n"
+            "\n"
+            "Examples:\n"
             f"{format_examples(examples)}"
         )
         return format_focus_prompt(build_base_prompt(config), focus, classification.detected_files)

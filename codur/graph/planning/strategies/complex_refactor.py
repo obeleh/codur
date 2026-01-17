@@ -108,6 +108,7 @@ class ComplexRefactorStrategy:
         suggested_tools = format_tool_suggestions([
             "file_tree",
             "list_dirs",
+            "list_files",
             "python_dependency_graph",
             "python_ast_dependencies_multifile",
             "code_quality",
@@ -115,11 +116,6 @@ class ComplexRefactorStrategy:
             "search_files",
             "grep_files",
             "ripgrep_search",
-            "rope_find_usages",
-            "rope_find_definition",
-            "rope_rename_symbol",
-            "rope_move_module",
-            "rope_extract_method",
         ])
         default_agent = normalize_agent_name(
             config.agents.preferences.routing.get("multifile"),
@@ -135,8 +131,6 @@ class ComplexRefactorStrategy:
                 {
                     "action": "tool",
                     "agent": None,
-                    "reasoning": "discover files for multi-file refactor",
-                    "response": None,
                     "tool_calls": [{"tool": "list_files", "args": {}}],
                 },
             ),
@@ -145,19 +139,16 @@ class ComplexRefactorStrategy:
                 {
                     "action": "delegate",
                     "agent": default_agent,
-                    "reasoning": "multi-file refactor",
-                    "response": None,
-                    "tool_calls": [],
                 },
             ),
         ]
         focus = (
             "**Task Focus: Complex Refactor**\n"
-            "- This likely spans multiple files; consider list_files if no hints are present.\n"
-            "- Prefer multi-file capable agents when routing.\n"
+            "- This likely spans multiple files; use list_files if no hints are present\n"
+            "- After investigation, use delegate_task(\"<multi-file agent>\", \"<refactoring instructions>\")\n"
             f"- {suggested_tools}\n"
-            "- Return ONLY a valid JSON object.\n"
-            "Examples (context-aware):\n"
+            "\n"
+            "Examples:\n"
             f"{format_examples(examples)}"
         )
         return format_focus_prompt(build_base_prompt(config), focus, classification.detected_files)

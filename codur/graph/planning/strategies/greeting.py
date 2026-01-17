@@ -93,19 +93,15 @@ class GreetingStrategy:
                 "Hello",
                 {
                     "action": "respond",
-                    "agent": None,
-                    "reasoning": "greeting",
-                    "response": "Hello! How can I help?",
-                    "tool_calls": [],
                 },
             ),
         ]
         focus = (
             "**Task Focus: Greeting**\n"
-            "- Use action: \"respond\" with a short friendly greeting.\n"
-            "- Do not call tools or delegate.\n"
-            "- Return ONLY a valid JSON object.\n"
-            "Examples (context-aware):\n"
+            "- Use task_complete(\"<greeting message>\") to respond with a short friendly greeting.\n"
+            "- Do not call other tools or delegate.\n"
+            "\n"
+            "Examples:\n"
             f"{format_examples(examples)}"
         )
         return format_focus_prompt(build_base_prompt(config), focus, classification.detected_files)

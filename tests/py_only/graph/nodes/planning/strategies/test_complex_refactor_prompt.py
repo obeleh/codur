@@ -6,7 +6,12 @@ from codur.graph.planning.strategies.complex_refactor import ComplexRefactorStra
 from codur.graph.planning.types import ClassificationResult, TaskType
 
 
-def test_complex_refactor_prompt_suggests_rope_tools():
+def test_complex_refactor_prompt_suggests_investigation_tools():
+    """Test that complex refactor strategy suggests investigation tools.
+
+    After the tool-based refactor, the planner uses investigation tools
+    and delegates to agents for mutations rather than using mutation tools directly.
+    """
     strategy = ComplexRefactorStrategy()
     classification = ClassificationResult(
         task_type=TaskType.REFACTOR,
@@ -26,8 +31,10 @@ def test_complex_refactor_prompt_suggests_rope_tools():
 
     prompt = strategy.build_planning_prompt(classification, config)
 
-    assert "rope_find_usages" in prompt
-    assert "rope_find_definition" in prompt
-    assert "rope_rename_symbol" in prompt
-    assert "rope_move_module" in prompt
-    assert "rope_extract_method" in prompt
+    # Planner should suggest investigation tools
+    assert "list_files" in prompt
+    assert "python_dependency_graph" in prompt
+    assert "python_ast_dependencies_multifile" in prompt
+
+    # Should guide towards delegation
+    assert "delegate_task" in prompt

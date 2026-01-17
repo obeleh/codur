@@ -245,7 +245,7 @@ def verification_agent_node(
         new_messages = []
 
     try:
-        new_messages, execution_result = create_and_invoke_with_tool_support(
+        new_messages, _, execution_result = create_and_invoke_with_tool_support(
             config,
             new_messages,
             tool_schemas,

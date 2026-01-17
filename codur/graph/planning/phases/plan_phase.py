@@ -1,224 +1,215 @@
-"""Phase 2: Full LLM planning."""
+"""Phase 2: Full LLM planning with tool support."""
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING
 
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, SystemMessage, ToolMessage
+from langchain_core.messages import BaseMessage, SystemMessage, AIMessage
+from langchain_core.utils.function_calling import convert_to_openai_function
 from rich.console import Console
 
 from codur.config import CodurConfig
-from codur.constants import TaskType
-from codur.graph.node_types import PlanNodeResult, PlanningDecision
+from codur.graph.node_types import PlanNodeResult
 from codur.graph.state import AgentState
 from codur.graph.state_operations import (
     get_iterations,
-    get_llm_calls,
     get_messages,
     is_verbose,
-    get_first_human_message_content_from_messages,
 )
-from codur.llm import create_llm_profile
-from codur.utils.retry import LLMRetryStrategy
+from codur.utils.llm_helpers import create_and_invoke_with_tool_support
 from codur.utils.llm_calls import LLMCallLimitExceeded
 from codur.utils.config_helpers import require_default_agent
 from codur.graph.planning.types import ClassificationResult
 from codur.graph.planning.strategies import get_strategy_for_task
-from codur.graph.planning.tool_analysis import (
-    tool_results_include_read_file,
-    select_file_from_tool_results,
-)
-from codur.graph.planning.validators import looks_like_change_request
-from codur.utils.json_parser import JSONResponseParser
-
+from codur.graph.planning.tools import get_planning_tools
 
 if TYPE_CHECKING:
     from codur.graph.planning.prompt_builder import PlanningPromptBuilder
-    from codur.graph.planning.decision_handler import PlanningDecisionHandler
 
 console = Console()
 
+# Maximum investigation steps before forcing a decision
+MAX_PLANNING_STEPS = 3
 
-def _format_candidates(candidates, limit: int = 5) -> str:
-    if not candidates:
-        return "none"
-    trimmed = candidates[:limit]
-    return ", ".join(f"{item.task_type.value}:{item.confidence:.0%}" for item in trimmed)
+
+def _extract_tool_calls_from_results(execution_result) -> list[dict]:
+    """Extract tool calls from execution results."""
+    return [{"tool": r.get("tool"), "args": r.get("args", {})} for r in execution_result.results]
 
 
 def llm_plan(
     config: CodurConfig,
-    prompt_builder: "PlanningPromptBuilder",
-    decision_handler: "PlanningDecisionHandler",
-    json_parser: "JSONResponseParser",
+    prompt_builder: "PlanningPromptBuilder",  # Kept for compatibility, may be removed later
+    decision_handler: None,  # No longer used
+    json_parser: None,  # No longer used
     state: AgentState,
-    llm: BaseChatModel,
+    llm: None,  # No longer used - LLM created internally
 ) -> PlanNodeResult:
-    """Phase 2: Full LLM planning for uncertain cases.
+    """Phase 2: Full LLM planning using tool-based interaction.
 
-    This is the main planning phase that handles cases where:
-    - Textual patterns didn't match (Phase 0)
-    - Classification confidence was insufficient (Phase 1)
-
-    Uses context-aware prompt based on Phase 1 classification to reduce token usage.
+    This phase:
+    1. First tries strategy.execute() for heuristic shortcuts
+    2. If no shortcut, uses tool-based LLM planning
+    3. LLM can investigate (read_file, etc.) then decide (delegate_task, task_complete)
     """
     if "config" not in state:
         raise ValueError("AgentState must include config")
 
-    if is_verbose(state):
-        console.print("[bold blue]Planning (Phase 2: Full LLM Planning)...[/bold blue]")
-
-    # TODO: Is llm_calls begin used?
-    def _with_llm_calls(result: PlanNodeResult) -> PlanNodeResult:
-        result["llm_calls"] = get_llm_calls(state)
-        result["next_step_suggestion"] = None
-        return result
+    verbose = is_verbose(state)
+    if verbose:
+        console.print("[bold blue]Planning (Phase 2: Tool-Based LLM Planning)...[/bold blue]")
 
     messages = get_messages(state)
     iterations = get_iterations(state)
 
-    tool_results_present = any(
-        isinstance(msg, ToolMessage)
-        for msg in messages
-    )
-
-    classification = state.get("classification")
+    # Get classification from Phase 1
+    classification: ClassificationResult = state.get("classification")
     if not classification:
         raise ValueError("llm_plan requires 'classification' in AgentState")
-    prompt_messages = _build_phase2_messages(
-        messages, tool_results_present, classification, config
-    )
 
-    # If list_files results are present, select a likely python file and read it.
-    if (
-        tool_results_present
-        and not classification.detected_files
-        and not tool_results_include_read_file(messages)
-    ):
-        candidate = select_file_from_tool_results(messages)
-        if candidate:
-            coding_tasks = {TaskType.CODE_FIX, TaskType.CODE_GENERATION}
-            result = {
-                "next_action": "tool",
-                "tool_calls": [{"tool": "read_file", "args": {"path": candidate}}],
+    # Check for tool results from previous iterations
+    from langchain_core.messages import ToolMessage
+    tool_results_present = any(isinstance(msg, ToolMessage) for msg in messages)
+
+    # === HEURISTIC SHORTCUTS (via strategy.execute()) ===
+    # Strategies can return early if they can resolve without LLM
+    strategy = get_strategy_for_task(classification.task_type)
+    shortcut_result = strategy.execute(
+        classification=classification,
+        tool_results_present=tool_results_present,
+        messages=messages,
+        iterations=iterations,
+        config=config,
+        verbose=verbose,
+    )
+    if shortcut_result is not None:
+        if verbose:
+            console.print("[dim]Strategy resolved via heuristic shortcut[/dim]")
+        return shortcut_result
+
+    # === TOOL-BASED LLM PLANNING ===
+    # Build context-aware prompt from strategy
+    planning_prompt = strategy.build_planning_prompt(classification, config)
+
+    # Prepare tools
+    tools = get_planning_tools(include_investigation=True)
+    tool_schemas = [convert_to_openai_function(t) for t in tools]
+
+    # Build initial messages for this planning session
+    system_msg = SystemMessage(content=planning_prompt)
+    planning_messages = [system_msg] + list(messages)  # Will be extended by tool loop
+
+    # Planning loop - allows investigate → investigate → decide flows
+    for step in range(MAX_PLANNING_STEPS):
+        if verbose:
+            console.print(f"[dim]Planning step {step + 1}/{MAX_PLANNING_STEPS}[/dim]")
+
+        try:
+            # Invoke LLM with tool support
+            # This mutates planning_messages in place, appending AI + Tool messages
+            planning_messages, tool_calls, execution_result = create_and_invoke_with_tool_support(
+                config=config,
+                new_messages=planning_messages,
+                tool_schemas=tool_schemas,
+                temperature=config.llm.planning_temperature,
+                invoked_by="planning.llm_plan",
+                state=state,
+            )
+        except LLMCallLimitExceeded:
+            raise
+        except Exception as exc:
+            if verbose:
+                console.print(f"[red]Planning failed: {exc}[/red]")
+            # Fallback to default agent
+            default_agent = require_default_agent(config)
+            return {
+                "next_action": "delegate",
+                "selected_agent": default_agent,
                 "iterations": iterations + 1,
             }
-            if classification.task_type in coding_tasks:
-                result["selected_agent"] = "agent:codur-coding"
-            return _with_llm_calls(result)
 
-    # If no file hint is available for a change request, list files for discovery.
-    last_human_msg = get_first_human_message_content_from_messages(messages)
-    if (
-        not tool_results_present
-        and not classification.detected_files
-        and last_human_msg
-        and looks_like_change_request(last_human_msg)
-    ):
-        return _with_llm_calls({
-            "next_action": "tool",
-            "tool_calls": [{"tool": "list_files", "args": {}}],
-            "selected_agent": "agent:codur-coding",
-            "iterations": iterations + 1,
-        })
-
-    retry_strategy = LLMRetryStrategy(
-        max_attempts=config.planning.max_retry_attempts,
-        initial_delay=config.planning.retry_initial_delay,
-        backoff_factor=config.planning.retry_backoff_factor,
-    )
-    try:
-        # Create LLM for planning with lower temperature for more deterministic JSON output
-        planning_llm = create_llm_profile(
+        # Check for control tool calls
+        control_result = _check_for_control_action(
+            tool_calls,
+            planning_messages,
+            iterations,
             config,
-            config.llm.default_profile,
-            json_mode=True,
-            temperature=config.llm.planning_temperature
         )
+        if control_result is not None:
+            return control_result
 
-        active_llm, response, profile_name = retry_strategy.invoke_with_fallbacks(
-            config,
-            planning_llm,
-            prompt_messages,
-            state=state,
-            invoked_by="planning.llm_plan",
-        )
-        content = response.content
-        if is_verbose(state):
-            console.print(f"[dim]LLM content: {content}[/dim]")
-    except Exception as exc:
-        if isinstance(exc, LLMCallLimitExceeded):
-            raise
-        if "Failed to validate JSON" in str(exc):
-            console.print("  PLANNING ERROR - LLM returned invalid JSON", style="red bold on yellow")
+        # If no control action but tools were called (e.g., read_file),
+        # continue loop - LLM will see tool results on next iteration
+        if not tool_calls:
+            # LLM didn't call any tool - treat as direct response
+            last_content = _get_last_ai_content(planning_messages)
+            if verbose:
+                console.print("[yellow]LLM responded without using tools[/yellow]")
+            return {
+                "next_action": "end",
+                "final_response": last_content or "Task completed",
+                "messages": planning_messages,
+                "iterations": iterations + 1,
+            }
 
-        default_agent = require_default_agent(config)
-        if is_verbose(state):
-            console.print(f"[red]Planning failed: {str(exc)}[/red]")
-            console.print(f"[yellow]Falling back to default agent: {default_agent}[/yellow]")
-        return _with_llm_calls({
-            "next_action": "delegate",
-            "selected_agent": default_agent,
-            "iterations": iterations + 1,
-        })
-
-
-    try:
-        parser = JSONResponseParser()
-        decision = parser.parse(content)
-        decision = PlanningDecision(**decision)
-
-        if decision is None:
-            raise ValueError("Parsed decision is None")
-
-        return _with_llm_calls(decision_handler.handle_decision(decision, iterations, response))
-
-    except (json.JSONDecodeError, KeyError, ValueError) as exc:
-        console.print("\n" + "=" * 80, style="red bold")
-        console.print("  PLANNING ERROR - Failed to parse LLM decision", style="red bold on yellow")
-        console.print("=" * 80, style="red bold")
-        console.print(f"  Error Type: {type(exc).__name__}", style="red")
-        console.print(f"  Error Message: {str(exc)}", style="red")
-        console.print(f"  LLM Response: {content[:200]}...", style="yellow")
-        console.print("=" * 80 + "\n", style="red bold")
-
-        default_agent = require_default_agent(config)
-        console.print(f"  Falling back to default agent: {default_agent}", style="yellow")
-
-        return _with_llm_calls({
-            "next_action": "delegate",
-            "selected_agent": default_agent,
-            "iterations": iterations + 1,
-        })
+    # Max steps reached - force delegation to default agent
+    if verbose:
+        console.print("[yellow]Max planning steps reached, delegating to default[/yellow]")
+    default_agent = require_default_agent(config)
+    return {
+        "next_action": "delegate",
+        "selected_agent": default_agent,
+        "messages": planning_messages,
+        "iterations": iterations + 1,
+    }
 
 
-def _build_phase2_messages(
+def _check_for_control_action(
+    tool_calls: list[dict],
     messages: list[BaseMessage],
-    has_tool_results: bool,
-    classification: ClassificationResult,
+    iterations: int,
     config: CodurConfig,
-) -> list[BaseMessage]:
-    """Build prompt messages for Phase 2 with context-aware planning guidance.
+) -> PlanNodeResult | None:
+    """Check if any tool call is a control action (delegate_task, task_complete).
 
-    Uses the classification from Phase 1 to build a focused, task-specific prompt
-    that guides the LLM through multi-step reasoning (Chain-of-Thought) for
-    file-based coding tasks.
+    Returns PlanNodeResult if a control action was found, None otherwise.
     """
-    # Use context-aware prompt based on classification to guide multi-step planning
-    strategy = get_strategy_for_task(classification.task_type)
-    planning_prompt = strategy.build_planning_prompt(classification, config)
-    system_message = SystemMessage(content=planning_prompt)
-    prompt_messages = [system_message] + list(messages)
+    for call in tool_calls:
+        name = call.get("name") or call.get("tool")
+        args = call.get("args", {})
 
-    if has_tool_results:
-        system_message.content += (
-            "Tool results or verification errors are available above. Review them and respond with valid JSON.\n"
-            "1. If tool results (like web search or file read) provide the answer → use action: 'respond' with the answer.\n"
-            "2. If verification failed → use action: 'delegate' to an agent to fix the issues.\n"
-            "3. If more tools are needed → use action: 'tool'.\n"
-            "Return ONLY valid JSON in the required format."
-        )
+        if name == "delegate_task":
+            agent_name = args.get("agent_name")
+            if not agent_name:
+                agent_name = require_default_agent(config)
+            return {
+                "next_action": "delegate",
+                "selected_agent": agent_name,
+                "delegate_instructions": args.get("instructions", ""),
+                "messages": messages,
+                "iterations": iterations + 1,
+            }
 
-    return prompt_messages
+        elif name == "task_complete":
+            return {
+                "next_action": "end",
+                "final_response": args.get("response", "Task completed"),
+                "messages": messages,
+                "iterations": iterations + 1,
+            }
+
+    return None
+
+
+def _get_last_ai_content(messages: list[BaseMessage]) -> str | None:
+    """Extract content from the last AI message."""
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and msg.content:
+            content = msg.content
+            if isinstance(content, str):
+                return content
+            # Handle list content (some models return list of content blocks)
+            if isinstance(content, list):
+                text_parts = [c.get("text", "") for c in content if isinstance(c, dict)]
+                return " ".join(text_parts)
+    return None

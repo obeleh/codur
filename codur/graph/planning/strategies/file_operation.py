@@ -159,44 +159,32 @@ class FileOperationStrategy:
         suggested_tools = format_tool_suggestions([
             "list_dirs",
             "file_tree",
-            "copy_file_to_dir",
-            "move_file_to_dir",
+            "read_file",
         ])
         source_path, destination_path = select_example_files(classification.detected_files)
         examples = [
             build_example_line(
                 f"delete {source_path}",
                 {
-                    "action": "tool",
-                    "agent": None,
-                    "reasoning": "delete file",
-                    "response": None,
-                    "tool_calls": [{"tool": "delete_file", "args": {"path": source_path}}],
+                    "action": "delegate",
+                    "agent": "agent:codur-coding",
                 },
             ),
             build_example_line(
                 f"copy {source_path} to {destination_path}",
                 {
-                    "action": "tool",
-                    "agent": None,
-                    "reasoning": "copy file",
-                    "response": None,
-                    "tool_calls": [
-                        {
-                            "tool": "copy_file",
-                            "args": {"source": source_path, "destination": destination_path},
-                        }
-                    ],
+                    "action": "delegate",
+                    "agent": "agent:codur-coding",
                 },
             ),
         ]
         focus = (
             "**Task Focus: File Operation**\n"
-            "- Use action: \"tool\" with the correct file operation tool.\n"
-            "- Do not respond or delegate.\n"
+            "- File operations should be delegated to the coding agent\n"
+            "- Use delegate_task(\"agent:codur-coding\", \"<file operation instructions>\")\n"
             f"- {suggested_tools}\n"
-            "- Return ONLY a valid JSON object.\n"
-            "Examples (context-aware):\n"
+            "\n"
+            "Examples:\n"
             f"{format_examples(examples)}"
         )
         return format_focus_prompt(build_base_prompt(config), focus, classification.detected_files)

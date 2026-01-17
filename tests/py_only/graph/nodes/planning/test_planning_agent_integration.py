@@ -156,6 +156,9 @@ class TestPlanningNodeAgentSelection:
 
     def test_plan_selects_coding_agent_for_fix_task(self, config):
         """Test that planning selects coding agent for fix tasks."""
+        from types import SimpleNamespace
+        from langchain_core.messages import ToolMessage
+
         classification = ClassificationResult(
             task_type=TaskType.CODE_FIX,
             confidence=0.9,
@@ -164,9 +167,17 @@ class TestPlanningNodeAgentSelection:
             reasoning="test",
             candidates=[],
         )
+        config.llm = MagicMock()
+        config.llm.planning_temperature = 0.2
+        config.agents = MagicMock()
+        config.agents.preferences = MagicMock()
+        config.agents.preferences.default_agent = "agent:codur-coding"
+
+        # Add tool results to prevent the strategy shortcut from triggering
         state = {
             "messages": [
-                HumanMessage(content="Fix the title_case function in main.py")
+                HumanMessage(content="Fix the title_case function in main.py"),
+                ToolMessage(content="File contents here", tool_call_id="123")
             ],
             "iterations": 0,
             "verbose": False,
@@ -174,21 +185,30 @@ class TestPlanningNodeAgentSelection:
             "classification": classification,
         }
 
-        # Mock the LLM to return a coding agent selection
-        with patch('codur.graph.planning.phases.plan_phase.create_llm_profile') as mock_llm:
-            mock_model = MagicMock()
-            mock_response = MagicMock()
-            mock_response.content = json.dumps({
-                "action": "delegate",
-                "agent": "agent:codur-coding",
-                "reasoning": "This is a code fix task"
-            })
-            mock_model.invoke.return_value = mock_response
-            mock_llm.return_value = mock_model
+        # Mock create_and_invoke_with_tool_support to return a delegate_task tool call
+        with patch('codur.graph.planning.phases.plan_phase.create_and_invoke_with_tool_support') as mock_invoke:
+            # Create a mock execution result
+            tool_calls = [{
+                "name": "delegate_task",
+                "args": {
+                    "agent_name": "agent:codur-coding",
+                    "instructions": "Fix the title_case function"
+                }
+            }]
+            execution_result = SimpleNamespace(
+                results=[],
+                errors=[],
+                summary="",
+                messages=[]
+            )
+            mock_invoke.return_value = ([], tool_calls, execution_result)
 
             orchestrator = PlanningOrchestrator(config)
-            result = orchestrator.llm_plan(state, mock_model)
+            result = orchestrator.llm_plan(state, MagicMock())
+
             assert result is not None
+            assert result["next_action"] == "delegate"
+            assert result["selected_agent"] == "agent:codur-coding"
 
 
 class TestPlanningNodeWithLineBasedEditing:

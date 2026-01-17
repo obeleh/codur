@@ -9,8 +9,37 @@ from codur.config import CodurConfig
 from codur.graph.planning.prompt_builder import PlanningPromptBuilder
 
 
+def format_tool_usage_guidance() -> str:
+    """Return standard tool usage guidance for planning prompts."""
+    return """**How to Act:**
+- Use available tools directly to investigate or complete the task
+- Call `delegate_task(agent_name, instructions)` to hand off to a specialized agent
+- Call `task_complete(response)` to respond directly to the user
+- You may call investigation tools (read_file, list_files, search) before deciding
+
+**Agent Reference:**
+- "agent:codur-coding" for code modification, bug fixes, implementations
+- "agent:codur-explanation" for code explanation tasks
+- "llm:<profile>" for configured LLM profiles (e.g., llm:groq-70b)"""
+
+
 def build_base_prompt(config: CodurConfig) -> str:
-    return PlanningPromptBuilder(config).build_system_prompt()
+    """Build the base planning prompt using tool-based guidance."""
+    from codur.utils.config_helpers import require_default_agent
+
+    default_agent = require_default_agent(config)
+    tool_guidance = format_tool_usage_guidance()
+
+    return f"""You are Codur, an autonomous coding agent orchestrator.
+Your goal is to understand the user's request and either handle it directly or delegate to a specialized agent.
+
+{tool_guidance}
+
+**Rules:**
+- Do not ask the user for permission; just act
+- If a file is mentioned, READ IT first before delegating
+- If you need real-time information, use duckduckgo_search or fetch_webpage
+- Default agent for general tasks: {default_agent}"""
 
 
 def format_focus_prompt(base_prompt: str, focus: str, detected_files: list[str]) -> str:
@@ -41,7 +70,28 @@ def select_example_files(
 
 
 def build_example_line(user_request: str, decision: dict) -> str:
-    return f"- \"{user_request}\" -> {json.dumps(decision, ensure_ascii=True)}"
+    """Convert a decision dict to a tool-based example description."""
+    action = decision.get("action")
+
+    if action == "tool":
+        tools = decision.get("tool_calls", [])
+        if tools:
+            tool_desc = ", ".join(f'{t["tool"]}(...)' for t in tools)
+            agent = decision.get("agent")
+            if agent:
+                return f'- "{user_request}" → Call {tool_desc}, then delegate_task("{agent}", ...)'
+            return f'- "{user_request}" → Call {tool_desc}'
+        return f'- "{user_request}" → Investigate with tools'
+
+    elif action == "delegate":
+        agent = decision.get("agent", "default agent")
+        return f'- "{user_request}" → delegate_task("{agent}", "<instructions>")'
+
+    elif action == "respond":
+        return f'- "{user_request}" → task_complete("<response>")'
+
+    # Fallback for other actions
+    return f'- "{user_request}" → Respond directly'
 
 
 def format_examples(examples: list[str]) -> str:

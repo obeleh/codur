@@ -133,8 +133,6 @@ class CodeFixStrategy:
                 {
                     "action": "tool",
                     "agent": "agent:codur-coding",
-                    "reasoning": "read file to get context for coding agent",
-                    "response": None,
                     "tool_calls": example_tool_calls,
                 },
             ),
@@ -143,20 +141,18 @@ class CodeFixStrategy:
                 {
                     "action": "tool",
                     "agent": None,
-                    "reasoning": "discover likely involved files",
-                    "response": None,
                     "tool_calls": [{"tool": "list_files", "args": {}}],
                 },
             ),
         ]
         focus = (
             "**Task Focus: Code Fix**\n"
-            "- If a file path is known, call read_file first (language-specific tools auto-injected via Tool Injectors).\n"
-            "- If no file path is known, call list_files to discover candidates, then read a likely file.\n"
-            "- Prefer agent:codur-coding for coding challenges with docstrings/requirements.\n"
+            "- If a file path is known, call read_file first to understand the code\n"
+            "- If no file path is known, call list_files to discover candidates\n"
+            "- After investigation, use delegate_task(\"agent:codur-coding\", \"<context and instructions>\")\n"
             f"- {suggested_tools}\n"
-            "- Return ONLY a valid JSON object.\n"
-            "Examples (context-aware):\n"
+            "\n"
+            "Examples:\n"
             f"{format_examples(examples)}"
         )
         return format_focus_prompt(build_base_prompt(config), focus, classification.detected_files)

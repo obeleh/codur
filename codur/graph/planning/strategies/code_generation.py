@@ -104,11 +104,8 @@ class CodeGenerationStrategy:
         config: CodurConfig,
     ) -> str:
         suggested_tools = format_tool_suggestions([
-            "write_file",
-            "append_file",
-            "inject_function",
-            "inject_lines",
-            "replace_lines",
+            "read_file",
+            "list_files",
             "python_ast_outline",
             "read_json",
             "read_yaml",
@@ -131,8 +128,6 @@ class CodeGenerationStrategy:
                 {
                     "action": "tool",
                     "agent": "agent:codur-coding",
-                    "reasoning": "read file to get docstring and context",
-                    "response": None,
                     "tool_calls": example_tool_calls,
                 },
             ),
@@ -141,20 +136,17 @@ class CodeGenerationStrategy:
                 {
                     "action": "delegate",
                     "agent": default_agent,
-                    "reasoning": "code generation request",
-                    "response": None,
-                    "tool_calls": [],
                 },
             ),
         ]
         focus = (
             "**Task Focus: Code Generation**\n"
-            "- If a file path is known, call read_file first (language-specific tools auto-injected via Tool Injectors).\n"
-            "- If no file path is known, delegate to a generation-capable agent.\n"
-            "- Prefer agent:codur-coding for coding challenges with docstrings/requirements.\n"
+            "- If a file path is known, call read_file first to understand the context\n"
+            "- After investigation, use delegate_task(\"agent:codur-coding\", \"<context and instructions>\")\n"
+            "- If no file path is known, delegate directly to a generation-capable agent\n"
             f"- {suggested_tools}\n"
-            "- Return ONLY a valid JSON object.\n"
-            "Examples (context-aware):\n"
+            "\n"
+            "Examples:\n"
             f"{format_examples(examples)}"
         )
         return format_focus_prompt(build_base_prompt(config), focus, classification.detected_files)

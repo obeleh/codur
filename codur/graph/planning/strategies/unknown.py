@@ -59,17 +59,15 @@ class UnknownStrategy:
                 {
                     "action": "delegate",
                     "agent": default_agent,
-                    "reasoning": "code generation request",
-                    "response": None,
-                    "tool_calls": [],
                 },
             ),
         ]
         focus = (
             "**Task Focus: Unknown**\n"
             "- Follow the general planning rules and choose the safest action.\n"
-            "- Return ONLY a valid JSON object.\n"
-            "Examples (context-aware):\n"
+            "- Use investigation tools if needed, then delegate_task() or task_complete().\n"
+            "\n"
+            "Examples:\n"
             f"{format_examples(examples)}"
         )
         return format_focus_prompt(build_base_prompt(config), focus, classification.detected_files)

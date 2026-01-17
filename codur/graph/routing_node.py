@@ -30,14 +30,24 @@ def handle_verification_tool_output(messages: list[BaseMessage]) -> ReviewNodeRe
     if last_tool_output:
         assert isinstance(last_tool_output, ToolOutput)
         if last_tool_output.tool == "build_verification_response":
-            if last_tool_output.args["passed"]:
+            # Access output (return value), not args (input parameters)
+            output = last_tool_output.output
+            if isinstance(output, dict):
+                passed = output.get("passed", False)
+                reasoning = output.get("reasoning", "")
+            else:
+                # Fallback: check args for backward compatibility
+                passed = last_tool_output.args.get("passed", False)
+                reasoning = last_tool_output.args.get("reasoning", "")
+
+            if passed:
                 return ReviewNodeResult(
-                    final_response=last_tool_output.args["reasoning"],
+                    final_response=reasoning,
                     next_action=NODE_END,
                 )
             else:
                 return ReviewNodeResult(
-                    final_response=last_tool_output.args["reasoning"],
+                    final_response=reasoning,
                     next_action=NODE_LLM_PLAN,
                     next_step_suggestion=None,
                 )
@@ -92,11 +102,21 @@ def routing_node(state: AgentState, llm: BaseChatModel, config: CodurConfig) -> 
             next_action=NODE_END,
         )
     elif last_tool_name == "build_verification_response":
-        if last_tool_call.args["passed"]:
+        # Access output (return value), not args (input parameters)
+        output = last_tool_call.output
+        if isinstance(output, dict):
+            passed = output.get("passed", False)
+            reasoning = output.get("reasoning", "")
+        else:
+            # Fallback: check args for backward compatibility
+            passed = last_tool_call.args.get("passed", False)
+            reasoning = last_tool_call.args.get("reasoning", "")
+
+        if passed:
             if verbose:
                 console.print(f"[green]✓ Verification passed - accepting result[/green]")
             return ReviewNodeResult(
-                final_response=last_tool_call.args["reasoning"],
+                final_response=reasoning,
                 next_action=NODE_END,
             )
         else:
