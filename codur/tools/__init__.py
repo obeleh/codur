@@ -96,6 +96,7 @@ from codur.tools.meta_tools import (
     build_verification_response,
     clarify,
     done,
+    task_complete,
 )
 from codur.tools.ast_utils import (
     find_function_lines,
@@ -224,4 +225,5 @@ __all__ = [
     "get_primary_entry_point",
     "clarify",
     "done",
+    "task_complete",
 ]

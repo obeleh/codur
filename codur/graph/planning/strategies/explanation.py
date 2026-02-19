@@ -153,7 +153,7 @@ class ExplanationStrategy:
             "- If no file path is known, call list_files to discover candidates\n"
             "- After investigation, you have two options:\n"
             "  1. Use task_complete(\"<explanation>\") for simple questions you can answer directly\n"
-            "  2. Use delegate_task(\"agent:codur-explaining\", \"<context>\") for detailed code explanation\n"
+            "  2. Use agent_call(\"agent:codur-explaining\", \"<context>\") for detailed code explanation\n"
             f"- {suggested_tools}\n"
             "\n"
             "Examples:\n"

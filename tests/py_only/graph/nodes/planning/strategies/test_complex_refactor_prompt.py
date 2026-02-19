@@ -37,4 +37,4 @@ def test_complex_refactor_prompt_suggests_investigation_tools():
     assert "python_ast_dependencies_multifile" in prompt
 
     # Should guide towards delegation
-    assert "delegate_task" in prompt
+    assert "agent_call" in prompt

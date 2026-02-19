@@ -1,4 +1,4 @@
-"""Clarification tool for LLM self-explanation."""
+"""Meta-tools for agent control and clarification."""
 from typing import TypedDict, NotRequired
 
 from codur.constants import TaskType
@@ -92,3 +92,28 @@ def done(reasoning: str, state: "AgentState"=None) -> ClarificationResult:
         ClarificationResult with the reasoning echoed back
     """
     return ClarificationResult(reasoning=reasoning)
+
+
+@tool_scenarios(TaskType.META_TOOL)
+def task_complete(
+    response: str,
+    state: AgentState | None = None,
+) -> dict[str, str]:
+    """Signal that the task is complete and provide the response.
+
+    Use this when:
+    - You can answer the user's question directly (e.g., greetings, simple questions)
+    - You have gathered enough information to provide a complete response
+    - The task does not require code changes or delegation
+
+    The response will be returned directly to the user.
+
+    Args:
+        response: The final answer or response to the user's request
+        state: Agent state (ignored)
+
+    Returns:
+        Task completion confirmation
+    """
+    # Return value is not used - we intercept this tool call in the planning loop
+    return {"status": "task complete", "response": response}

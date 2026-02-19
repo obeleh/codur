@@ -142,8 +142,8 @@ class CodeGenerationStrategy:
         focus = (
             "**Task Focus: Code Generation**\n"
             "- If a file path is known, call read_file first to understand the context\n"
-            "- After investigation, use delegate_task(\"agent:codur-coding\", \"<context and instructions>\")\n"
-            "- If no file path is known, delegate directly to a generation-capable agent\n"
+            "- After investigation, use agent_call(\"agent:codur-coding\", \"<context and instructions>\")\n"
+            "- If no file path is known, call agent directly with a generation-capable agent\n"
             f"- {suggested_tools}\n"
             "\n"
             "Examples:\n"

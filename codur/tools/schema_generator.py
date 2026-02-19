@@ -1,7 +1,8 @@
 """JSON Schema generation from Python function signatures for API tool calling."""
 
 import inspect
-from typing import Any, get_args, get_origin, get_type_hints
+from enum import Enum
+from typing import Any, Annotated, get_args, get_origin, get_type_hints
 from codur.tools.registry import list_tools_for_tasks, get_tool_by_name
 from codur.constants import TaskType
 from codur.tools.tool_annotations import ToolSideEffect
@@ -11,11 +12,21 @@ from codur.tools.tool_annotations import ToolSideEffect
 INTERNAL_PARAMS = {"root", "state", "config", "allow_outside_root"}
 
 
-def _python_type_to_json_type(py_type: Any) -> str:
-    """Map Python type to JSON Schema type."""
+def _python_type_to_json_type(py_type: Any) -> tuple[str, dict | None]:
+    """Map Python type to JSON Schema type.
+
+    Returns:
+        Tuple of (json_type, extra_schema) where extra_schema contains additional
+        fields like 'enum' for Enum types.
+    """
     # Handle None/NoneType
     if py_type is type(None) or py_type is None:
-        return "null"
+        return "null", None
+
+    # Check for Enum types (before getting origin, as Enum is a class)
+    if inspect.isclass(py_type) and issubclass(py_type, Enum):
+        enum_values = [e.value for e in py_type]
+        return "string", {"enum": enum_values}
 
     # Get origin for generic types (list[str] → list)
     origin = get_origin(py_type)
@@ -32,7 +43,7 @@ def _python_type_to_json_type(py_type: Any) -> str:
         dict: "object",
     }
 
-    return type_map.get(py_type, "string")  # Default to string
+    return type_map.get(py_type, "string"), None  # Default to string
 
 
 def _is_optional(annotation: Any) -> bool:
@@ -43,6 +54,24 @@ def _is_optional(annotation: Any) -> bool:
         # Optional[T] is Union[T, None]
         return type(None) in args
     return False
+
+
+def _extract_annotated_description(annotation: Any) -> str | None:
+    """Extract description from Annotated type.
+
+    Args:
+        annotation: Type annotation that might be Annotated[type, "description"]
+
+    Returns:
+        Description string if found in Annotated metadata, None otherwise
+    """
+    if get_origin(annotation) is Annotated:
+        args = get_args(annotation)
+        # args[0] is the actual type, args[1:] are metadata
+        for metadata in args[1:]:
+            if isinstance(metadata, str):
+                return metadata
+    return None
 
 
 def _extract_param_description(func: callable, param_name: str) -> str:
@@ -73,9 +102,14 @@ def _extract_param_description(func: callable, param_name: str) -> str:
     return ""
 
 
-def function_to_json_schema(func: callable) -> dict:
+def function_to_json_schema(func_or_tool) -> dict:
     """
     Convert Python function to JSON Schema for LangChain tool binding.
+
+    Supports:
+    - Regular Python functions
+    - LangChain StructuredTool objects (from @tool decorator)
+    - Decorated functions (unwraps to find original signature)
 
     Example input:
         def read_file(path: str, line_start: int = 1, line_end: Optional[int] = None,
@@ -117,11 +151,31 @@ def function_to_json_schema(func: callable) -> dict:
 
     Note: Filters out internal params (state, config, root, allow_outside_root).
     """
+    # Handle StructuredTool objects (from @tool decorator)
+    try:
+        from langchain_core.tools import StructuredTool
+        if isinstance(func_or_tool, StructuredTool):
+            func = func_or_tool.func
+        else:
+            func = func_or_tool
+    except ImportError:
+        # LangChain not available, assume it's a regular function
+        func = func_or_tool
+
+    # Handle bound methods (get underlying function)
+    if inspect.ismethod(func):
+        func = func.__func__
+
+    # Unwrap decorated functions to get original signature
+    while hasattr(func, '__wrapped__'):
+        func = func.__wrapped__
+
     sig = inspect.signature(func)
 
     # Get type hints (handles stringified annotations from __future__ import annotations)
+    # IMPORTANT: include_extras=True preserves Annotated metadata
     try:
-        type_hints = get_type_hints(func)
+        type_hints = get_type_hints(func, include_extras=True)
     except Exception:
         # Fallback to raw annotations if get_type_hints fails
         type_hints = {}
@@ -141,11 +195,20 @@ def function_to_json_schema(func: callable) -> dict:
         if param_name in INTERNAL_PARAMS:
             continue
 
+        # Skip *args and **kwargs (VAR_POSITIONAL and VAR_KEYWORD)
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+
         # Get type annotation (prefer type_hints over raw annotation)
         annotation = type_hints.get(param_name, param.annotation)
+
+        # Extract description from Annotated type first (higher priority)
+        annotated_desc = _extract_annotated_description(annotation)
+
         if annotation == inspect.Parameter.empty:
             # No type hint, default to string
             param_type = "string"
+            extra_schema = None
             is_optional = param.default != inspect.Parameter.empty
         else:
             is_optional = _is_optional(annotation)
@@ -154,10 +217,16 @@ def function_to_json_schema(func: callable) -> dict:
                 args = get_args(annotation)
                 # Get first non-None type
                 annotation = next((a for a in args if a is not type(None)), str)
-            param_type = _python_type_to_json_type(annotation)
 
-        # Extract description from docstring
-        param_desc = _extract_param_description(func, param_name)
+            # Get base type from Annotated[T, ...] if present
+            if get_origin(annotation) is Annotated:
+                args = get_args(annotation)
+                annotation = args[0]  # First arg is the actual type
+
+            param_type, extra_schema = _python_type_to_json_type(annotation)
+
+        # Extract description: prefer docstring, then Annotated, then fallback
+        param_desc = _extract_param_description(func, param_name) or annotated_desc
 
         # Handle array items for list types
         items_schema = None
@@ -167,8 +236,11 @@ def function_to_json_schema(func: callable) -> dict:
             if args:
                 # Get first type argument (for list[T], args is (T,))
                 item_type = args[0]
-                item_json_type = _python_type_to_json_type(item_type)
+                item_json_type, item_extra_schema = _python_type_to_json_type(item_type)
                 items_schema = {"type": item_json_type}
+                # Add enum schema to items if present
+                if item_extra_schema:
+                    items_schema.update(item_extra_schema)
             else:
                 # Fallback if we can't determine item type
                 items_schema = {"type": "string"}
@@ -183,6 +255,10 @@ def function_to_json_schema(func: callable) -> dict:
             "type": json_type,
             "description": param_desc or f"Parameter {param_name}"
         }
+
+        # Add enum constraints if present
+        if extra_schema:
+            properties[param_name].update(extra_schema)
 
         # Add items field for arrays
         if items_schema is not None:

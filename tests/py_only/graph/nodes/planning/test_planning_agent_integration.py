@@ -185,14 +185,14 @@ class TestPlanningNodeAgentSelection:
             "classification": classification,
         }
 
-        # Mock create_and_invoke_with_tool_support to return a delegate_task tool call
+        # Mock create_and_invoke_with_tool_support to return a task_complete tool call
+        # (agent_call would have been executed earlier in the planning loop)
         with patch('codur.graph.planning.phases.plan_phase.create_and_invoke_with_tool_support') as mock_invoke:
-            # Create a mock execution result
+            # Create a mock execution result with task_complete
             tool_calls = [{
-                "name": "delegate_task",
+                "name": "task_complete",
                 "args": {
-                    "agent_name": "agent:codur-coding",
-                    "instructions": "Fix the title_case function"
+                    "response": "The title_case function has been fixed"
                 }
             }]
             execution_result = SimpleNamespace(
@@ -207,8 +207,8 @@ class TestPlanningNodeAgentSelection:
             result = orchestrator.llm_plan(state, MagicMock())
 
             assert result is not None
-            assert result["next_action"] == "delegate"
-            assert result["selected_agent"] == "agent:codur-coding"
+            assert result["next_action"] == "end"
+            assert "The title_case function has been fixed" in result["final_response"]
 
 
 class TestPlanningNodeWithLineBasedEditing:

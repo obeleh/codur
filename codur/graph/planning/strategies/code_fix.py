@@ -149,7 +149,7 @@ class CodeFixStrategy:
             "**Task Focus: Code Fix**\n"
             "- If a file path is known, call read_file first to understand the code\n"
             "- If no file path is known, call list_files to discover candidates\n"
-            "- After investigation, use delegate_task(\"agent:codur-coding\", \"<context and instructions>\")\n"
+            "- After investigation, use agent_call(\"agent:codur-coding\", \"<context and instructions>\")\n"
             f"- {suggested_tools}\n"
             "\n"
             "Examples:\n"

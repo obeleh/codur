@@ -195,6 +195,7 @@ def _python_grep_files(
 @tool_scenarios(TaskType.EXPLANATION, TaskType.CODE_FIX, TaskType.REFACTOR)
 def ripgrep_search(
     pattern: str,
+    path: str | Path | None = None,
     root: str | Path | None = None,
     max_results: int = DEFAULT_MAX_RESULTS,
     case_sensitive: bool = False,
@@ -207,7 +208,10 @@ def ripgrep_search(
     """Search files using ripgrep and return match metadata."""
     if max_results <= 0:
         return []
-    root_path = resolve_root(root)
+    if path is None:
+        root_path = resolve_root(root)
+    else:
+        root_path = resolve_path(path, root)
     exclude_dirs = _resolve_exclude_dirs(state)
     respect_gitignore = should_respect_gitignore(get_config(state))
     if not _rg_available():

@@ -30,6 +30,7 @@ dependencies = [
     "prospector>=1.17.3",
     "ripgrepy>=2.2.0",
     "rope>=1.14.0",
+    "langchain-mistralai>=1.1.1",
 ]
 
 [project.scripts]

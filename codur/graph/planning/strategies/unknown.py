@@ -65,7 +65,7 @@ class UnknownStrategy:
         focus = (
             "**Task Focus: Unknown**\n"
             "- Follow the general planning rules and choose the safest action.\n"
-            "- Use investigation tools if needed, then delegate_task() or task_complete().\n"
+            "- Use investigation tools if needed, then agent_call() or task_complete().\n"
             "\n"
             "Examples:\n"
             f"{format_examples(examples)}"

@@ -181,7 +181,7 @@ class FileOperationStrategy:
         focus = (
             "**Task Focus: File Operation**\n"
             "- File operations should be delegated to the coding agent\n"
-            "- Use delegate_task(\"agent:codur-coding\", \"<file operation instructions>\")\n"
+            "- Use agent_call(\"agent:codur-coding\", \"<file operation instructions>\")\n"
             f"- {suggested_tools}\n"
             "\n"
             "Examples:\n"

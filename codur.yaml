@@ -114,8 +114,8 @@ agents:
 # LLM Settings - Main orchestrator LLM configuration
 llm:
   default_profile: groq-openai-oss-120b
-  default_temperature: 0.2
-  planning_temperature: 0.2
+  default_temperature: 0.0
+  planning_temperature: 0.1
   generation_temperature: 0.2
 
   profiles:

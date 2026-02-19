@@ -145,7 +145,7 @@ class ComplexRefactorStrategy:
         focus = (
             "**Task Focus: Complex Refactor**\n"
             "- This likely spans multiple files; use list_files if no hints are present\n"
-            "- After investigation, use delegate_task(\"<multi-file agent>\", \"<refactoring instructions>\")\n"
+            "- After investigation, use agent_call(\"<multi-file agent>\", \"<refactoring instructions>\")\n"
             f"- {suggested_tools}\n"
             "\n"
             "Examples:\n"
